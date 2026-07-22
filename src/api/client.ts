@@ -2,7 +2,10 @@
 // GAS Web App 通信レイヤー
 // data.ts からのみ呼ばれる。各関数は ApiResponse を返す。
 // ============================================
-import type { Staff, AttendanceRecord, LeaveRecord, Shift } from '../types';
+import type {
+  Staff, AttendanceRecord, LeaveRecord,
+  ShiftPattern, AvailabilityRecord, ConfirmedShift, WorkLocation,
+} from '../types';
 
 export interface ApiResponse<T = unknown> {
   success: boolean;
@@ -53,15 +56,28 @@ export const saveMonthAttendance = (
   staffId: string, month: string, records: AttendanceRecord[], token: string
 ) => request<void>('saveMonthAttendance', { staffId, month, records, token });
 
-// === シフト ===
-export const getShiftsByDate = (date: string, token: string) =>
-  request<Shift[]>('getShiftsByDate', { date, token });
+// === シフト区分マスタ ===
+export const getShiftPatterns = (token: string) =>
+  request<ShiftPattern[]>('getShiftPatterns', { token });
 
-export const addShift = (shift: Shift, token: string) =>
-  request<void>('addShift', { shift, token });
+export const saveShiftPatterns = (patterns: ShiftPattern[], token: string) =>
+  request<{ saved: number }>('saveShiftPatterns', { patterns, token });
 
-export const deleteShift = (id: string, token: string) =>
-  request<void>('deleteShift', { id, token });
+// === シフト希望（○×） ===
+export const getAvailabilityMonth = (month: string, token: string) =>
+  request<AvailabilityRecord[]>('getAvailabilityMonth', { month, token });
+
+export const saveMonthAvailability = (
+  month: string, staffIds: string[], records: AvailabilityRecord[], token: string
+) => request<void>('saveMonthAvailability', { month, staffIds, records, token });
+
+// === 確定シフト ===
+export const getConfirmedMonth = (month: string, token: string) =>
+  request<ConfirmedShift[]>('getConfirmedMonth', { month, token });
+
+export const saveMonthConfirmed = (
+  month: string, location: WorkLocation, records: ConfirmedShift[], token: string
+) => request<void>('saveMonthConfirmed', { month, location, records, token });
 
 // === 有給休暇 ===
 export const getLeave = (staffId: string, token: string) =>

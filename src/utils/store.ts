@@ -1,11 +1,16 @@
 // デモ用localStorageデータストア（将来はGAS APIに差し替える）
-import type { Staff, AttendanceRecord, LeaveRecord, Shift, WorkLocation } from '../types';
-import { ADMIN_EMAIL, ADMIN_PASSWORD } from './constants';
+import type {
+  Staff, AttendanceRecord, LeaveRecord, WorkLocation,
+  ShiftPattern, AvailabilityRecord, ConfirmedShift,
+} from '../types';
+import { ADMIN_EMAIL, ADMIN_PASSWORD, DEFAULT_SHIFT_PATTERNS } from './constants';
 
 const KEY_STAFF = 'tof_staff';
 const KEY_ATTENDANCE = 'tof_attendance';
 const KEY_LEAVE = 'tof_leave';
-const KEY_SHIFT = 'tof_shift';
+const KEY_SHIFT_PATTERNS = 'tof_shift_patterns';
+const KEY_AVAILABILITY = 'tof_availability';
+const KEY_CONFIRMED = 'tof_confirmed';
 const KEY_SEEDED = 'tof_seeded';
 
 function load<T>(key: string): T[] {
@@ -97,22 +102,50 @@ export function saveMonthAttendance(staffId: string, month: string, records: Att
   save(KEY_ATTENDANCE, [...others, ...records]);
 }
 
-// ---- シフト ----
+// ---- シフト区分マスタ ----
 
-export function listShiftsByDate(date: string): Shift[] {
-  return load<Shift>(KEY_SHIFT)
-    .filter(s => s.date === date)
-    .sort((a, b) => a.location.localeCompare(b.location) || a.startTime.localeCompare(b.startTime));
+export function listShiftPatterns(): ShiftPattern[] {
+  const saved = load<ShiftPattern>(KEY_SHIFT_PATTERNS);
+  const list = saved.length ? saved : DEFAULT_SHIFT_PATTERNS;
+  return list.slice().sort((a, b) => a.order - b.order);
 }
 
-export function addShift(shift: Shift) {
-  const all = load<Shift>(KEY_SHIFT);
-  all.push(shift);
-  save(KEY_SHIFT, all);
+export function saveShiftPatterns(patterns: ShiftPattern[]) {
+  save(KEY_SHIFT_PATTERNS, patterns);
 }
 
-export function deleteShift(id: string) {
-  save(KEY_SHIFT, load<Shift>(KEY_SHIFT).filter(s => s.id !== id));
+// ---- シフト希望（○×・人単位） ----
+
+/** month: 'YYYY-MM' */
+export function listAvailabilityByMonth(month: string): AvailabilityRecord[] {
+  return load<AvailabilityRecord>(KEY_AVAILABILITY).filter(r => r.date.startsWith(month));
+}
+
+/** 指定職員群・指定月の希望を丸ごと差し替える（表に出ている職員のみ更新） */
+export function saveMonthAvailability(month: string, staffIds: string[], records: AvailabilityRecord[]) {
+  const ids = new Set(staffIds);
+  const others = load<AvailabilityRecord>(KEY_AVAILABILITY).filter(
+    r => !(r.date.startsWith(month) && ids.has(r.staffId))
+  );
+  save(KEY_AVAILABILITY, [...others, ...records]);
+}
+
+// ---- 確定シフト（職員×日×勤務場所） ----
+
+export function listConfirmedByMonth(month: string): ConfirmedShift[] {
+  return load<ConfirmedShift>(KEY_CONFIRMED).filter(r => r.date.startsWith(month));
+}
+
+export function listConfirmedByDate(date: string): ConfirmedShift[] {
+  return load<ConfirmedShift>(KEY_CONFIRMED).filter(r => r.date === date);
+}
+
+/** 指定勤務場所・指定月の確定シフトを丸ごと差し替える */
+export function saveMonthConfirmed(month: string, location: WorkLocation, records: ConfirmedShift[]) {
+  const others = load<ConfirmedShift>(KEY_CONFIRMED).filter(
+    r => !(r.date.startsWith(month) && r.location === location)
+  );
+  save(KEY_CONFIRMED, [...others, ...records]);
 }
 
 // ---- 有給休暇 ----

@@ -5,7 +5,11 @@
 // 全関数は Promise を返す（非同期統一）。
 // ページはこの層だけを参照し、バックエンドの差異を意識しない。
 // ============================================
-import type { Staff, AttendanceRecord, LeaveRecord, Shift } from '../types';
+import type {
+  Staff, AttendanceRecord, LeaveRecord,
+  ShiftPattern, AvailabilityRecord, ConfirmedShift, WorkLocation,
+} from '../types';
+import { DEFAULT_SHIFT_PATTERNS } from '../utils/constants';
 import * as local from '../utils/store';
 import * as gas from './client';
 
@@ -91,22 +95,53 @@ export async function saveMonthAttendance(
   if (!res.success) throw new Error(res.error || '勤怠の保存に失敗しました');
 }
 
-// === シフト ===
-export async function listShiftsByDate(date: string): Promise<Shift[]> {
-  if (!USE_GAS) return local.listShiftsByDate(date);
-  return unwrap(await gas.getShiftsByDate(date, token()), []);
+// === シフト区分マスタ ===
+export async function listShiftPatterns(): Promise<ShiftPattern[]> {
+  if (!USE_GAS) return local.listShiftPatterns();
+  const list = unwrap(await gas.getShiftPatterns(token()), [] as ShiftPattern[]);
+  const use = list.length ? list : DEFAULT_SHIFT_PATTERNS;
+  return use.slice().sort((a, b) => a.order - b.order);
 }
 
-export async function addShift(shift: Shift): Promise<void> {
-  if (!USE_GAS) { local.addShift(shift); return; }
-  const res = await gas.addShift(shift, token());
-  if (!res.success) throw new Error(res.error || 'シフトの登録に失敗しました');
+export async function saveShiftPatterns(patterns: ShiftPattern[]): Promise<void> {
+  if (!USE_GAS) { local.saveShiftPatterns(patterns); return; }
+  const res = await gas.saveShiftPatterns(patterns, token());
+  if (!res.success) throw new Error(res.error || 'シフト区分の保存に失敗しました');
 }
 
-export async function deleteShift(id: string): Promise<void> {
-  if (!USE_GAS) { local.deleteShift(id); return; }
-  const res = await gas.deleteShift(id, token());
-  if (!res.success) throw new Error(res.error || 'シフトの削除に失敗しました');
+// === シフト希望（○×） ===
+export async function listAvailabilityByMonth(month: string): Promise<AvailabilityRecord[]> {
+  if (!USE_GAS) return local.listAvailabilityByMonth(month);
+  return unwrap(await gas.getAvailabilityMonth(month, token()), []);
+}
+
+export async function saveMonthAvailability(
+  month: string, staffIds: string[], records: AvailabilityRecord[]
+): Promise<void> {
+  if (!USE_GAS) { local.saveMonthAvailability(month, staffIds, records); return; }
+  const res = await gas.saveMonthAvailability(month, staffIds, records, token());
+  if (!res.success) throw new Error(res.error || '希望の保存に失敗しました');
+}
+
+// === 確定シフト ===
+export async function listConfirmedByMonth(month: string): Promise<ConfirmedShift[]> {
+  if (!USE_GAS) return local.listConfirmedByMonth(month);
+  return unwrap(await gas.getConfirmedMonth(month, token()), []);
+}
+
+export async function listConfirmedByDate(date: string): Promise<ConfirmedShift[]> {
+  if (!USE_GAS) return local.listConfirmedByDate(date);
+  const month = date.slice(0, 7);
+  const all = unwrap(await gas.getConfirmedMonth(month, token()), []);
+  return all.filter(r => r.date === date);
+}
+
+export async function saveMonthConfirmed(
+  month: string, location: WorkLocation, records: ConfirmedShift[]
+): Promise<void> {
+  if (!USE_GAS) { local.saveMonthConfirmed(month, location, records); return; }
+  const res = await gas.saveMonthConfirmed(month, location, records, token());
+  if (!res.success) throw new Error(res.error || '確定シフトの保存に失敗しました');
 }
 
 // === 有給休暇 ===

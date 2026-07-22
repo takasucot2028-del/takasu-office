@@ -34,9 +34,15 @@ var SHEETS = {
   leave: { name: '有給休暇', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['kind', '種別'], ['date', '日付'], ['days', '日数'], ['note', '備考'],
   ] },
-  shifts: { name: 'シフト', columns: [
+  shift_patterns: { name: 'シフト区分', columns: [
+    ['id', 'ID'], ['name', '区分名'], ['startTime', '開始'], ['endTime', '終了'], ['order', '並び順'],
+  ] },
+  availability: { name: 'シフト希望', columns: [
+    ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['status', '可否'],
+  ] },
+  shifts_confirmed: { name: '確定シフト', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['location', '勤務場所'],
-    ['startTime', '開始'], ['endTime', '終了'], ['note', '備考'],
+    ['patternId', '区分ID'], ['note', '備考'],
   ] },
 };
 
@@ -176,14 +182,23 @@ function doPost(e) {
       case 'saveMonthAttendance':
         result = handleSaveMonthAttendance(body.staffId, body.month, body.records);
         break;
-      case 'getShiftsByDate':
-        result = handleGetShiftsByDate(body.date);
+      case 'getShiftPatterns':
+        result = handleGetShiftPatterns();
         break;
-      case 'addShift':
-        result = handleAddShift(body.shift);
+      case 'saveShiftPatterns':
+        result = handleSaveShiftPatterns(body.patterns);
         break;
-      case 'deleteShift':
-        result = handleDeleteShift(body.id);
+      case 'getAvailabilityMonth':
+        result = handleGetAvailabilityMonth(body.month);
+        break;
+      case 'saveMonthAvailability':
+        result = handleSaveMonthAvailability(body.month, body.staffIds, body.records);
+        break;
+      case 'getConfirmedMonth':
+        result = handleGetConfirmedMonth(body.month);
+        break;
+      case 'saveMonthConfirmed':
+        result = handleSaveMonthConfirmed(body.month, body.location, body.records);
         break;
       case 'getLeave':
         result = handleGetLeave(body.staffId);
@@ -341,28 +356,91 @@ function handleSaveMonthAttendance(staffId, month, records) {
   return { success: true };
 }
 
-// --- ハンドラー：シフト ---
-function handleGetShiftsByDate(date) {
-  const sheet = getSheet('shifts');
-  const records = sheetToObjects(sheet, 'shifts').filter(function (r) { return String(r.date) === String(date); });
-  records.sort(function (a, b) {
-    return String(a.location).localeCompare(String(b.location)) || String(a.startTime).localeCompare(String(b.startTime));
+// --- ハンドラー：シフト区分マスタ ---
+function handleGetShiftPatterns() {
+  const sheet = getSheet('shift_patterns');
+  const list = sheetToObjects(sheet, 'shift_patterns')
+    .filter(function (p) { return p.id; })
+    .map(function (p) { return { id: String(p.id), name: String(p.name), startTime: String(p.startTime), endTime: String(p.endTime), order: Number(p.order) || 0 }; });
+  return { success: true, data: list };
+}
+
+// 区分マスタを丸ごと保存（見出しごと書き直す）。
+function handleSaveShiftPatterns(patterns) {
+  const sheet = getSheet('shift_patterns');
+  const labels = colLabels('shift_patterns');
+  const ncol = labels.length;
+  sheet.clearContents();
+  sheet.getRange(1, 1, sheet.getMaxRows(), ncol).setNumberFormat('@');
+  sheet.getRange(1, 1, 1, ncol).setValues([labels]);
+  sheet.setFrozenRows(1);
+  const list = patterns || [];
+  if (list.length) {
+    const rows = list.map(function (p) { return objectToRow('shift_patterns', p); });
+    sheet.getRange(2, 1, rows.length, ncol).setValues(rows);
+  }
+  return { success: true, data: { saved: list.length } };
+}
+
+// --- ハンドラー：シフト希望（○×） ---
+function handleGetAvailabilityMonth(month) {
+  const sheet = getSheet('availability');
+  const records = sheetToObjects(sheet, 'availability').filter(function (r) {
+    return String(r.date).slice(0, 7) === month;
   });
   return { success: true, data: records };
 }
 
-function handleAddShift(shift) {
-  if (!shift || !shift.id) return { success: false, error: 'シフトデータが不正です' };
-  const sheet = getSheet('shifts');
-  sheet.appendRow(objectToRow('shifts', shift));
+// 指定月・表に出ている職員群の希望を差し替える。
+function handleSaveMonthAvailability(month, staffIds, records) {
+  const sheet = getSheet('availability');
+  const ncol = colKeys('availability').length;
+  const ids = {};
+  (staffIds || []).forEach(function (id) { ids[String(id)] = true; });
+  const data = sheet.getDataRange().getValues();
+  const kept = [];
+  for (let i = 1; i < data.length; i++) {
+    const rowStaff = String(data[i][1]);
+    const rowDate = String(data[i][2]);
+    if (rowDate.slice(0, 7) === month && ids[rowStaff]) continue; // 対象は捨てて入れ直す
+    kept.push(data[i].slice(0, ncol));
+  }
+  const newRows = (records || []).map(function (r) { return objectToRow('availability', r); });
+  const out = [colLabels('availability')].concat(kept).concat(newRows);
+  sheet.clearContents();
+  sheet.getRange(1, 1, sheet.getMaxRows(), ncol).setNumberFormat('@');
+  sheet.getRange(1, 1, out.length, ncol).setValues(out);
+  sheet.setFrozenRows(1);
   return { success: true };
 }
 
-function handleDeleteShift(id) {
-  const sheet = getSheet('shifts');
-  const rowIndex = findRowIndex(sheet, 0, id);
-  if (rowIndex < 0) return { success: false, error: 'シフトが見つかりません' };
-  sheet.deleteRow(rowIndex);
+// --- ハンドラー：確定シフト ---
+function handleGetConfirmedMonth(month) {
+  const sheet = getSheet('shifts_confirmed');
+  const records = sheetToObjects(sheet, 'shifts_confirmed').filter(function (r) {
+    return String(r.date).slice(0, 7) === month;
+  });
+  return { success: true, data: records };
+}
+
+// 指定月・指定勤務場所の確定シフトを差し替える。
+function handleSaveMonthConfirmed(month, location, records) {
+  const sheet = getSheet('shifts_confirmed');
+  const ncol = colKeys('shifts_confirmed').length;
+  const data = sheet.getDataRange().getValues();
+  const kept = [];
+  for (let i = 1; i < data.length; i++) {
+    const rowDate = String(data[i][2]);
+    const rowLoc = String(data[i][3]);
+    if (rowDate.slice(0, 7) === month && rowLoc === String(location)) continue;
+    kept.push(data[i].slice(0, ncol));
+  }
+  const newRows = (records || []).map(function (r) { return objectToRow('shifts_confirmed', r); });
+  const out = [colLabels('shifts_confirmed')].concat(kept).concat(newRows);
+  sheet.clearContents();
+  sheet.getRange(1, 1, sheet.getMaxRows(), ncol).setNumberFormat('@');
+  sheet.getRange(1, 1, out.length, ncol).setValues(out);
+  sheet.setFrozenRows(1);
   return { success: true };
 }
 

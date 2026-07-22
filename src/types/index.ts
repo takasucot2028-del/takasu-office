@@ -47,14 +47,35 @@ export interface AttendanceRecord {
   note: string;
 }
 
-/** シフト（1職員×1日×1勤務） */
-export interface Shift {
+// ==== シフト（希望→確定） ====
+
+/** シフト区分（早番/遅番など）。事務局が区分マスタで管理する */
+export interface ShiftPattern {
   id: string;
+  name: string;               // 表示名（①②③ や 早番 など）
+  startTime: string;          // HH:MM
+  endTime: string;            // HH:MM
+  order: number;              // 並び順
+}
+
+/** 希望の可否（○=入れる / ×=入れない） */
+export type AvailabilityStatus = 'available' | 'unavailable';
+
+/** 希望（1職員×1日）。人単位のため勤務場所は持たない */
+export interface AvailabilityRecord {
+  id: string;                 // `${staffId}_${date}`
+  staffId: string;
+  date: string;               // YYYY-MM-DD
+  status: AvailabilityStatus;
+}
+
+/** 確定シフト（1職員×1日×1勤務場所） */
+export interface ConfirmedShift {
+  id: string;                 // `${staffId}_${date}_${location}`
   staffId: string;
   date: string;               // YYYY-MM-DD
   location: WorkLocation;
-  startTime: string;          // HH:MM
-  endTime: string;            // HH:MM
+  patternId: string;          // ShiftPattern.id
   note: string;
 }
 

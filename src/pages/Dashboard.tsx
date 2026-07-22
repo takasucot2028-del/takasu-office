@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageContainer, Card, Badge } from '../components/UI';
-import { listStaff, listShiftsByDate, todayStr } from '../api/data';
+import { listStaff, listShiftPatterns, listConfirmedByDate, todayStr } from '../api/data';
 import { WORK_LOCATION_LABELS, WEEKDAY_LABELS } from '../utils/constants';
-import type { WorkLocation, Staff, Shift } from '../types';
+import type { WorkLocation, Staff, ShiftPattern, ConfirmedShift } from '../types';
 
 export default function Dashboard() {
   const [staff, setStaff] = useState<Staff[]>([]);
-  const [todayShifts, setTodayShifts] = useState<Shift[]>([]);
+  const [patterns, setPatterns] = useState<ShiftPattern[]>([]);
+  const [todayShifts, setTodayShifts] = useState<ConfirmedShift[]>([]);
   const [loading, setLoading] = useState(true);
 
   const today = todayStr();
@@ -16,9 +17,10 @@ export default function Dashboard() {
   useEffect(() => {
     let alive = true;
     (async () => {
-      const [s, sh] = await Promise.all([listStaff(), listShiftsByDate(today)]);
+      const [s, p, sh] = await Promise.all([listStaff(), listShiftPatterns(), listConfirmedByDate(today)]);
       if (!alive) return;
       setStaff(s);
+      setPatterns(p);
       setTodayShifts(sh);
       setLoading(false);
     })();
@@ -27,6 +29,7 @@ export default function Dashboard() {
 
   const activeStaff = staff.filter(s => s.status === 'active');
   const staffMap = new Map(staff.map(s => [s.id, s]));
+  const patternMap = new Map(patterns.map(p => [p.id, p]));
 
   return (
     <PageContainer title="事務管理ダッシュボード">
@@ -55,11 +58,11 @@ export default function Dashboard() {
                     <ul className="space-y-1">
                       {shifts.map(sh => {
                         const s = staffMap.get(sh.staffId);
+                        const p = patternMap.get(sh.patternId);
                         return (
                           <li key={sh.id} className="text-sm text-gray-700 flex items-baseline gap-2">
                             <span className="font-medium">{s ? `${s.lastName} ${s.firstName}` : '(不明)'}</span>
-                            <span className="text-gray-500">{sh.startTime}〜{sh.endTime}</span>
-                            {sh.note && <span className="text-xs text-gray-400">{sh.note}</span>}
+                            {p && <span className="text-gray-500">{p.name} {p.startTime}〜{p.endTime}</span>}
                           </li>
                         );
                       })}
