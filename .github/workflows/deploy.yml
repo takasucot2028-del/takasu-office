@@ -33,6 +33,10 @@ jobs:
         run: npm ci
 
       - name: Build
+        # GAS 接続URLはリポジトリの Variables (Settings > Secrets and variables > Actions > Variables) に
+        # VITE_GAS_URL として登録すると本番ビルドに反映される。未登録ならデモモード（localStorage）でビルドされる。
+        env:
+          VITE_GAS_URL: ${{ vars.VITE_GAS_URL }}
         run: npm run build
 
       - name: Upload Pages artifact

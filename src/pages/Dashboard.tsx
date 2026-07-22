@@ -1,17 +1,32 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageContainer, Card, Badge } from '../components/UI';
-import { listStaff, listShiftsByDate, todayStr } from '../utils/store';
+import { listStaff, listShiftsByDate, todayStr } from '../api/data';
 import { WORK_LOCATION_LABELS, WEEKDAY_LABELS } from '../utils/constants';
-import type { WorkLocation } from '../types';
+import type { WorkLocation, Staff, Shift } from '../types';
 
 export default function Dashboard() {
-  const allStaff = listStaff();
-  const activeStaff = allStaff.filter(s => s.status === 'active');
-  const staffMap = new Map(allStaff.map(s => [s.id, s]));
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [todayShifts, setTodayShifts] = useState<Shift[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const today = todayStr();
   const weekday = WEEKDAY_LABELS[new Date(`${today}T00:00:00`).getDay()];
-  const todayShifts = listShiftsByDate(today);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const [s, sh] = await Promise.all([listStaff(), listShiftsByDate(today)]);
+      if (!alive) return;
+      setStaff(s);
+      setTodayShifts(sh);
+      setLoading(false);
+    })();
+    return () => { alive = false; };
+  }, [today]);
+
+  const activeStaff = staff.filter(s => s.status === 'active');
+  const staffMap = new Map(staff.map(s => [s.id, s]));
 
   return (
     <PageContainer title="事務管理ダッシュボード">
@@ -21,7 +36,9 @@ export default function Dashboard() {
           <h2 className="font-bold text-gray-800">本日の勤務 <span className="text-sm font-normal text-gray-500">{today}（{weekday}）</span></h2>
           <Link to="/labor/shifts" className="text-xs text-emerald-700 hover:underline">シフト管理へ →</Link>
         </div>
-        {todayShifts.length === 0 ? (
+        {loading ? (
+          <p className="text-sm text-gray-400">読み込み中…</p>
+        ) : todayShifts.length === 0 ? (
           <p className="text-sm text-gray-400">本日のシフトは登録されていません</p>
         ) : (
           <div className="grid sm:grid-cols-2 gap-4">
@@ -62,7 +79,7 @@ export default function Dashboard() {
             <h2 className="font-bold text-gray-800">労務管理</h2>
             <Badge color="green">稼働中</Badge>
           </div>
-          <p className="text-sm text-gray-500 mb-1">在職職員数: {activeStaff.length}名</p>
+          <p className="text-sm text-gray-500 mb-1">在職職員数: {loading ? '—' : `${activeStaff.length}名`}</p>
           <p className="text-xs text-gray-400 mb-4">職員名簿・シフト・勤怠管理・有給休暇の管理</p>
           <div className="flex flex-wrap gap-2">
             <ModuleLink to="/labor/staff">職員名簿</ModuleLink>

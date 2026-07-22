@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PageContainer, Card, Field, Input, Select, Button, Alert, Modal } from '../../components/UI';
-import { getStaff, upsertStaff, genId } from '../../utils/store';
+import { getStaff, upsertStaff, genId } from '../../api/data';
 import { EMPLOYMENT_TYPE_LABELS, WORK_LOCATION_LABELS } from '../../utils/constants';
 import type { Staff, EmploymentType, WorkLocation } from '../../types';
 
@@ -21,11 +21,33 @@ export default function StaffDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const isNew = id === 'new';
-  const [form, setForm] = useState<Staff | null>(() => (isNew ? emptyStaff() : getStaff(id!)));
+  const [form, setForm] = useState<Staff | null>(() => (isNew ? emptyStaff() : null));
+  const [loading, setLoading] = useState(!isNew);
+  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [retireOpen, setRetireOpen] = useState(false);
   const [retireDate, setRetireDate] = useState(() => new Date().toISOString().slice(0, 10));
+
+  useEffect(() => {
+    if (isNew) return;
+    let alive = true;
+    (async () => {
+      const s = await getStaff(id!);
+      if (!alive) return;
+      setForm(s);
+      setLoading(false);
+    })();
+    return () => { alive = false; };
+  }, [id, isNew]);
+
+  if (loading) {
+    return (
+      <PageContainer title="職員詳細">
+        <p className="text-sm text-gray-400">読み込み中…</p>
+      </PageContainer>
+    );
+  }
 
   if (!form) {
     return (
@@ -39,7 +61,7 @@ export default function StaffDetail() {
   const set = <K extends keyof Staff>(key: K, value: Staff[K]) =>
     setForm(prev => (prev ? { ...prev, [key]: value } : prev));
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (!form.lastName || !form.firstName || !form.lastKana || !form.firstKana) {
@@ -50,30 +72,51 @@ export default function StaffDetail() {
       setError('入職日は必須です');
       return;
     }
-    upsertStaff(form);
-    if (isNew) {
-      navigate('/labor/staff');
-    } else {
-      setMessage('保存しました');
-      window.scrollTo(0, 0);
+    setSaving(true);
+    try {
+      await upsertStaff(form);
+      if (isNew) {
+        navigate('/labor/staff');
+      } else {
+        setMessage('保存しました');
+        window.scrollTo(0, 0);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存に失敗しました');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleRetire = () => {
+  const handleRetire = async () => {
     const next: Staff = { ...form, status: 'retired', retireDate };
-    upsertStaff(next);
-    setForm(next);
-    setRetireOpen(false);
-    setMessage(`退職処理を行いました（退職日: ${retireDate}）`);
-    window.scrollTo(0, 0);
+    setSaving(true);
+    try {
+      await upsertStaff(next);
+      setForm(next);
+      setRetireOpen(false);
+      setMessage(`退職処理を行いました（退職日: ${retireDate}）`);
+      window.scrollTo(0, 0);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存に失敗しました');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleRejoin = () => {
+  const handleRejoin = async () => {
     const next: Staff = { ...form, status: 'active', retireDate: '' };
-    upsertStaff(next);
-    setForm(next);
-    setMessage('在職に戻しました');
-    window.scrollTo(0, 0);
+    setSaving(true);
+    try {
+      await upsertStaff(next);
+      setForm(next);
+      setMessage('在職に戻しました');
+      window.scrollTo(0, 0);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存に失敗しました');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -162,7 +205,7 @@ export default function StaffDetail() {
 
         <div className="flex items-center justify-between">
           <div className="flex gap-2">
-            <Button type="submit">{isNew ? '登録する' : '保存する'}</Button>
+            <Button type="submit" disabled={saving}>{saving ? '保存中…' : (isNew ? '登録する' : '保存する')}</Button>
             <Button type="button" variant="secondary" onClick={() => navigate('/labor/staff')}>
               職員名簿へ戻る
             </Button>
@@ -189,7 +232,7 @@ export default function StaffDetail() {
         </Field>
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={() => setRetireOpen(false)}>キャンセル</Button>
-          <Button variant="danger" onClick={handleRetire}>退職にする</Button>
+          <Button variant="danger" onClick={handleRetire} disabled={saving}>{saving ? '処理中…' : '退職にする'}</Button>
         </div>
       </Modal>
     </PageContainer>

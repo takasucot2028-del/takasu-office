@@ -33,8 +33,25 @@ export function todayStr(): string {
 
 // ---- 認証 ----
 
+const KEY_ADMIN_PW = 'tof_admin_pw'; // デモモードで変更後のパスワードを保持（平文・デモ専用）
+
+function currentAdminPassword(): string {
+  return localStorage.getItem(KEY_ADMIN_PW) || ADMIN_PASSWORD;
+}
+
 export function verifyAdmin(email: string, password: string): boolean {
-  return email === ADMIN_EMAIL && password === ADMIN_PASSWORD;
+  return email === ADMIN_EMAIL && password === currentAdminPassword();
+}
+
+/** デモモードのパスワード変更（現在のパスワード照合が必須） */
+export function changeAdminPassword(oldPassword: string, newPassword: string): void {
+  if (oldPassword !== currentAdminPassword()) {
+    throw new Error('現在のパスワードが正しくありません');
+  }
+  if (!newPassword || newPassword.length < 6) {
+    throw new Error('新しいパスワードは6文字以上で入力してください');
+  }
+  localStorage.setItem(KEY_ADMIN_PW, newPassword);
 }
 
 // ---- 職員 ----

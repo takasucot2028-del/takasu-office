@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
-import { listStaff, listShiftsByDate, addShift, deleteShift, genId, todayStr } from '../../utils/store';
+import { listStaff, listShiftsByDate, addShift, deleteShift, genId, todayStr } from '../../api/data';
 import { WORK_LOCATION_LABELS, WEEKDAY_LABELS } from '../../utils/constants';
-import type { WorkLocation } from '../../types';
+import type { WorkLocation, Staff, Shift } from '../../types';
 
 function shiftDate(date: string, delta: number): string {
   const d = new Date(`${date}T00:00:00`);
@@ -11,20 +11,55 @@ function shiftDate(date: string, delta: number): string {
 }
 
 export default function Shifts() {
-  const staff = useMemo(() => listStaff().filter(s => s.status === 'active'), []);
+  const [allStaff, setAllStaff] = useState<Staff[]>([]);
+  const [staffLoaded, setStaffLoaded] = useState(false);
+  const staff = useMemo(() => allStaff.filter(s => s.status === 'active'), [allStaff]);
+  const staffMap = useMemo(() => new Map(allStaff.map(s => [s.id, s])), [allStaff]);
+
   const [date, setDate] = useState(todayStr());
+  const [shifts, setShifts] = useState<Shift[]>([]);
+  const [loading, setLoading] = useState(true);
   const [version, setVersion] = useState(0); // 追加・削除後の再読込用
 
-  const [staffId, setStaffId] = useState(staff[0]?.id ?? '');
-  const [location, setLocation] = useState<WorkLocation>(staff[0]?.workLocation || 'sotai');
+  const [staffId, setStaffId] = useState('');
+  const [location, setLocation] = useState<WorkLocation>('sotai');
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('17:00');
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const shifts = useMemo(() => listShiftsByDate(date), [date, version]);
-  const staffMap = useMemo(() => new Map(listStaff().map(s => [s.id, s])), []);
   const weekday = WEEKDAY_LABELS[new Date(`${date}T00:00:00`).getDay()];
+
+  // 職員一覧を初回に読み込む
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const s = await listStaff();
+      if (!alive) return;
+      setAllStaff(s);
+      setStaffLoaded(true);
+      const first = s.find(x => x.status === 'active');
+      if (first) {
+        setStaffId(first.id);
+        if (first.workLocation) setLocation(first.workLocation);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // 日付・更新のたびにシフトを読み込む
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    (async () => {
+      const list = await listShiftsByDate(date);
+      if (!alive) return;
+      setShifts(list);
+      setLoading(false);
+    })();
+    return () => { alive = false; };
+  }, [date, version]);
 
   // 職員を選んだらその職員の主な勤務場所を初期値にする
   const handleStaffChange = (id: string) => {
@@ -33,7 +68,7 @@ export default function Shifts() {
     if (s?.workLocation) setLocation(s.workLocation);
   };
 
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (!staffId) return;
@@ -41,14 +76,25 @@ export default function Shifts() {
       setError('終了時刻は開始時刻より後にしてください');
       return;
     }
-    addShift({ id: genId('sft'), staffId, date, location, startTime, endTime, note });
-    setNote('');
-    setVersion(v => v + 1);
+    setSaving(true);
+    try {
+      await addShift({ id: genId('sft'), staffId, date, location, startTime, endTime, note });
+      setNote('');
+      setVersion(v => v + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'シフトの登録に失敗しました');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDelete = (id: string) => {
-    deleteShift(id);
-    setVersion(v => v + 1);
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteShift(id);
+      setVersion(v => v + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'シフトの削除に失敗しました');
+    }
   };
 
   return (
@@ -66,7 +112,7 @@ export default function Shifts() {
         </div>
       </Card>
 
-      {staff.length === 0 && <Alert type="info">在職中の職員がいません。先に職員名簿から登録してください。</Alert>}
+      {staffLoaded && staff.length === 0 && <Alert type="info">在職中の職員がいません。先に職員名簿から登録してください。</Alert>}
 
       {staff.length > 0 && (
         <>
@@ -98,7 +144,7 @@ export default function Shifts() {
                 <Input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} required />
               </Field>
               <div className="mb-4">
-                <Button type="submit" className="w-full">追加</Button>
+                <Button type="submit" className="w-full" disabled={saving}>{saving ? '追加中…' : '追加'}</Button>
               </div>
             </form>
             <Field label="備考">
@@ -140,7 +186,7 @@ export default function Shifts() {
                 {shifts.length === 0 && (
                   <tr>
                     <Td className="text-center text-gray-400 py-8" colSpan={5}>
-                      この日のシフトはまだ登録されていません
+                      {loading ? '読み込み中…' : 'この日のシフトはまだ登録されていません'}
                     </Td>
                   </tr>
                 )}

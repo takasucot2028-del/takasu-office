@@ -18,7 +18,9 @@
 - ビルド: Vite
 - ルーティング: react-router-dom（HashRouter）
 - Excel出力: SheetJS (xlsx)
-- データストア: localStorage（デモモード）。将来はGAS + Googleスプレッドシートに接続予定
+- データストア: 統一データ層 `src/api/data.ts` が `VITE_GAS_URL` の有無で切り替え。
+  未設定=localStorage（デモモード・端末内）、設定時=GAS + Googleスプレッドシート（全端末で共有）
+- バックエンド: Google Apps Script（`gas/Code.gs`）。SHA-256ハッシュ＋トークンセッションで認証
 - コスト: 完全無料構成
 
 ## 開発環境セットアップ
@@ -28,19 +30,24 @@ npm install
 npm run dev   # http://localhost:5174 （会員管理の5173と共存できるよう5174）
 ```
 
-事務局デモアカウント: admin@takasu-sc.jp / admin123
+事務局デモアカウント（デモモード時）: admin@takasu-sc.jp / admin123
 
 ## ディレクトリ構成
 
 ```
 src/
+  api/
+    data.ts             統一データ層。全ページはここだけを参照（全関数 async/Promise）。
+                        VITE_GAS_URL で localStorage(store.ts) / GAS(client.ts) を切り替え
+    client.ts           GAS Web App 通信レイヤー（data.ts からのみ呼ぶ）
   components/
-    AuthContext.tsx     認証コンテキスト（sessionStorage、事務局のみ）
+    AuthContext.tsx     認証コンテキスト（sessionStorage、事務局のみ・tof_token）
     Header.tsx          ヘッダー・ナビゲーション
     UI.tsx              共通UIコンポーネント（会員管理システムと同一）
   pages/
-    Login.tsx           事務局ログイン
-    Dashboard.tsx       モジュール一覧ダッシュボード
+    Login.tsx           事務局ログイン（data.adminLogin）
+    Dashboard.tsx       モジュール一覧＋本日の勤務
+    Settings.tsx        パスワード変更（認証強化）
     labor/
       StaffList.tsx     職員名簿・検索・Excel出力
       StaffDetail.tsx   職員詳細・編集・退職処理（/labor/staff/new で新規登録）
@@ -53,7 +60,19 @@ src/
     store.ts            デモ用localStorageデータストア（キーは tof_ プレフィックス）
   App.tsx               ルーティング定義
   main.tsx              エントリーポイント
+gas/
+  Code.gs               GASバックエンド（職員・勤怠・有給・シフト・認証）
+  SETUP.md              GAS接続手順（スプレッドシート作成〜VITE_GAS_URL 設定）
 ```
+
+## GAS接続の切り替え
+
+- 全ページは `src/api/data.ts` の async 関数だけを呼ぶ（バックエンド差異を意識しない）。
+- `VITE_GAS_URL` 未設定 → localStorage（`store.ts`）。設定 → GAS（`client.ts` 経由）。
+- GAS 側は会員システムと同じ設計: 日本語見出しシート＋列位置で内部キー対応、
+  SHA-256 パスワードハッシュ、CacheService のトークンセッション（TTL6時間）、adminLogin 以外は管理者トークン必須。
+- 時刻("09:00")・年月の自動変換を防ぐため GAS はデータ列をテキスト書式に固定する。
+- 接続手順は [gas/SETUP.md](gas/SETUP.md) を参照。
 
 ## ルーティング（HashRouter）
 
@@ -96,8 +115,13 @@ src/
 - 日本語UIテキストはコンポーネント内に直接記述
 - CSSはTailwind utilityクラスのみ
 
+## デプロイ
+
+GitHub Pages（`main` への push で自動）。公開URL: https://takasucot2028-del.github.io/takasu-office/
+ビルド時に GitHub Actions の Variable `VITE_GAS_URL` が反映される（未設定ならデモモードでビルド）。
+
 ## 今後の開発予定
 
-1. 労務管理の動作確認・UI改善（給与計算連携・シフト管理など）
-2. 会計管理モジュール
-3. GASバックエンド接続・GitHub Pagesデプロイ
+1. GAS接続（データ共有・認証強化）… 実装済み。運用開始は gas/SETUP.md の手順が必要
+2. 労務管理のUI改善（給与計算連携など）
+3. 会計管理モジュール

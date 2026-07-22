@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { PageContainer, Card, Input, Select, Button, Table, Th, Td, Badge } from '../../components/UI';
-import { listStaff } from '../../utils/store';
+import { listStaff } from '../../api/data';
 import { EMPLOYMENT_TYPE_LABELS, STAFF_STATUS_LABELS, WORK_LOCATION_LABELS } from '../../utils/constants';
-import type { EmploymentType, StaffStatus, WorkLocation } from '../../types';
+import type { EmploymentType, StaffStatus, WorkLocation, Staff } from '../../types';
 
 export default function StaffList() {
   const navigate = useNavigate();
@@ -13,7 +13,19 @@ export default function StaffList() {
   const [locationFilter, setLocationFilter] = useState<'' | WorkLocation>('');
   const [statusFilter, setStatusFilter] = useState<'' | StaffStatus>('active');
 
-  const allStaff = useMemo(() => listStaff(), []);
+  const [allStaff, setAllStaff] = useState<Staff[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const s = await listStaff();
+      if (!alive) return;
+      setAllStaff(s);
+      setLoading(false);
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const filtered = allStaff.filter(s => {
     if (statusFilter && s.status !== statusFilter) return false;
@@ -128,7 +140,7 @@ export default function StaffList() {
             {filtered.length === 0 && (
               <tr>
                 <Td className="text-center text-gray-400 py-8" colSpan={7}>
-                  該当する職員がいません
+                  {loading ? '読み込み中…' : '該当する職員がいません'}
                 </Td>
               </tr>
             )}

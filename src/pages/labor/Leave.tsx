@@ -1,26 +1,52 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
-import { listStaff, listLeave, addLeave, deleteLeave, leaveBalance, genId } from '../../utils/store';
-import type { LeaveKind } from '../../types';
+import { listStaff, listLeave, addLeave, deleteLeave, computeLeaveBalance, genId } from '../../api/data';
+import type { LeaveKind, LeaveRecord, Staff } from '../../types';
 
 export default function Leave() {
-  const staff = useMemo(() => listStaff().filter(s => s.status === 'active'), []);
-  const [staffId, setStaffId] = useState(staff[0]?.id ?? '');
+  const [allStaff, setAllStaff] = useState<Staff[]>([]);
+  const [staffLoaded, setStaffLoaded] = useState(false);
+  const staff = useMemo(() => allStaff.filter(s => s.status === 'active'), [allStaff]);
+  const [staffId, setStaffId] = useState('');
   const [version, setVersion] = useState(0); // 追加・削除後の再読込用
 
+  const [records, setRecords] = useState<LeaveRecord[]>([]);
   const [kind, setKind] = useState<LeaveKind>('use');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [days, setDays] = useState('1');
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const records = useMemo(() => (staffId ? listLeave(staffId) : []), [staffId, version]);
-  const summary = useMemo(
-    () => (staffId ? leaveBalance(staffId) : { granted: 0, used: 0, balance: 0 }),
-    [staffId, version]
-  );
+  const summary = computeLeaveBalance(records);
 
-  const handleAdd = (e: React.FormEvent) => {
+  // 職員一覧を初回に読み込む
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const s = await listStaff();
+      if (!alive) return;
+      setAllStaff(s);
+      setStaffLoaded(true);
+      const first = s.find(x => x.status === 'active');
+      if (first) setStaffId(first.id);
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // 職員・更新のたびに有給記録を読み込む
+  useEffect(() => {
+    if (!staffId) { setRecords([]); return; }
+    let alive = true;
+    (async () => {
+      const list = await listLeave(staffId);
+      if (!alive) return;
+      setRecords(list);
+    })();
+    return () => { alive = false; };
+  }, [staffId, version]);
+
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     const d = Number(days);
@@ -32,16 +58,27 @@ export default function Leave() {
       setError(`残日数（${summary.balance}日）を超えています`);
       return;
     }
-    addLeave({ id: genId('lv'), staffId, kind, date, days: d, note });
-    setNote('');
-    setDays('1');
-    setVersion(v => v + 1);
+    setSaving(true);
+    try {
+      await addLeave({ id: genId('lv'), staffId, kind, date, days: d, note });
+      setNote('');
+      setDays('1');
+      setVersion(v => v + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '有給記録の追加に失敗しました');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (!confirm('この記録を削除しますか？')) return;
-    deleteLeave(id);
-    setVersion(v => v + 1);
+    try {
+      await deleteLeave(id);
+      setVersion(v => v + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '有給記録の削除に失敗しました');
+    }
   };
 
   return (
@@ -54,7 +91,7 @@ export default function Leave() {
         </Select>
       </Card>
 
-      {staff.length === 0 && <Alert type="info">在職中の職員がいません。先に職員名簿から登録してください。</Alert>}
+      {staffLoaded && staff.length === 0 && <Alert type="info">在職中の職員がいません。先に職員名簿から登録してください。</Alert>}
 
       {staffId && (
         <>
@@ -86,7 +123,7 @@ export default function Leave() {
                 <Input value={note} onChange={e => setNote(e.target.value)} placeholder="例: 年次付与" />
               </Field>
               <div className="mb-4">
-                <Button type="submit" className="w-full">追加</Button>
+                <Button type="submit" className="w-full" disabled={saving}>{saving ? '追加中…' : '追加'}</Button>
               </div>
             </form>
           </Card>

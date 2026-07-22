@@ -12,9 +12,13 @@ npm install
 npm run dev   # http://localhost:5174
 ```
 
-事務局デモアカウント: `admin@takasu-sc.jp` / `admin123`
+事務局デモアカウント（デモモード時）: `admin@takasu-sc.jp` / `admin123`
 
-データは現在ブラウザの localStorage に保存（デモモード）。将来 GAS + Google スプレッドシートへ接続予定。
+データ保存は2モード：
+- **デモモード**（既定）: ブラウザの localStorage（この端末のみ）
+- **共有モード**: GAS + Google スプレッドシート（全端末で共有・認証はサーバー側で検証）
+
+共有モードへの切り替え手順は [gas/SETUP.md](gas/SETUP.md) を参照。
 
 ## デプロイ
 

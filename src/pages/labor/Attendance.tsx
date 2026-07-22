@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { PageContainer, Card, Select, Input, Button, Table, Th, Td, Alert } from '../../components/UI';
-import { listStaff, listAttendance, saveMonthAttendance } from '../../utils/store';
+import { listStaff, listAttendance, saveMonthAttendance } from '../../api/data';
 import { DAY_TYPE_LABELS, WEEKDAY_LABELS } from '../../utils/constants';
-import type { AttendanceRecord, AttendanceDayType } from '../../types';
+import type { AttendanceRecord, AttendanceDayType, Staff } from '../../types';
 
 function currentMonth(): string {
   return new Date().toISOString().slice(0, 7);
@@ -36,21 +36,45 @@ function formatMinutes(min: number): string {
 }
 
 export default function Attendance() {
-  const staff = useMemo(() => listStaff().filter(s => s.status === 'active'), []);
-  const [staffId, setStaffId] = useState(staff[0]?.id ?? '');
+  const [allStaff, setAllStaff] = useState<Staff[]>([]);
+  const [staffLoaded, setStaffLoaded] = useState(false);
+  const staff = useMemo(() => allStaff.filter(s => s.status === 'active'), [allStaff]);
+  const [staffId, setStaffId] = useState('');
   const [month, setMonth] = useState(currentMonth());
   const [records, setRecords] = useState<Record<string, AttendanceRecord>>({});
   const [message, setMessage] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const days = daysOfMonth(month);
   const selectedStaff = staff.find(s => s.id === staffId);
 
+  // 職員一覧を初回に読み込む
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const s = await listStaff();
+      if (!alive) return;
+      setAllStaff(s);
+      setStaffLoaded(true);
+      const first = s.find(x => x.status === 'active');
+      if (first) setStaffId(first.id);
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // 職員・月が変わるたびに勤怠を読み込む
   useEffect(() => {
     if (!staffId) return;
-    const map: Record<string, AttendanceRecord> = {};
-    for (const rec of listAttendance(staffId, month)) map[rec.date] = rec;
-    setRecords(map);
+    let alive = true;
     setMessage('');
+    (async () => {
+      const list = await listAttendance(staffId, month);
+      if (!alive) return;
+      const map: Record<string, AttendanceRecord> = {};
+      for (const rec of list) map[rec.date] = rec;
+      setRecords(map);
+    })();
+    return () => { alive = false; };
   }, [staffId, month]);
 
   const getRec = (date: string): AttendanceRecord =>
@@ -77,9 +101,17 @@ export default function Attendance() {
     });
   };
 
-  const handleSave = () => {
-    saveMonthAttendance(staffId, month, Object.values(records));
-    setMessage('保存しました');
+  const handleSave = async () => {
+    setSaving(true);
+    setMessage('');
+    try {
+      await saveMonthAttendance(staffId, month, Object.values(records));
+      setMessage('保存しました');
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : '保存に失敗しました');
+    } finally {
+      setSaving(false);
+    }
   };
 
   // 月次集計
@@ -136,7 +168,7 @@ export default function Attendance() {
         </div>
       </Card>
 
-      {staff.length === 0 && <Alert type="info">在職中の職員がいません。先に職員名簿から登録してください。</Alert>}
+      {staffLoaded && staff.length === 0 && <Alert type="info">在職中の職員がいません。先に職員名簿から登録してください。</Alert>}
 
       {selectedStaff && (
         <>
@@ -152,7 +184,7 @@ export default function Attendance() {
 
           <div className="flex justify-end gap-2 mb-3">
             <Button variant="secondary" size="sm" onClick={exportExcel}>Excel出力</Button>
-            <Button size="sm" onClick={handleSave}>保存する</Button>
+            <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? '保存中…' : '保存する'}</Button>
           </div>
 
           <Card className="p-0 overflow-hidden">
@@ -240,7 +272,7 @@ export default function Attendance() {
           </Card>
 
           <div className="flex justify-end mt-4">
-            <Button onClick={handleSave}>保存する</Button>
+            <Button onClick={handleSave} disabled={saving}>{saving ? '保存中…' : '保存する'}</Button>
           </div>
         </>
       )}

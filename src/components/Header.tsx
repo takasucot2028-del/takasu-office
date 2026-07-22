@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { to: '/labor/shifts', label: 'シフト管理', short: 'シフト' },
   { to: '/labor/attendance', label: '勤怠管理', short: '勤怠' },
   { to: '/labor/leave', label: '有給休暇', short: '有給' },
+  { to: '/settings', label: '設定', short: '設定' },
 ];
 
 export default function Header() {

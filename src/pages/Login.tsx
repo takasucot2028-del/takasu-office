@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../components/AuthContext';
 import { PageContainer, Card, Field, Input, Button, Alert } from '../components/UI';
-import { verifyAdmin } from '../utils/store';
+import { adminLogin, usingGas } from '../api/data';
 
 export default function Login() {
   const { login, isLoggedIn } = useAuth();
@@ -10,16 +10,26 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   if (isLoggedIn) return <Navigate to="/dashboard" replace />;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (verifyAdmin(email, password)) {
-      login(`demo-${Date.now()}`);
-      navigate('/dashboard');
-    } else {
-      setError('メールアドレスまたはパスワードが正しくありません');
+    setError('');
+    setLoading(true);
+    try {
+      const res = await adminLogin(email, password);
+      if (res.success && res.token) {
+        login(res.token);
+        navigate('/dashboard');
+      } else {
+        setError(res.error || 'メールアドレスまたはパスワードが正しくありません');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'ログインに失敗しました');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -51,12 +61,16 @@ export default function Login() {
                 required
               />
             </Field>
-            <Button type="submit" className="w-full">ログイン</Button>
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? 'ログイン中…' : 'ログイン'}
+            </Button>
           </form>
         </Card>
-        <p className="text-xs text-gray-400 text-center mt-4">
-          デモアカウント: admin@takasu-sc.jp / admin123
-        </p>
+        {!usingGas && (
+          <p className="text-xs text-gray-400 text-center mt-4">
+            デモアカウント: admin@takasu-sc.jp / admin123
+          </p>
+        )}
       </div>
     </PageContainer>
   );

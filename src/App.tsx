@@ -9,6 +9,7 @@ import StaffDetail from './pages/labor/StaffDetail';
 import Shifts from './pages/labor/Shifts';
 import Attendance from './pages/labor/Attendance';
 import Leave from './pages/labor/Leave';
+import Settings from './pages/Settings';
 
 function Guard({ children }: { children: React.ReactNode }) {
   const { isLoggedIn } = useAuth();
@@ -28,6 +29,7 @@ function AppRoutes() {
         <Route path="/labor/shifts" element={<Guard><Shifts /></Guard>} />
         <Route path="/labor/attendance" element={<Guard><Attendance /></Guard>} />
         <Route path="/labor/leave" element={<Guard><Leave /></Guard>} />
+        <Route path="/settings" element={<Guard><Settings /></Guard>} />
       </Routes>
     </div>
   );
