@@ -12,7 +12,7 @@ function emptyStaff(): Staff {
     birthDate: '',
     employmentType: 'fulltime', workLocation: '', position: '',
     hireDate: '', retireDate: '', status: 'active',
-    phone: '', email: '', address: '', qualifications: '', note: '',
+    phone: '', email: '', address: '', qualifications: '', hourlyWage: 0, note: '',
     createdAt: '', updatedAt: '',
   };
 }
@@ -182,6 +182,10 @@ export default function StaffDetail() {
             </Field>
             <Field label="保有資格">
               <Input value={form.qualifications} onChange={e => set('qualifications', e.target.value)} placeholder="例: スポーツ指導員、簿記2級" />
+            </Field>
+            <Field label="時給（円）">
+              <Input type="number" min={0} step={10} value={form.hourlyWage || ''}
+                onChange={e => set('hourlyWage', Number(e.target.value) || 0)} placeholder="時間外手当の計算に使用" />
             </Field>
           </div>
         </Card>

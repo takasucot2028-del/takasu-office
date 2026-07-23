@@ -54,10 +54,12 @@ src/
       Shifts.tsx        シフト表（月間・希望/確定モード・場所タブ・Excel出力）
       ShiftPatterns.tsx シフト区分マスタ（早番/遅番等の名称・時刻）
       Attendance.tsx    勤怠管理（月別出勤簿・実働集計・Excel出力）
+      Overtime.tsx      時間外・休日勤務（申請→承認→実績自動計算→代休/手当＋代休残）
       Leave.tsx         有給休暇管理（付与・取得・残日数）
   types/index.ts        TypeScript型定義
   utils/
     constants.ts        雇用区分・ラベル定数
+    overtime.ts         時間外の計算ロジック（基準・種別・割増・実績・手当）
     store.ts            デモ用localStorageデータストア（キーは tof_ プレフィックス）
   App.tsx               ルーティング定義
   main.tsx              エントリーポイント
@@ -85,6 +87,7 @@ gas/
 - `#/labor/shifts` - シフト表（月間・希望/確定）
 - `#/labor/shift-patterns` - シフト区分マスタ
 - `#/labor/attendance` - 勤怠管理
+- `#/labor/overtime` - 時間外・休日勤務
 - `#/labor/leave` - 有給休暇管理
 
 ## 労務管理の仕様
@@ -92,7 +95,18 @@ gas/
 ### 職員
 - 雇用区分: 常勤職員 / パート・アルバイト / 指導員 / 業務委託
 - 勤務場所: 総体 / 海洋センター / 両方(both) / 未設定。both の職員はシフト表の両方のタブに表示される（constants の staffInLocation / workLocationLabel で判定・表示）。GAS上は workLocation 列に文字列で保存（'both' も可、スキーマ変更なし）。
+- 時給(hourlyWage): 時間外手当の計算に使用（GAS staff シートの末尾に「時給」列を追加）。
 - 退職処理は削除ではなくstatusをretiredに変更（記録は保持）
+
+### 時間外・休日勤務（Overtime.tsx / utils/overtime.ts）
+- 対象は**常勤職員・パート職員のみ**（isOvertimeTarget。指導員・業務委託は対象外）。
+- 流れ: 申請（日付・予定時間・事由）→ 承認（status applied→approved）→ 実績を自動計算 → 代休/手当を選択（disposition）。
+- 基準時間: 常勤=平日8時間／常勤の土日=0（休日勤務・実働全部が対象）／パート=その日の確定シフトの合計時間（shiftMap）。
+- 実績時間 = max(0, 実働 − 基準)。実働は勤怠(Attendance)の出退勤から算出（workedHoursOf）。
+- 種別: 常勤の土日=休日(holiday, ×1.5)、それ以外=時間外(overtime, ×1.25)。手当=round(実績×時給×割増)。
+- 保存時に resultHours と kind を確定値として記録（saveMonthOvertime、職員×月で置換）。
+- 代休残 = 承認済・代休指定の resultHours 合計 − 代休取得(CompLeaveUse)合計。取得は別途記録。有給とは別枠、1:1換算。
+- GAS: staff に 時給列、overtime / comp_leave_use シートを追加。
 
 ### シフト（希望→確定の2段階・事務局が代理入力）
 - **区分マスタ**: 早番/遅番等の区分（名称＋開始/終了時刻＋対象勤務場所）を事務局が登録。`location`（''=すべて / sotai / kaiyo）で場所限定の区分を作れる。空なら DEFAULT_SHIFT_PATTERNS（①8:30-13:00 / ②12:45-17:15 / ③17:00-21:15 は全場所、④17:00-19:15 は海洋のみ）にフォールバック。

@@ -26,6 +26,15 @@ var SHEETS = {
     ['position', '役職・担当'], ['hireDate', '入職日'], ['retireDate', '退職日'], ['status', '在職状況'],
     ['phone', '電話番号'], ['email', 'メールアドレス'], ['address', '住所'],
     ['qualifications', '保有資格'], ['note', '備考'], ['createdAt', '作成日時'], ['updatedAt', '更新日時'],
+    ['hourlyWage', '時給'],
+  ] },
+  overtime: { name: '時間外', columns: [
+    ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['kind', '種別'],
+    ['appliedHours', '申請時間'], ['reason', '事由'], ['status', '状態'],
+    ['disposition', '処理区分'], ['resultHours', '実績時間'], ['note', '備考'],
+  ] },
+  comp_leave_use: { name: '代休取得', columns: [
+    ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['hours', '時間'], ['note', '備考'],
   ] },
   attendance: { name: '勤怠', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['dayType', '区分'],
@@ -200,6 +209,24 @@ function doPost(e) {
       case 'saveMonthConfirmed':
         result = handleSaveMonthConfirmed(body.month, body.location, body.records);
         break;
+      case 'getOvertimeMonth':
+        result = handleGetOvertimeMonth(body.month);
+        break;
+      case 'getOvertimeByStaff':
+        result = handleGetOvertimeByStaff(body.staffId);
+        break;
+      case 'saveMonthOvertime':
+        result = handleSaveMonthOvertime(body.staffId, body.month, body.records);
+        break;
+      case 'getCompUse':
+        result = handleGetCompUse(body.staffId);
+        break;
+      case 'addCompUse':
+        result = handleAddCompUse(body.record);
+        break;
+      case 'deleteCompUse':
+        result = handleDeleteCompUse(body.id);
+        break;
       case 'getLeave':
         result = handleGetLeave(body.staffId);
         break;
@@ -298,7 +325,9 @@ function handleChangePassword(oldPassword, newPassword) {
 // --- ハンドラー：職員 ---
 function handleGetStaff() {
   const sheet = getSheet('staff');
-  return { success: true, data: sheetToObjects(sheet, 'staff') };
+  const list = sheetToObjects(sheet, 'staff');
+  list.forEach(function (s) { s.hourlyWage = Number(s.hourlyWage) || 0; });
+  return { success: true, data: list };
 }
 
 function handleUpsertStaff(staff) {
@@ -441,6 +470,68 @@ function handleSaveMonthConfirmed(month, location, records) {
   sheet.getRange(1, 1, sheet.getMaxRows(), ncol).setNumberFormat('@');
   sheet.getRange(1, 1, out.length, ncol).setValues(out);
   sheet.setFrozenRows(1);
+  return { success: true };
+}
+
+// --- ハンドラー：時間外・休日勤務 ---
+function handleGetOvertimeMonth(month) {
+  const sheet = getSheet('overtime');
+  const records = sheetToObjects(sheet, 'overtime').filter(function (r) {
+    return String(r.date).slice(0, 7) === month;
+  });
+  records.forEach(function (r) { r.appliedHours = Number(r.appliedHours) || 0; r.resultHours = Number(r.resultHours) || 0; });
+  return { success: true, data: records };
+}
+
+function handleGetOvertimeByStaff(staffId) {
+  const sheet = getSheet('overtime');
+  const records = sheetToObjects(sheet, 'overtime').filter(function (r) { return String(r.staffId) === String(staffId); });
+  records.forEach(function (r) { r.appliedHours = Number(r.appliedHours) || 0; r.resultHours = Number(r.resultHours) || 0; });
+  return { success: true, data: records };
+}
+
+// 指定職員・指定月の時間外を丸ごと置換する。
+function handleSaveMonthOvertime(staffId, month, records) {
+  const sheet = getSheet('overtime');
+  const ncol = colKeys('overtime').length;
+  const data = sheet.getDataRange().getValues();
+  const kept = [];
+  for (let i = 1; i < data.length; i++) {
+    const rowStaff = String(data[i][1]);
+    const rowDate = String(data[i][2]);
+    if (rowStaff === String(staffId) && rowDate.slice(0, 7) === month) continue;
+    kept.push(data[i].slice(0, ncol));
+  }
+  const newRows = (records || []).map(function (r) { return objectToRow('overtime', r); });
+  const out = [colLabels('overtime')].concat(kept).concat(newRows);
+  sheet.clearContents();
+  sheet.getRange(1, 1, sheet.getMaxRows(), ncol).setNumberFormat('@');
+  sheet.getRange(1, 1, out.length, ncol).setValues(out);
+  sheet.setFrozenRows(1);
+  return { success: true };
+}
+
+// --- ハンドラー：代休取得（消化） ---
+function handleGetCompUse(staffId) {
+  const sheet = getSheet('comp_leave_use');
+  const records = sheetToObjects(sheet, 'comp_leave_use').filter(function (r) { return String(r.staffId) === String(staffId); });
+  records.forEach(function (r) { r.hours = Number(r.hours) || 0; });
+  records.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+  return { success: true, data: records };
+}
+
+function handleAddCompUse(record) {
+  if (!record || !record.id) return { success: false, error: '代休取得の記録が不正です' };
+  const sheet = getSheet('comp_leave_use');
+  sheet.appendRow(objectToRow('comp_leave_use', record));
+  return { success: true };
+}
+
+function handleDeleteCompUse(id) {
+  const sheet = getSheet('comp_leave_use');
+  const rowIndex = findRowIndex(sheet, 0, id);
+  if (rowIndex < 0) return { success: false, error: '代休取得が見つかりません' };
+  sheet.deleteRow(rowIndex);
   return { success: true };
 }
 

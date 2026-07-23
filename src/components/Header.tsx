@@ -6,6 +6,7 @@ const NAV_ITEMS = [
   { to: '/labor/staff', label: '職員名簿', short: '職員' },
   { to: '/labor/shifts', label: 'シフト管理', short: 'シフト' },
   { to: '/labor/attendance', label: '勤怠管理', short: '勤怠' },
+  { to: '/labor/overtime', label: '時間外', short: '時間外' },
   { to: '/labor/leave', label: '有給休暇', short: '有給' },
   { to: '/settings', label: '設定', short: '設定' },
 ];

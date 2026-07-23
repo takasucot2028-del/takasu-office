@@ -8,6 +8,7 @@
 import type {
   Staff, AttendanceRecord, LeaveRecord,
   ShiftPattern, AvailabilityRecord, ConfirmedShift, WorkLocation,
+  OvertimeRecord, CompLeaveUse,
 } from '../types';
 import { DEFAULT_SHIFT_PATTERNS } from '../utils/constants';
 import * as local from '../utils/store';
@@ -142,6 +143,43 @@ export async function saveMonthConfirmed(
   if (!USE_GAS) { local.saveMonthConfirmed(month, location, records); return; }
   const res = await gas.saveMonthConfirmed(month, location, records, token());
   if (!res.success) throw new Error(res.error || '確定シフトの保存に失敗しました');
+}
+
+// === 時間外・休日勤務 ===
+export async function listOvertimeByMonth(month: string): Promise<OvertimeRecord[]> {
+  if (!USE_GAS) return local.listOvertimeByMonth(month);
+  return unwrap(await gas.getOvertimeMonth(month, token()), []);
+}
+
+export async function listOvertimeByStaff(staffId: string): Promise<OvertimeRecord[]> {
+  if (!USE_GAS) return local.listOvertimeByStaff(staffId);
+  return unwrap(await gas.getOvertimeByStaff(staffId, token()), []);
+}
+
+export async function saveMonthOvertime(
+  staffId: string, month: string, records: OvertimeRecord[]
+): Promise<void> {
+  if (!USE_GAS) { local.saveMonthOvertime(staffId, month, records); return; }
+  const res = await gas.saveMonthOvertime(staffId, month, records, token());
+  if (!res.success) throw new Error(res.error || '時間外の保存に失敗しました');
+}
+
+// === 代休取得（消化） ===
+export async function listCompUse(staffId: string): Promise<CompLeaveUse[]> {
+  if (!USE_GAS) return local.listCompUse(staffId);
+  return unwrap(await gas.getCompUse(staffId, token()), []);
+}
+
+export async function addCompUse(record: CompLeaveUse): Promise<void> {
+  if (!USE_GAS) { local.addCompUse(record); return; }
+  const res = await gas.addCompUse(record, token());
+  if (!res.success) throw new Error(res.error || '代休取得の記録に失敗しました');
+}
+
+export async function deleteCompUse(id: string): Promise<void> {
+  if (!USE_GAS) { local.deleteCompUse(id); return; }
+  const res = await gas.deleteCompUse(id, token());
+  if (!res.success) throw new Error(res.error || '代休取得の削除に失敗しました');
 }
 
 // === 有給休暇 ===

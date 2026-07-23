@@ -41,7 +41,7 @@ export default function StaffList() {
 
   const exportExcel = () => {
     const rows = [
-      ['氏名', 'フリガナ', '雇用区分', '勤務場所', '役職・担当', '入職日', '在職状況', '電話番号', 'メールアドレス', '住所', '保有資格', '備考'],
+      ['氏名', 'フリガナ', '雇用区分', '勤務場所', '役職・担当', '入職日', '在職状況', '時給', '電話番号', 'メールアドレス', '住所', '保有資格', '備考'],
       ...filtered.map(s => [
         `${s.lastName} ${s.firstName}`,
         `${s.lastKana} ${s.firstKana}`,
@@ -50,6 +50,7 @@ export default function StaffList() {
         s.position,
         s.hireDate,
         STAFF_STATUS_LABELS[s.status],
+        s.hourlyWage || '',
         s.phone,
         s.email,
         s.address,
@@ -58,7 +59,7 @@ export default function StaffList() {
       ]),
     ];
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 24 }, { wch: 30 }, { wch: 20 }, { wch: 20 }];
+    ws['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 8 }, { wch: 8 }, { wch: 14 }, { wch: 24 }, { wch: 30 }, { wch: 20 }, { wch: 20 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '職員名簿');
     const today = new Date().toISOString().slice(0, 10);

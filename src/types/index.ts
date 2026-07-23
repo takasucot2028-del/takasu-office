@@ -27,6 +27,7 @@ export interface Staff {
   email: string;
   address: string;
   qualifications: string;     // 保有資格
+  hourlyWage: number;         // 時給（時間外手当の計算に使用。0=未設定）
   note: string;
   createdAt: string;
   updatedAt: string;
@@ -74,6 +75,38 @@ export interface ConfirmedShift {
   date: string;               // YYYY-MM-DD
   location: WorkLocation;
   patternId: string;          // ShiftPattern.id
+  note: string;
+}
+
+// ==== 時間外・休日勤務 ====
+
+/** 時間外の種別（平日の時間外 / 休日勤務） */
+export type OvertimeKind = 'overtime' | 'holiday';
+/** 申請の状態 */
+export type OvertimeStatus = 'applied' | 'approved';
+/** 実績の処理区分（未定 / 時間外手当 / 代休） */
+export type OvertimeDisposition = '' | 'allowance' | 'comp';
+
+/** 時間外・休日勤務（1職員×1日の申請） */
+export interface OvertimeRecord {
+  id: string;
+  staffId: string;
+  date: string;               // YYYY-MM-DD
+  kind: OvertimeKind;         // 追加時に自動判定（常勤の土日=holiday）
+  appliedHours: number;       // 申請（予定）時間
+  reason: string;             // 事由
+  status: OvertimeStatus;     // applied→approved
+  disposition: OvertimeDisposition;
+  resultHours: number;        // 実績時間（保存時に勤怠から自動計算して記録）
+  note: string;
+}
+
+/** 代休の取得（消化）記録 */
+export interface CompLeaveUse {
+  id: string;
+  staffId: string;
+  date: string;               // YYYY-MM-DD
+  hours: number;              // 消化時間
   note: string;
 }
 

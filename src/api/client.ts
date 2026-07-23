@@ -5,6 +5,7 @@
 import type {
   Staff, AttendanceRecord, LeaveRecord,
   ShiftPattern, AvailabilityRecord, ConfirmedShift, WorkLocation,
+  OvertimeRecord, CompLeaveUse,
 } from '../types';
 
 export interface ApiResponse<T = unknown> {
@@ -78,6 +79,27 @@ export const getConfirmedMonth = (month: string, token: string) =>
 export const saveMonthConfirmed = (
   month: string, location: WorkLocation, records: ConfirmedShift[], token: string
 ) => request<void>('saveMonthConfirmed', { month, location, records, token });
+
+// === 時間外・休日勤務 ===
+export const getOvertimeMonth = (month: string, token: string) =>
+  request<OvertimeRecord[]>('getOvertimeMonth', { month, token });
+
+export const getOvertimeByStaff = (staffId: string, token: string) =>
+  request<OvertimeRecord[]>('getOvertimeByStaff', { staffId, token });
+
+export const saveMonthOvertime = (
+  staffId: string, month: string, records: OvertimeRecord[], token: string
+) => request<void>('saveMonthOvertime', { staffId, month, records, token });
+
+// === 代休取得（消化） ===
+export const getCompUse = (staffId: string, token: string) =>
+  request<CompLeaveUse[]>('getCompUse', { staffId, token });
+
+export const addCompUse = (record: CompLeaveUse, token: string) =>
+  request<void>('addCompUse', { record, token });
+
+export const deleteCompUse = (id: string, token: string) =>
+  request<void>('deleteCompUse', { id, token });
 
 // === 有給休暇 ===
 export const getLeave = (staffId: string, token: string) =>

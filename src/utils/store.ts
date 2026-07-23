@@ -2,6 +2,7 @@
 import type {
   Staff, AttendanceRecord, LeaveRecord, WorkLocation,
   ShiftPattern, AvailabilityRecord, ConfirmedShift,
+  OvertimeRecord, CompLeaveUse,
 } from '../types';
 import { ADMIN_EMAIL, ADMIN_PASSWORD, DEFAULT_SHIFT_PATTERNS } from './constants';
 
@@ -11,6 +12,8 @@ const KEY_LEAVE = 'tof_leave';
 const KEY_SHIFT_PATTERNS = 'tof_shift_patterns';
 const KEY_AVAILABILITY = 'tof_availability';
 const KEY_CONFIRMED = 'tof_confirmed';
+const KEY_OVERTIME = 'tof_overtime';
+const KEY_COMP_USE = 'tof_comp_use';
 const KEY_SEEDED = 'tof_seeded';
 
 function load<T>(key: string): T[] {
@@ -148,6 +151,42 @@ export function saveMonthConfirmed(month: string, location: WorkLocation, record
   save(KEY_CONFIRMED, [...others, ...records]);
 }
 
+// ---- 時間外・休日勤務 ----
+
+export function listOvertimeByMonth(month: string): OvertimeRecord[] {
+  return load<OvertimeRecord>(KEY_OVERTIME).filter(r => r.date.startsWith(month));
+}
+
+export function listOvertimeByStaff(staffId: string): OvertimeRecord[] {
+  return load<OvertimeRecord>(KEY_OVERTIME).filter(r => r.staffId === staffId);
+}
+
+/** 指定職員・指定月の時間外を丸ごと差し替える */
+export function saveMonthOvertime(staffId: string, month: string, records: OvertimeRecord[]) {
+  const others = load<OvertimeRecord>(KEY_OVERTIME).filter(
+    r => !(r.staffId === staffId && r.date.startsWith(month))
+  );
+  save(KEY_OVERTIME, [...others, ...records]);
+}
+
+// ---- 代休取得（消化） ----
+
+export function listCompUse(staffId: string): CompLeaveUse[] {
+  return load<CompLeaveUse>(KEY_COMP_USE)
+    .filter(r => r.staffId === staffId)
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export function addCompUse(record: CompLeaveUse) {
+  const all = load<CompLeaveUse>(KEY_COMP_USE);
+  all.push(record);
+  save(KEY_COMP_USE, all);
+}
+
+export function deleteCompUse(id: string) {
+  save(KEY_COMP_USE, load<CompLeaveUse>(KEY_COMP_USE).filter(r => r.id !== id));
+}
+
 // ---- 有給休暇 ----
 
 export function listLeave(staffId: string): LeaveRecord[] {
@@ -178,16 +217,17 @@ export function leaveBalance(staffId: string): { granted: number; used: number; 
 
 function seedDemo() {
   const seeded = localStorage.getItem(KEY_SEEDED);
-  if (seeded === '2') return;
+  if (seeded === '3') return;
   if (seeded) {
-    // v1 → v2: 既存データに勤務場所を追加（デモ職員には既定値を設定）
-    const defaults: Record<string, WorkLocation> = { stf001: 'sotai', stf002: 'sotai', stf003: 'kaiyo' };
+    // 既存データに不足フィールドを補う（勤務場所・時給）
+    const locDefaults: Record<string, WorkLocation> = { stf001: 'sotai', stf002: 'sotai', stf003: 'kaiyo' };
     const migrated = load<Staff>(KEY_STAFF).map(s => ({
       ...s,
-      workLocation: s.workLocation ?? defaults[s.id] ?? '',
+      workLocation: s.workLocation ?? locDefaults[s.id] ?? '',
+      hourlyWage: typeof s.hourlyWage === 'number' ? s.hourlyWage : 0,
     }));
     save(KEY_STAFF, migrated);
-    localStorage.setItem(KEY_SEEDED, '2');
+    localStorage.setItem(KEY_SEEDED, '3');
     return;
   }
   const now = new Date().toISOString();
@@ -200,7 +240,7 @@ function seedDemo() {
       hireDate: '2015-04-01', retireDate: '', status: 'active',
       phone: '0166-87-1111', email: 'taro@takasu-sc.jp',
       address: '北海道上川郡鷹栖町南1条2丁目', qualifications: 'スポーツ指導員',
-      note: '', createdAt: now, updatedAt: now,
+      hourlyWage: 1500, note: '', createdAt: now, updatedAt: now,
     },
     {
       id: 'stf002',
@@ -210,7 +250,7 @@ function seedDemo() {
       hireDate: '2020-06-01', retireDate: '', status: 'active',
       phone: '0166-87-2222', email: 'hanako@takasu-sc.jp',
       address: '北海道上川郡鷹栖町北3条4丁目', qualifications: '簿記2級',
-      note: '週4日勤務', createdAt: now, updatedAt: now,
+      hourlyWage: 1100, note: '週4日勤務', createdAt: now, updatedAt: now,
     },
     {
       id: 'stf003',
@@ -220,7 +260,7 @@ function seedDemo() {
       hireDate: '2022-04-01', retireDate: '', status: 'active',
       phone: '090-1234-5678', email: 'ken@example.com',
       address: '北海道旭川市', qualifications: '水泳指導員資格',
-      note: '', createdAt: now, updatedAt: now,
+      hourlyWage: 1200, note: '', createdAt: now, updatedAt: now,
     },
   ];
   save(KEY_STAFF, demo);
@@ -230,5 +270,5 @@ function seedDemo() {
     { id: 'lv003', staffId: 'stf002', kind: 'grant', date: '2025-12-01', days: 12, note: '年次付与' },
   ];
   save(KEY_LEAVE, leaves);
-  localStorage.setItem(KEY_SEEDED, '2');
+  localStorage.setItem(KEY_SEEDED, '3');
 }

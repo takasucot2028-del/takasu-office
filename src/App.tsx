@@ -10,6 +10,7 @@ import Shifts from './pages/labor/Shifts';
 import ShiftsPrint from './pages/labor/ShiftsPrint';
 import ShiftPatterns from './pages/labor/ShiftPatterns';
 import Attendance from './pages/labor/Attendance';
+import Overtime from './pages/labor/Overtime';
 import Leave from './pages/labor/Leave';
 import Settings from './pages/Settings';
 
@@ -32,6 +33,7 @@ function AppRoutes() {
         <Route path="/labor/shifts/print" element={<Guard><ShiftsPrint /></Guard>} />
         <Route path="/labor/shift-patterns" element={<Guard><ShiftPatterns /></Guard>} />
         <Route path="/labor/attendance" element={<Guard><Attendance /></Guard>} />
+        <Route path="/labor/overtime" element={<Guard><Overtime /></Guard>} />
         <Route path="/labor/leave" element={<Guard><Leave /></Guard>} />
         <Route path="/settings" element={<Guard><Settings /></Guard>} />
       </Routes>
