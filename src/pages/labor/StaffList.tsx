@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { PageContainer, Card, Input, Select, Button, Table, Th, Td, Badge } from '../../components/UI';
 import { listStaff } from '../../api/data';
-import { EMPLOYMENT_TYPE_LABELS, STAFF_STATUS_LABELS, WORK_LOCATION_LABELS } from '../../utils/constants';
+import { EMPLOYMENT_TYPE_LABELS, STAFF_STATUS_LABELS, WORK_LOCATION_LABELS, workLocationLabel } from '../../utils/constants';
 import type { EmploymentType, StaffStatus, WorkLocation, Staff } from '../../types';
 
 export default function StaffList() {
@@ -30,7 +30,7 @@ export default function StaffList() {
   const filtered = allStaff.filter(s => {
     if (statusFilter && s.status !== statusFilter) return false;
     if (typeFilter && s.employmentType !== typeFilter) return false;
-    if (locationFilter && s.workLocation !== locationFilter) return false;
+    if (locationFilter && s.workLocation !== locationFilter && s.workLocation !== 'both') return false;
     if (keyword) {
       const k = keyword.trim();
       const target = `${s.lastName}${s.firstName} ${s.lastKana}${s.firstKana} ${s.position}`;
@@ -46,7 +46,7 @@ export default function StaffList() {
         `${s.lastName} ${s.firstName}`,
         `${s.lastKana} ${s.firstKana}`,
         EMPLOYMENT_TYPE_LABELS[s.employmentType],
-        s.workLocation ? WORK_LOCATION_LABELS[s.workLocation] : '',
+        workLocationLabel(s.workLocation),
         s.position,
         s.hireDate,
         STAFF_STATUS_LABELS[s.status],
@@ -127,7 +127,7 @@ export default function StaffList() {
                 </Td>
                 <Td>{s.lastKana} {s.firstKana}</Td>
                 <Td>{EMPLOYMENT_TYPE_LABELS[s.employmentType]}</Td>
-                <Td>{s.workLocation ? WORK_LOCATION_LABELS[s.workLocation] : <span className="text-gray-400">未設定</span>}</Td>
+                <Td>{s.workLocation ? workLocationLabel(s.workLocation) : <span className="text-gray-400">未設定</span>}</Td>
                 <Td>{s.position}</Td>
                 <Td>{s.hireDate}</Td>
                 <Td>

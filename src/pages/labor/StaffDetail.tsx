@@ -165,12 +165,13 @@ export default function StaffDetail() {
             <Field label="勤務場所">
               <Select
                 value={form.workLocation}
-                onChange={e => set('workLocation', e.target.value as WorkLocation | '')}
+                onChange={e => set('workLocation', e.target.value as WorkLocation | '' | 'both')}
               >
                 <option value="">未設定</option>
                 {Object.entries(WORK_LOCATION_LABELS).map(([v, label]) => (
                   <option key={v} value={v}>{label}</option>
                 ))}
+                <option value="both">総体・海洋センター（両方）</option>
               </Select>
             </Field>
             <Field label="役職・担当">

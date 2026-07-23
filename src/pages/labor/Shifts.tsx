@@ -7,7 +7,7 @@ import {
   listAvailabilityByMonth, saveMonthAvailability,
   listConfirmedByMonth, saveMonthConfirmed, genId,
 } from '../../api/data';
-import { WORK_LOCATION_LABELS, WEEKDAY_LABELS } from '../../utils/constants';
+import { WORK_LOCATION_LABELS, WEEKDAY_LABELS, staffInLocation } from '../../utils/constants';
 import type { Staff, ShiftPattern, WorkLocation, AvailabilityRecord, ConfirmedShift } from '../../types';
 
 type Mode = 'request' | 'confirm';
@@ -62,7 +62,7 @@ export default function Shifts() {
     [patterns, location]
   );
   const staffOfLoc = useMemo(
-    () => allStaff.filter(s => s.status === 'active' && s.workLocation === location),
+    () => allStaff.filter(s => s.status === 'active' && staffInLocation(s.workLocation, location)),
     [allStaff, location]
   );
 

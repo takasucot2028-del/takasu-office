@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { listStaff, listShiftPatterns, listConfirmedByMonth, todayStr } from '../../api/data';
-import { WORK_LOCATION_LABELS, WEEKDAY_LABELS } from '../../utils/constants';
+import { WORK_LOCATION_LABELS, WEEKDAY_LABELS, staffInLocation } from '../../utils/constants';
 import type { Staff, ShiftPattern, WorkLocation, ConfirmedShift } from '../../types';
 
 function daysOfMonth(month: string): string[] {
@@ -36,7 +36,7 @@ export default function ShiftsPrint() {
     (async () => {
       const [s, p, c] = await Promise.all([listStaff(), listShiftPatterns(), listConfirmedByMonth(month)]);
       if (!alive) return;
-      setStaff(s.filter(x => x.status === 'active' && x.workLocation === location));
+      setStaff(s.filter(x => x.status === 'active' && staffInLocation(x.workLocation, location)));
       setPatterns(p);
       setConfirmed(c.filter(r => r.location === location));
       setLoading(false);

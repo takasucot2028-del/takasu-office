@@ -21,6 +21,18 @@ export const WORK_LOCATION_LABELS: Record<WorkLocation, string> = {
   kaiyo: '海洋センター',
 };
 
+/** 職員の勤務場所ラベル（両方=both・未設定=空 に対応） */
+export function workLocationLabel(loc: '' | WorkLocation | 'both'): string {
+  if (loc === 'both') return '総体・海洋センター';
+  if (loc === '') return '';
+  return WORK_LOCATION_LABELS[loc];
+}
+
+/** 職員がその勤務場所のシフト表に出るか（both は両方に出る） */
+export function staffInLocation(workLocation: '' | WorkLocation | 'both', location: WorkLocation): boolean {
+  return workLocation === location || workLocation === 'both';
+}
+
 /** シフト区分の初期セット（区分マスタが空のときのフォールバック。事務局が編集可能） */
 export const DEFAULT_SHIFT_PATTERNS: ShiftPattern[] = [
   { id: 'p1', name: '①', startTime: '08:30', endTime: '13:00', order: 1, location: '' },

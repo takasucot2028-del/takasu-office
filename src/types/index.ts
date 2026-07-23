@@ -18,7 +18,7 @@ export interface Staff {
   firstKana: string;
   birthDate: string;          // YYYY-MM-DD
   employmentType: EmploymentType;
-  workLocation: WorkLocation | '';  // 主な勤務場所（未設定は空）
+  workLocation: WorkLocation | '' | 'both';  // 勤務場所（未設定は空、both=総体・海洋センター両方）
   position: string;           // 役職・担当
   hireDate: string;           // 入職日 YYYY-MM-DD
   retireDate: string;         // 退職日 YYYY-MM-DD（在職中は空）
