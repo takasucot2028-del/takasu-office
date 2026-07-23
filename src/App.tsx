@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import StaffList from './pages/labor/StaffList';
 import StaffDetail from './pages/labor/StaffDetail';
 import Shifts from './pages/labor/Shifts';
+import ShiftsPrint from './pages/labor/ShiftsPrint';
 import ShiftPatterns from './pages/labor/ShiftPatterns';
 import Attendance from './pages/labor/Attendance';
 import Leave from './pages/labor/Leave';
@@ -28,6 +29,7 @@ function AppRoutes() {
         <Route path="/labor/staff" element={<Guard><StaffList /></Guard>} />
         <Route path="/labor/staff/:id" element={<Guard><StaffDetail /></Guard>} />
         <Route path="/labor/shifts" element={<Guard><Shifts /></Guard>} />
+        <Route path="/labor/shifts/print" element={<Guard><ShiftsPrint /></Guard>} />
         <Route path="/labor/shift-patterns" element={<Guard><ShiftPatterns /></Guard>} />
         <Route path="/labor/attendance" element={<Guard><Attendance /></Guard>} />
         <Route path="/labor/leave" element={<Guard><Leave /></Guard>} />

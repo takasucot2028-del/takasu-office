@@ -1,1 +1,15 @@
 @import "tailwindcss";
+
+/* 印刷用（シフト表の印刷ページ） */
+@media print {
+  header { display: none !important; }
+  .no-print { display: none !important; }
+  /* 画面用の背景を消して用紙を白く */
+  body, .min-h-screen { background: #fff !important; }
+  .shift-print { padding: 0 !important; }
+}
+
+@page {
+  size: A4 landscape;
+  margin: 8mm;
+}
