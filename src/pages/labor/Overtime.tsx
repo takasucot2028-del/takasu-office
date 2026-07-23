@@ -184,6 +184,8 @@ export default function Overtime() {
   const monthComp = records
     .filter(r => r.status === 'approved' && r.disposition === 'comp')
     .reduce((s, r) => s + calc(r).result, 0);
+  // 出退勤（実働）が未入力の申請があるか（実績が0のまま気づかないのを防ぐ）
+  const anyMissingAttendance = records.some(r => (attMap[r.date] || 0) === 0);
 
   const addCompUseRec = async () => {
     if (!staff) return;
@@ -262,6 +264,12 @@ export default function Overtime() {
             </div>
           </Card>
 
+          {anyMissingAttendance && (
+            <Alert type="info">
+              出退勤が未入力の日があります（下表で <span className="text-red-500 font-medium">勤怠未入力</span> と表示）。「勤怠管理」でその日の出退勤を入力すると、実績・手当・代休付与に反映されます。
+            </Alert>
+          )}
+
           {/* 当月の一覧 */}
           <Card className="p-0 overflow-x-auto mb-6">
             <Table>
@@ -288,7 +296,10 @@ export default function Overtime() {
                           ? <button onClick={() => setRec(r.id, { status: 'applied' })}><Badge color="green">{OVERTIME_STATUS_LABELS.approved}</Badge></button>
                           : <Button size="sm" variant="secondary" onClick={() => setRec(r.id, { status: 'approved' })}>承認</Button>}
                       </Td>
-                      <Td className="whitespace-nowrap text-gray-600">{h1(c.worked)}</Td>
+                      <Td className="whitespace-nowrap text-gray-600">
+                        {h1(c.worked)}
+                        {c.worked === 0 && <div className="text-[10px] text-red-500 leading-tight">勤怠未入力</div>}
+                      </Td>
                       <Td className="whitespace-nowrap text-gray-500">{h1(c.standard)}</Td>
                       <Td className="whitespace-nowrap font-medium">{h1(c.result)}</Td>
                       <Td>
