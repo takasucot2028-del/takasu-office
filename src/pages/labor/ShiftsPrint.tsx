@@ -72,7 +72,7 @@ export default function ShiftsPrint() {
 
       <h1 className="text-lg font-bold text-center mb-1">{Number(y)}年{Number(m)}月 シフト表（{WORK_LOCATION_LABELS[location]}）</h1>
       <p className="text-xs text-gray-600 text-center mb-3">
-        {patterns.map(p => `${p.name} ${p.startTime}〜${p.endTime}`).join('　／　')}
+        {patterns.filter(p => p.location === '' || p.location === location).map(p => `${p.name} ${p.startTime}〜${p.endTime}`).join('　／　')}
       </p>
 
       {loading ? (

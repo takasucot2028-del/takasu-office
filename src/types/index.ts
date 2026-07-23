@@ -56,17 +56,15 @@ export interface ShiftPattern {
   startTime: string;          // HH:MM
   endTime: string;            // HH:MM
   order: number;              // 並び順
+  location: '' | WorkLocation; // 対象勤務場所（''=すべて。海洋専用の区分などに使う）
 }
 
-/** 希望の可否（○=入れる / ×=入れない） */
-export type AvailabilityStatus = 'available' | 'unavailable';
-
-/** 希望（1職員×1日）。人単位のため勤務場所は持たない */
+/** 希望（1職員×1日×1区分）。1日に複数区分を希望できるため区分ごとに1レコード */
 export interface AvailabilityRecord {
-  id: string;                 // `${staffId}_${date}`
+  id: string;                 // `${staffId}_${date}_${patternId}`
   staffId: string;
   date: string;               // YYYY-MM-DD
-  status: AvailabilityStatus;
+  patternId: string;          // ShiftPattern.id
 }
 
 /** 確定シフト（1職員×1日×1勤務場所） */

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PageContainer, Card, Input, Button, Table, Th, Td, Alert } from '../../components/UI';
+import { PageContainer, Card, Input, Select, Button, Table, Th, Td, Alert } from '../../components/UI';
 import { listShiftPatterns, saveShiftPatterns, genId } from '../../api/data';
-import type { ShiftPattern } from '../../types';
+import { WORK_LOCATION_LABELS } from '../../utils/constants';
+import type { ShiftPattern, WorkLocation } from '../../types';
 
 /** 開始〜終了から実働時間（時間）を計算。日跨ぎは想定しない */
 function durationHours(start: string, end: string): number {
@@ -36,7 +37,7 @@ export default function ShiftPatterns() {
     setPatterns(prev => prev.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
 
   const addRow = () =>
-    setPatterns(prev => [...prev, { id: genId('p'), name: '', startTime: '09:00', endTime: '17:00', order: prev.length + 1 }]);
+    setPatterns(prev => [...prev, { id: genId('p'), name: '', startTime: '09:00', endTime: '17:00', order: prev.length + 1, location: '' }]);
 
   const removeRow = (idx: number) => setPatterns(prev => prev.filter((_, i) => i !== idx));
 
@@ -87,6 +88,7 @@ export default function ShiftPatterns() {
               <Th>開始</Th>
               <Th>終了</Th>
               <Th>実働</Th>
+              <Th>対象</Th>
               <Th className="w-16"></Th>
             </tr>
           </thead>
@@ -101,12 +103,20 @@ export default function ShiftPatterns() {
                 <Td><Input type="time" value={p.startTime} onChange={e => set(idx, { startTime: e.target.value })} /></Td>
                 <Td><Input type="time" value={p.endTime} onChange={e => set(idx, { endTime: e.target.value })} /></Td>
                 <Td className="whitespace-nowrap text-gray-600">{durationHours(p.startTime, p.endTime)}h</Td>
+                <Td>
+                  <Select value={p.location} onChange={e => set(idx, { location: e.target.value as '' | WorkLocation })}>
+                    <option value="">すべて</option>
+                    {Object.entries(WORK_LOCATION_LABELS).map(([v, label]) => (
+                      <option key={v} value={v}>{label}</option>
+                    ))}
+                  </Select>
+                </Td>
                 <Td><Button variant="ghost" size="sm" onClick={() => removeRow(idx)}>削除</Button></Td>
               </tr>
             ))}
             {patterns.length === 0 && (
               <tr>
-                <Td className="text-center text-gray-400 py-8" colSpan={6}>
+                <Td className="text-center text-gray-400 py-8" colSpan={7}>
                   {loading ? '読み込み中…' : '区分がありません。「区分を追加」で登録してください'}
                 </Td>
               </tr>

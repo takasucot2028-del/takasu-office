@@ -23,9 +23,10 @@ export const WORK_LOCATION_LABELS: Record<WorkLocation, string> = {
 
 /** シフト区分の初期セット（区分マスタが空のときのフォールバック。事務局が編集可能） */
 export const DEFAULT_SHIFT_PATTERNS: ShiftPattern[] = [
-  { id: 'p1', name: '①', startTime: '08:30', endTime: '13:00', order: 1 },
-  { id: 'p2', name: '②', startTime: '12:45', endTime: '17:15', order: 2 },
-  { id: 'p3', name: '③', startTime: '17:00', endTime: '21:15', order: 3 },
+  { id: 'p1', name: '①', startTime: '08:30', endTime: '13:00', order: 1, location: '' },
+  { id: 'p2', name: '②', startTime: '12:45', endTime: '17:15', order: 2, location: '' },
+  { id: 'p3', name: '③', startTime: '17:00', endTime: '21:15', order: 3, location: '' },
+  { id: 'p4', name: '④', startTime: '17:00', endTime: '19:15', order: 4, location: 'kaiyo' },
 ];
 
 export const DAY_TYPE_LABELS: Record<AttendanceDayType, string> = {

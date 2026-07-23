@@ -35,10 +35,10 @@ var SHEETS = {
     ['id', 'ID'], ['staffId', '職員ID'], ['kind', '種別'], ['date', '日付'], ['days', '日数'], ['note', '備考'],
   ] },
   shift_patterns: { name: 'シフト区分', columns: [
-    ['id', 'ID'], ['name', '区分名'], ['startTime', '開始'], ['endTime', '終了'], ['order', '並び順'],
+    ['id', 'ID'], ['name', '区分名'], ['startTime', '開始'], ['endTime', '終了'], ['order', '並び順'], ['location', '対象'],
   ] },
   availability: { name: 'シフト希望', columns: [
-    ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['status', '可否'],
+    ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['patternId', '区分ID'],
   ] },
   shifts_confirmed: { name: '確定シフト', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['location', '勤務場所'],
@@ -361,7 +361,7 @@ function handleGetShiftPatterns() {
   const sheet = getSheet('shift_patterns');
   const list = sheetToObjects(sheet, 'shift_patterns')
     .filter(function (p) { return p.id; })
-    .map(function (p) { return { id: String(p.id), name: String(p.name), startTime: String(p.startTime), endTime: String(p.endTime), order: Number(p.order) || 0 }; });
+    .map(function (p) { return { id: String(p.id), name: String(p.name), startTime: String(p.startTime), endTime: String(p.endTime), order: Number(p.order) || 0, location: String(p.location || '') }; });
   return { success: true, data: list };
 }
 
@@ -382,7 +382,7 @@ function handleSaveShiftPatterns(patterns) {
   return { success: true, data: { saved: list.length } };
 }
 
-// --- ハンドラー：シフト希望（○×） ---
+// --- ハンドラー：シフト希望（区分ごと・1日複数可） ---
 function handleGetAvailabilityMonth(month) {
   const sheet = getSheet('availability');
   const records = sheetToObjects(sheet, 'availability').filter(function (r) {
