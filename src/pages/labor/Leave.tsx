@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
-import { listStaff, listLeave, addLeave, deleteLeave, computeLeaveBalance, genId } from '../../api/data';
+import { listStaff, listLeave, addLeave, deleteLeave, computeLeaveBalance, genId, todayStr } from '../../api/data';
+import { EMPLOYMENT_TYPE_LABELS, standardLeaveGrant } from '../../utils/constants';
 import type { LeaveKind, LeaveRecord, Staff } from '../../types';
 
 export default function Leave() {
@@ -8,6 +9,7 @@ export default function Leave() {
   const [staffLoaded, setStaffLoaded] = useState(false);
   const staff = useMemo(() => allStaff.filter(s => s.status === 'active'), [allStaff]);
   const [staffId, setStaffId] = useState('');
+  const selectedStaff = useMemo(() => staff.find(s => s.id === staffId) ?? null, [staff, staffId]);
   const [version, setVersion] = useState(0); // 追加・削除後の再読込用
 
   const [records, setRecords] = useState<LeaveRecord[]>([]);
@@ -71,6 +73,24 @@ export default function Leave() {
     }
   };
 
+  const handleStandardGrant = async () => {
+    if (!selectedStaff) return;
+    setError('');
+    const g = standardLeaveGrant(selectedStaff, todayStr());
+    if (!g.eligible) { setError(g.reason || '標準付与できません'); return; }
+    const typeLabel = EMPLOYMENT_TYPE_LABELS[selectedStaff.employmentType];
+    if (!confirm(`${selectedStaff.lastName} ${selectedStaff.firstName} さんに 標準付与 ${g.days}日 を付与します。よろしいですか？`)) return;
+    setSaving(true);
+    try {
+      await addLeave({ id: genId('lv'), staffId, kind: 'grant', date: todayStr(), days: g.days, note: `標準付与（${typeLabel}）` });
+      setVersion(v => v + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '標準付与に失敗しました');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm('この記録を削除しますか？')) return;
     try {
@@ -101,6 +121,30 @@ export default function Leave() {
             <SummaryTile label="取得合計" value={`${summary.used}日`} />
             <SummaryTile label="残日数" value={`${summary.balance}日`} highlight />
           </div>
+
+          {/* 標準付与 */}
+          {selectedStaff && (
+            <Card className="mb-4">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <h2 className="font-bold text-gray-800">標準付与</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">常勤職員＝10日／パート職員＝5日（雇用開始から6か月経過後）</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {EMPLOYMENT_TYPE_LABELS[selectedStaff.employmentType]}・入職日 {selectedStaff.hireDate || '未設定'}
+                    {(() => {
+                      const g = standardLeaveGrant(selectedStaff, todayStr());
+                      return g.eligible
+                        ? <span className="text-emerald-700"> → {g.days}日 付与可能</span>
+                        : <span className="text-gray-400"> → {g.reason}</span>;
+                    })()}
+                  </p>
+                </div>
+                <Button variant="secondary" onClick={handleStandardGrant} disabled={saving || !standardLeaveGrant(selectedStaff, todayStr()).eligible}>
+                  標準付与する
+                </Button>
+              </div>
+            </Card>
+          )}
 
           {/* 記録追加 */}
           <Card className="mb-4">
