@@ -10,7 +10,7 @@ import type {
   ShiftPattern, AvailabilityRecord, ConfirmedShift, WorkLocation,
   OvertimeRecord, CompLeaveUse,
 } from '../types';
-import { DEFAULT_SHIFT_PATTERNS } from '../utils/constants';
+import { DEFAULT_SHIFT_PATTERNS, LEAVE_HOURS_PER_DAY } from '../utils/constants';
 import * as local from '../utils/store';
 import * as gas from './client';
 
@@ -35,11 +35,23 @@ function unwrap<T>(res: { success: boolean; data?: T; error?: string }, fallback
 export const genId = local.genId;
 export const todayStr = local.todayStr;
 
-/** 有給の残数を記録配列から計算（付与合計 - 取得合計） */
-export function computeLeaveBalance(records: LeaveRecord[]): { granted: number; used: number; balance: number } {
-  const granted = records.filter(r => r.kind === 'grant').reduce((s, r) => s + r.days, 0);
-  const used = records.filter(r => r.kind === 'use').reduce((s, r) => s + r.days, 0);
-  return { granted, used, balance: granted - used };
+export interface LeaveBalance {
+  grantedHours: number; usedHours: number; balanceHours: number;
+  grantedDays: number; usedDays: number; balanceDays: number;
+}
+
+/** 有給の残数を時間換算で計算（1日=7.5時間）。日数・時間の両方を返す */
+export function computeLeaveBalance(records: LeaveRecord[]): LeaveBalance {
+  const hpd = LEAVE_HOURS_PER_DAY;
+  const toHours = (r: LeaveRecord) => (r.days || 0) * hpd + (r.hours || 0);
+  const r1 = (n: number) => Math.round(n * 10) / 10;
+  const grantedHours = records.filter(r => r.kind === 'grant').reduce((s, r) => s + toHours(r), 0);
+  const usedHours = records.filter(r => r.kind === 'use').reduce((s, r) => s + toHours(r), 0);
+  const balanceHours = grantedHours - usedHours;
+  return {
+    grantedHours: r1(grantedHours), usedHours: r1(usedHours), balanceHours: r1(balanceHours),
+    grantedDays: r1(grantedHours / hpd), usedDays: r1(usedHours / hpd), balanceDays: r1(balanceHours / hpd),
+  };
 }
 
 // === 認証 ===

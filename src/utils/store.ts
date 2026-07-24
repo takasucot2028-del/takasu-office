@@ -265,9 +265,9 @@ function seedDemo() {
   ];
   save(KEY_STAFF, demo);
   const leaves: LeaveRecord[] = [
-    { id: 'lv001', staffId: 'stf001', kind: 'grant', date: '2025-10-01', days: 20, note: '年次付与' },
-    { id: 'lv002', staffId: 'stf001', kind: 'use', date: '2026-01-09', days: 1, note: '' },
-    { id: 'lv003', staffId: 'stf002', kind: 'grant', date: '2025-12-01', days: 12, note: '年次付与' },
+    { id: 'lv001', staffId: 'stf001', kind: 'grant', date: '2025-10-01', days: 20, hours: 0, note: '年次付与' },
+    { id: 'lv002', staffId: 'stf001', kind: 'use', date: '2026-01-09', days: 1, hours: 0, note: '' },
+    { id: 'lv003', staffId: 'stf002', kind: 'grant', date: '2025-12-01', days: 12, hours: 0, note: '年次付与' },
   ];
   save(KEY_LEAVE, leaves);
   localStorage.setItem(KEY_SEEDED, '3');

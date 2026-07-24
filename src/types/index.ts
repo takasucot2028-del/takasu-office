@@ -113,12 +113,13 @@ export interface CompLeaveUse {
 /** 有給休暇の記録種別 */
 export type LeaveKind = 'grant' | 'use';
 
-/** 有給休暇記録（付与または取得） */
+/** 有給休暇記録（付与または取得）。取得は日単位・時間単位のどちらも可（1日=7.5時間） */
 export interface LeaveRecord {
   id: string;
   staffId: string;
   kind: LeaveKind;
   date: string;               // 付与日または取得日 YYYY-MM-DD
-  days: number;               // 日数（0.5日単位可）
+  days: number;               // 日単位の量（0.5日単位可）。時間単位の記録では0
+  hours: number;              // 時間単位の量（1時間単位）。日単位の記録では0
   note: string;
 }

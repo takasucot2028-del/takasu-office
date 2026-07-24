@@ -42,6 +42,7 @@ export const DEFAULT_SHIFT_PATTERNS: ShiftPattern[] = [
 ];
 
 // ==== 有給休暇の標準付与 ====
+export const LEAVE_HOURS_PER_DAY = 7.5;      // 1日の勤務時間（時間単位取得の換算に使用）
 export const FULLTIME_LEAVE_DAYS = 10;       // 常勤の標準付与日数
 export const PARTTIME_LEAVE_DAYS = 5;        // パートの標準付与日数
 export const PARTTIME_ELIGIBLE_MONTHS = 6;   // パートが付与可能になるまでの月数（雇用開始から）

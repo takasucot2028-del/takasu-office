@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import { listStaff, listLeave, addLeave, deleteLeave, computeLeaveBalance, genId, todayStr } from '../../api/data';
-import { EMPLOYMENT_TYPE_LABELS, standardLeaveGrant } from '../../utils/constants';
+import { EMPLOYMENT_TYPE_LABELS, standardLeaveGrant, LEAVE_HOURS_PER_DAY } from '../../utils/constants';
 import type { LeaveKind, LeaveRecord, Staff } from '../../types';
+
+type LeaveUnit = 'day' | 'hour';
+/** 残の表示「X日（Yh）」 */
+function balText(days: number, hours: number): string {
+  return `${days}日（${hours}h）`;
+}
 
 export default function Leave() {
   const [allStaff, setAllStaff] = useState<Staff[]>([]);
@@ -14,8 +20,9 @@ export default function Leave() {
 
   const [records, setRecords] = useState<LeaveRecord[]>([]);
   const [kind, setKind] = useState<LeaveKind>('use');
+  const [unit, setUnit] = useState<LeaveUnit>('day'); // 取得の単位（日/時間）
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [days, setDays] = useState('1');
+  const [amount, setAmount] = useState('1');
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -48,23 +55,32 @@ export default function Leave() {
     return () => { alive = false; };
   }, [staffId, version]);
 
+  // 付与は日単位のみ。取得は日/時間を選べる
+  const effUnit: LeaveUnit = kind === 'grant' ? 'day' : unit;
+
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    const d = Number(days);
-    if (!d || d <= 0) {
-      setError('日数は0.5日単位の正の数で入力してください');
+    const v = Number(amount);
+    if (!v || v <= 0) {
+      setError(effUnit === 'hour' ? '時間は1時間単位の正の数で入力してください' : '日数は0.5日単位の正の数で入力してください');
       return;
     }
-    if (kind === 'use' && d > summary.balance) {
-      setError(`残日数（${summary.balance}日）を超えています`);
+    const useHours = effUnit === 'hour' ? v : v * LEAVE_HOURS_PER_DAY;
+    if (kind === 'use' && useHours > summary.balanceHours) {
+      setError(`残（${balText(summary.balanceDays, summary.balanceHours)}）を超えています`);
       return;
     }
+    const rec: LeaveRecord = {
+      id: genId('lv'), staffId, kind, date, note,
+      days: effUnit === 'day' ? v : 0,
+      hours: effUnit === 'hour' ? v : 0,
+    };
     setSaving(true);
     try {
-      await addLeave({ id: genId('lv'), staffId, kind, date, days: d, note });
+      await addLeave(rec);
       setNote('');
-      setDays('1');
+      setAmount('1');
       setVersion(v => v + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : '有給記録の追加に失敗しました');
@@ -82,7 +98,7 @@ export default function Leave() {
     if (!confirm(`${selectedStaff.lastName} ${selectedStaff.firstName} さんに 標準付与 ${g.days}日 を付与します。よろしいですか？`)) return;
     setSaving(true);
     try {
-      await addLeave({ id: genId('lv'), staffId, kind: 'grant', date: todayStr(), days: g.days, note: `標準付与（${typeLabel}）` });
+      await addLeave({ id: genId('lv'), staffId, kind: 'grant', date: todayStr(), days: g.days, hours: 0, note: `標準付与（${typeLabel}）` });
       setVersion(v => v + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : '標準付与に失敗しました');
@@ -115,11 +131,11 @@ export default function Leave() {
 
       {staffId && (
         <>
-          {/* 残数サマリー */}
+          {/* 残数サマリー（1日=7.5時間で換算） */}
           <div className="grid grid-cols-3 gap-3 mb-4">
-            <SummaryTile label="付与合計" value={`${summary.granted}日`} />
-            <SummaryTile label="取得合計" value={`${summary.used}日`} />
-            <SummaryTile label="残日数" value={`${summary.balance}日`} highlight />
+            <SummaryTile label="付与合計" value={`${summary.grantedDays}日`} sub={`${summary.grantedHours}h`} />
+            <SummaryTile label="取得合計" value={`${summary.usedDays}日`} sub={`${summary.usedHours}h`} />
+            <SummaryTile label="残（1日=7.5h）" value={`${summary.balanceDays}日`} sub={`${summary.balanceHours}h`} highlight />
           </div>
 
           {/* 標準付与 */}
@@ -150,7 +166,7 @@ export default function Leave() {
           <Card className="mb-4">
             <h2 className="font-bold text-gray-800 mb-4">記録の追加</h2>
             {error && <Alert type="error">{error}</Alert>}
-            <form onSubmit={handleAdd} className="grid sm:grid-cols-5 gap-3 items-end">
+            <form onSubmit={handleAdd} className="grid sm:grid-cols-6 gap-3 items-end">
               <Field label="種別">
                 <Select value={kind} onChange={e => setKind(e.target.value as LeaveKind)}>
                   <option value="use">取得</option>
@@ -160,16 +176,24 @@ export default function Leave() {
               <Field label={kind === 'grant' ? '付与日' : '取得日'}>
                 <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
               </Field>
-              <Field label="日数">
-                <Input type="number" min={0.5} step={0.5} value={days} onChange={e => setDays(e.target.value)} required />
+              <Field label="単位">
+                <Select value={effUnit} onChange={e => setUnit(e.target.value as LeaveUnit)} disabled={kind === 'grant'}>
+                  <option value="day">日</option>
+                  <option value="hour">時間</option>
+                </Select>
+              </Field>
+              <Field label={effUnit === 'hour' ? '時間' : '日数'}>
+                <Input type="number" min={effUnit === 'hour' ? 1 : 0.5} step={effUnit === 'hour' ? 1 : 0.5}
+                  value={amount} onChange={e => setAmount(e.target.value)} required />
               </Field>
               <Field label="備考">
-                <Input value={note} onChange={e => setNote(e.target.value)} placeholder="例: 年次付与" />
+                <Input value={note} onChange={e => setNote(e.target.value)} placeholder="例: 午後半休" />
               </Field>
               <div className="mb-4">
                 <Button type="submit" className="w-full" disabled={saving}>{saving ? '追加中…' : '追加'}</Button>
               </div>
             </form>
+            {kind === 'use' && <p className="text-xs text-gray-400 mt-1">1日＝{LEAVE_HOURS_PER_DAY}時間で残から差し引きます。時間単位は1時間から取得できます。</p>}
           </Card>
 
           {/* 履歴 */}
@@ -179,7 +203,7 @@ export default function Leave() {
                 <tr>
                   <Th>日付</Th>
                   <Th>種別</Th>
-                  <Th>日数</Th>
+                  <Th>日数/時間</Th>
                   <Th>備考</Th>
                   <Th className="w-16"></Th>
                 </tr>
@@ -193,7 +217,7 @@ export default function Leave() {
                         {r.kind === 'grant' ? '付与' : '取得'}
                       </Badge>
                     </Td>
-                    <Td>{r.days}日</Td>
+                    <Td>{r.hours > 0 ? `${r.hours}時間` : `${r.days}日`}</Td>
                     <Td>{r.note}</Td>
                     <Td>
                       <Button variant="ghost" size="sm" onClick={() => handleDelete(r.id)}>削除</Button>
@@ -216,11 +240,12 @@ export default function Leave() {
   );
 }
 
-function SummaryTile({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function SummaryTile({ label, value, sub, highlight }: { label: string; value: string; sub?: string; highlight?: boolean }) {
   return (
     <Card className="text-center py-3">
       <p className="text-xs text-gray-500 mb-1">{label}</p>
       <p className={`text-lg font-bold ${highlight ? 'text-emerald-600' : 'text-gray-800'}`}>{value}</p>
+      {sub && <p className="text-xs text-gray-400">{sub}</p>}
     </Card>
   );
 }

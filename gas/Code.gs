@@ -41,7 +41,7 @@ var SHEETS = {
     ['startTime', '出勤'], ['endTime', '退勤'], ['breakMinutes', '休憩(分)'], ['note', '備考'],
   ] },
   leave: { name: '有給休暇', columns: [
-    ['id', 'ID'], ['staffId', '職員ID'], ['kind', '種別'], ['date', '日付'], ['days', '日数'], ['note', '備考'],
+    ['id', 'ID'], ['staffId', '職員ID'], ['kind', '種別'], ['date', '日付'], ['days', '日数'], ['note', '備考'], ['hours', '時間'],
   ] },
   shift_patterns: { name: 'シフト区分', columns: [
     ['id', 'ID'], ['name', '区分名'], ['startTime', '開始'], ['endTime', '終了'], ['order', '並び順'], ['location', '対象'],
@@ -539,7 +539,7 @@ function handleDeleteCompUse(id) {
 function handleGetLeave(staffId) {
   const sheet = getSheet('leave');
   const records = sheetToObjects(sheet, 'leave').filter(function (r) { return String(r.staffId) === String(staffId); });
-  records.forEach(function (r) { r.days = Number(r.days) || 0; });
+  records.forEach(function (r) { r.days = Number(r.days) || 0; r.hours = Number(r.hours) || 0; });
   records.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
   return { success: true, data: records };
 }
