@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
+import * as XLSX from 'xlsx';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import {
   listStaff, listShiftPatterns, listConfirmedByMonth, listAttendance,
   listOvertimeByStaff, saveMonthOvertime, listCompUse, addCompUse, deleteCompUse,
-  genId, todayStr,
+  listOvertimeByMonth, genId, todayStr,
 } from '../../api/data';
 import { WEEKDAY_LABELS } from '../../utils/constants';
 import {
@@ -184,8 +185,73 @@ export default function Overtime() {
   const monthComp = records
     .filter(r => r.status === 'approved' && r.disposition === 'comp')
     .reduce((s, r) => s + calc(r).result, 0);
+  // 月末の自動集計（承認済ベース）
+  const r1 = (n: number) => Math.round(n * 10) / 10;
+  const approvedRecs = records.filter(r => r.status === 'approved');
+  const monthWeekdayOt = r1(approvedRecs.filter(r => calc(r).kind === 'overtime').reduce((s, r) => s + calc(r).result, 0));
+  const monthHoliday = r1(approvedRecs.filter(r => calc(r).kind === 'holiday').reduce((s, r) => s + calc(r).result, 0));
+  const monthAllowanceHours = r1(approvedRecs.filter(r => r.disposition === 'allowance').reduce((s, r) => s + calc(r).result, 0));
+  const monthCompUsed = r1(compUse.filter(u => u.date.startsWith(month)).reduce((s, u) => s + (u.hours || 0), 0));
   // 出退勤（実働）が未入力の申請があるか（実績が0のまま気づかないのを防ぐ）
   const anyMissingAttendance = records.some(r => (attMap[r.date] || 0) === 0);
+
+  // 時間外勤務実績簿（Excel）: 当月に時間外がある職員ごとにシートを作成（保存済み実績ベース）
+  const exportJisekibo = async () => {
+    setError('');
+    try {
+      const ot = await listOvertimeByMonth(month);
+      const ids = Array.from(new Set(ot.map(r => r.staffId)));
+      const targets = ids.map(id => allStaff.find(s => s.id === id)).filter((s): s is Staff => !!s);
+      if (targets.length === 0) { alert('この月に時間外の記録がありません。'); return; }
+      const wb = XLSX.utils.book_new();
+      const used: Record<string, number> = {};
+      for (const s of targets) {
+        const recs = ot.filter(r => r.staffId === s.id && r.status === 'approved')
+          .sort((a, b) => a.date.localeCompare(b.date));
+        const kindOf = (r: OvertimeRecord) => r.kind || overtimeKindOf(s, r.date);
+        const uses = (await listCompUse(s.id)).filter(u => u.date.startsWith(month));
+        const compUsedMonth = uses.reduce((x, u) => x + (u.hours || 0), 0);
+        const wkOt = recs.filter(r => kindOf(r) === 'overtime').reduce((x, r) => x + (r.resultHours || 0), 0);
+        const hol = recs.filter(r => kindOf(r) === 'holiday').reduce((x, r) => x + (r.resultHours || 0), 0);
+        const allowH = recs.filter(r => r.disposition === 'allowance').reduce((x, r) => x + (r.resultHours || 0), 0);
+        const allowYen = recs.filter(r => r.disposition === 'allowance')
+          .reduce((x, r) => x + allowanceOf(r.resultHours || 0, s.hourlyWage || 0, kindOf(r)), 0);
+        const compGrant = recs.filter(r => r.disposition === 'comp').reduce((x, r) => x + (r.resultHours || 0), 0);
+        const typeLabel = s.employmentType === 'fulltime' ? '常勤職員' : 'パート職員';
+        const dispLabel: Record<string, string> = { allowance: '手当', comp: '代休', '': '未定' };
+        const rows: (string | number)[][] = [
+          ['時間外勤務実績簿'],
+          ['氏名', `${s.lastName} ${s.firstName}`, '雇用区分', typeLabel, '対象月', month, '時給', s.hourlyWage || 0],
+          [],
+          ['日付', '曜日', '種別', '事由', '実績時間(h)', '処理', '金額(円)'],
+          ...recs.map(r => {
+            const k = kindOf(r);
+            return [
+              r.date, WEEKDAY_LABELS[new Date(`${r.date}T00:00:00`).getDay()],
+              OVERTIME_KIND_LABELS[k], r.reason, r.resultHours || 0,
+              dispLabel[r.disposition] || '未定',
+              r.disposition === 'allowance' ? allowanceOf(r.resultHours || 0, s.hourlyWage || 0, k) : '',
+            ];
+          }),
+          [],
+          ['平日時間外 合計(h)', r1(wkOt)],
+          ['休日勤務 合計(h)', r1(hol)],
+          ['時間外手当 対象時間(h)', r1(allowH)],
+          ['時間外手当 金額(円)', Math.round(allowYen)],
+          ['代休付与(h)', r1(compGrant)],
+          ['当月 代休消化(h)', r1(compUsedMonth)],
+        ];
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        ws['!cols'] = [{ wch: 12 }, { wch: 6 }, { wch: 8 }, { wch: 20 }, { wch: 11 }, { wch: 8 }, { wch: 10 }];
+        let name = `${s.lastName}${s.firstName}`.slice(0, 28).replace(/[\\/?*[\]:]/g, '');
+        if (used[name]) { used[name]++; name = `${name}_${used[name]}`; } else { used[name] = 1; }
+        XLSX.utils.book_append_sheet(wb, ws, name || 'sheet');
+      }
+      XLSX.writeFile(wb, `時間外勤務実績簿_${month}.xlsx`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '実績簿の出力に失敗しました');
+    }
+  };
 
   const addCompUseRec = async () => {
     if (!staff) return;
@@ -224,6 +290,7 @@ export default function Overtime() {
             <Button variant="secondary" size="sm" onClick={() => setMonth(m => shiftMonth(m, 1))}>→</Button>
           </div>
           <div className="flex-1" />
+          <Button variant="secondary" size="sm" onClick={exportJisekibo}>実績簿Excel</Button>
           <Button size="sm" onClick={handleSave} disabled={saving || !staff}>{saving ? '保存中…' : '保存する'}</Button>
         </div>
         <p className="mt-2 text-xs text-gray-500">
@@ -239,12 +306,24 @@ export default function Overtime() {
 
       {staff && (
         <>
-          {/* 集計 */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-            <Tile label="今月の手当（承認済）" value={yen(monthAllowance)} />
-            <Tile label="今月の代休付与（承認済）" value={h1(monthComp)} />
+          {/* 当月の自動集計（承認済ベース） */}
+          <Card className="mb-4">
+            <h2 className="font-bold text-gray-800 mb-3">当月の集計 <span className="text-xs font-normal text-gray-400">（{month}・承認済）</span></h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <Tile label="平日時間外" value={h1(monthWeekdayOt)} />
+              <Tile label="休日勤務" value={h1(monthHoliday)} />
+              <Tile label="時間外手当 時間" value={h1(monthAllowanceHours)} />
+              <Tile label="時間外手当 金額" value={yen(monthAllowance)} highlight />
+              <Tile label="代休付与" value={h1(monthComp)} />
+              <Tile label="当月 代休消化" value={h1(monthCompUsed)} />
+            </div>
+          </Card>
+
+          {/* 残数など */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
             <Tile label="代休 残時間" value={h1(compBalance)} highlight />
             <Tile label="時給" value={yen(staff.hourlyWage || 0)} />
+            <Tile label="今月の手当（承認済）" value={yen(monthAllowance)} />
           </div>
 
           {/* 申請追加 */}

@@ -101,6 +101,10 @@ export const addCompUse = (record: CompLeaveUse, token: string) =>
 export const deleteCompUse = (id: string, token: string) =>
   request<void>('deleteCompUse', { id, token });
 
+// === 本日の休暇（有給取得・代休取得） ===
+export const getAbsencesByDate = (date: string, token: string) =>
+  request<{ leave: LeaveRecord[]; comp: CompLeaveUse[] }>('getAbsencesByDate', { date, token });
+
 // === 有給休暇 ===
 export const getLeave = (staffId: string, token: string) =>
   request<LeaveRecord[]>('getLeave', { staffId, token });

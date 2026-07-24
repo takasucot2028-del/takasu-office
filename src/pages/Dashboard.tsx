@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageContainer, Card, Badge } from '../components/UI';
-import { listStaff, listShiftPatterns, listConfirmedByDate, todayStr } from '../api/data';
+import { listStaff, listShiftPatterns, listConfirmedByDate, listAbsencesByDate, todayStr } from '../api/data';
+import type { DayAbsences } from '../api/data';
 import { WORK_LOCATION_LABELS, WEEKDAY_LABELS } from '../utils/constants';
 import type { WorkLocation, Staff, ShiftPattern, ConfirmedShift } from '../types';
 
@@ -9,6 +10,7 @@ export default function Dashboard() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [patterns, setPatterns] = useState<ShiftPattern[]>([]);
   const [todayShifts, setTodayShifts] = useState<ConfirmedShift[]>([]);
+  const [absences, setAbsences] = useState<DayAbsences>({ leave: [], comp: [] });
   const [loading, setLoading] = useState(true);
 
   const today = todayStr();
@@ -17,11 +19,14 @@ export default function Dashboard() {
   useEffect(() => {
     let alive = true;
     (async () => {
-      const [s, p, sh] = await Promise.all([listStaff(), listShiftPatterns(), listConfirmedByDate(today)]);
+      const [s, p, sh, ab] = await Promise.all([
+        listStaff(), listShiftPatterns(), listConfirmedByDate(today), listAbsencesByDate(today),
+      ]);
       if (!alive) return;
       setStaff(s);
       setPatterns(p);
       setTodayShifts(sh);
+      setAbsences(ab);
       setLoading(false);
     })();
     return () => { alive = false; };
@@ -36,7 +41,7 @@ export default function Dashboard() {
       {/* 本日の勤務 */}
       <Card className="mb-4">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-bold text-gray-800">本日の勤務 <span className="text-sm font-normal text-gray-500">{today}（{weekday}）</span></h2>
+          <h2 className="font-bold text-gray-800">本日の勤務・休暇 <span className="text-sm font-normal text-gray-500">{today}（{weekday}）</span></h2>
           <Link to="/labor/shifts" className="text-xs text-emerald-700 hover:underline">シフト管理へ →</Link>
         </div>
         {loading ? (
@@ -73,6 +78,39 @@ export default function Dashboard() {
             })}
           </div>
         )}
+
+        {/* 本日の休暇 */}
+        <div className="mt-4 pt-3 border-t border-gray-100">
+          <div className="mb-2"><Badge color="yellow">休暇</Badge></div>
+          {loading ? (
+            <p className="text-xs text-gray-400">読み込み中…</p>
+          ) : absences.leave.length === 0 && absences.comp.length === 0 ? (
+            <p className="text-xs text-gray-400">本日の休暇取得者はいません</p>
+          ) : (
+            <ul className="space-y-1">
+              {absences.leave.map(r => {
+                const s = staffMap.get(r.staffId);
+                return (
+                  <li key={r.id} className="text-sm text-gray-700 flex items-baseline gap-2">
+                    <span className="font-medium">{s ? `${s.lastName} ${s.firstName}` : '(不明)'}</span>
+                    <span className="text-yellow-700">有給 {r.hours > 0 ? `${r.hours}時間` : `${r.days}日`}</span>
+                    {r.note && <span className="text-xs text-gray-400">{r.note}</span>}
+                  </li>
+                );
+              })}
+              {absences.comp.map(r => {
+                const s = staffMap.get(r.staffId);
+                return (
+                  <li key={r.id} className="text-sm text-gray-700 flex items-baseline gap-2">
+                    <span className="font-medium">{s ? `${s.lastName} ${s.firstName}` : '(不明)'}</span>
+                    <span className="text-blue-700">代休 {r.hours}時間</span>
+                    {r.note && <span className="text-xs text-gray-400">{r.note}</span>}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       </Card>
 
       <div className="grid sm:grid-cols-2 gap-4">

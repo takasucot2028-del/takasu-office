@@ -12,6 +12,7 @@ import ShiftPatterns from './pages/labor/ShiftPatterns';
 import Attendance from './pages/labor/Attendance';
 import Overtime from './pages/labor/Overtime';
 import Leave from './pages/labor/Leave';
+import LeavePrint from './pages/labor/LeavePrint';
 import Settings from './pages/Settings';
 
 function Guard({ children }: { children: React.ReactNode }) {
@@ -35,6 +36,7 @@ function AppRoutes() {
         <Route path="/labor/attendance" element={<Guard><Attendance /></Guard>} />
         <Route path="/labor/overtime" element={<Guard><Overtime /></Guard>} />
         <Route path="/labor/leave" element={<Guard><Leave /></Guard>} />
+        <Route path="/labor/leave/print" element={<Guard><LeavePrint /></Guard>} />
         <Route path="/settings" element={<Guard><Settings /></Guard>} />
       </Routes>
     </div>

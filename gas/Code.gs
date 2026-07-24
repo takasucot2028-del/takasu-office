@@ -227,6 +227,9 @@ function doPost(e) {
       case 'deleteCompUse':
         result = handleDeleteCompUse(body.id);
         break;
+      case 'getAbsencesByDate':
+        result = handleGetAbsencesByDate(body.date);
+        break;
       case 'getLeave':
         result = handleGetLeave(body.staffId);
         break;
@@ -533,6 +536,19 @@ function handleDeleteCompUse(id) {
   if (rowIndex < 0) return { success: false, error: '代休取得が見つかりません' };
   sheet.deleteRow(rowIndex);
   return { success: true };
+}
+
+// --- ハンドラー：本日の休暇（有給取得・代休取得） ---
+function handleGetAbsencesByDate(date) {
+  var leave = sheetToObjects(getSheet('leave'), 'leave').filter(function (r) {
+    return String(r.date) === String(date) && r.kind === 'use';
+  });
+  leave.forEach(function (r) { r.days = Number(r.days) || 0; r.hours = Number(r.hours) || 0; });
+  var comp = sheetToObjects(getSheet('comp_leave_use'), 'comp_leave_use').filter(function (r) {
+    return String(r.date) === String(date);
+  });
+  comp.forEach(function (r) { r.hours = Number(r.hours) || 0; });
+  return { success: true, data: { leave: leave, comp: comp } };
 }
 
 // --- ハンドラー：有給休暇 ---

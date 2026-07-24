@@ -106,6 +106,8 @@ gas/
 - 種別: 常勤の土日=休日(holiday, ×1.5)、それ以外=時間外(overtime, ×1.25)。手当=round(実績×時給×割増)。
 - 保存時に resultHours と kind を確定値として記録（saveMonthOvertime、職員×月で置換）。
 - 代休残 = 承認済・代休指定の resultHours 合計 − 代休取得(CompLeaveUse)合計。取得は別途記録。有給とは別枠、1:1換算。
+- **当月集計**（承認済ベース）: 平日時間外総時間・休日勤務総時間・時間外手当時間・手当金額・代休付与・当月代休消化を画面表示。
+- **時間外勤務実績簿(Excel)**: 「実績簿Excel」ボタンで、当月に時間外がある職員ごとにシートを作成（保存済み resultHours ベース。listOvertimeByMonth）。
 - GAS: staff に 時給列、overtime / comp_leave_use シートを追加。
 
 ### シフト（希望→確定の2段階・事務局が代理入力）
@@ -115,7 +117,7 @@ gas/
 - **確定モード**: 各セルをクリックでポップアップが開き、区分を複数トグルできる（1日に午前＋午後など複数可）。ポップアップ上部にその職員の希望区分を表示し、希望がある日はセルを黄色背景でヒント表示。確定は ConfirmedShift（staffId+date+location+patternId、1セルにつき複数レコード）。勤務日数は「区分が1つ以上ある日」を1日と数え、実働時間は全区分の合計。下部に日別人数、右に職員別の勤務日数・実働時間。
 - 保存は「表示中の場所・月」単位で一括置換（saveMonthAvailability / saveMonthConfirmed）。Excel出力は表示中モードの表を出力。
 - **印刷**: 確定モードの「印刷」ボタンで保存後、印刷専用ページ `/labor/shifts/print?month=&location=` へ。罫線付きの静的な表を表示し window.print()。index.css の @media print でヘッダー等を隠し A4横向き。
-- ダッシュボードの「本日の勤務」は確定シフトを区分の時刻とともに勤務場所別に表示。
+- ダッシュボードの「本日の勤務・休暇」は確定シフト（勤務場所別）＋当日の有給/代休取得者を表示（data.listAbsencesByDate、GAS getAbsencesByDate）。
 
 ### 勤怠
 - 1職員×1月の出勤簿形式。日ごとに区分（出勤/有給/欠勤）・出退勤時刻・休憩を入力
@@ -127,6 +129,7 @@ gas/
 - LeaveRecord は days と hours の両方を持つ（片方が0）。残計算は computeLeaveBalance が時間換算で合算（付与合計−取得合計）。取得時は残時間超過をチェック。
 - 取得は「単位（日/時間）」を選択。時間は1時間単位。付与は日単位のみ。
 - **標準付与**ボタン: 常勤=10日／パート=5日（雇用開始hireDateから6か月経過後のみ）。判定は constants.standardLeaveGrant。指導員・業務委託は対象外。手動の付与/取得フォームも併用可。
+- **帳簿PDF**: 「PDF帳簿」ボタン → LeavePrint（/labor/leave/print?staffId=）。有給休暇管理簿を印刷用に表示し、印刷ダイアログの「PDFに保存」でPDF化（A4縦。@pageをページ単位で上書き）。
 - GAS: 有給休暇シート末尾に「時間」列を追加。
 
 ## コーディング規約

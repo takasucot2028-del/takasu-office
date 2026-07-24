@@ -169,6 +169,13 @@ export function saveMonthOvertime(staffId: string, month: string, records: Overt
   save(KEY_OVERTIME, [...others, ...records]);
 }
 
+/** 指定日の休暇（有給取得・代休取得）を全職員分まとめて返す */
+export function listAbsencesByDate(date: string): { leave: LeaveRecord[]; comp: CompLeaveUse[] } {
+  const leave = load<LeaveRecord>(KEY_LEAVE).filter(r => r.date === date && r.kind === 'use');
+  const comp = load<CompLeaveUse>(KEY_COMP_USE).filter(r => r.date === date);
+  return { leave, comp };
+}
+
 // ---- 代休取得（消化） ----
 
 export function listCompUse(staffId: string): CompLeaveUse[] {

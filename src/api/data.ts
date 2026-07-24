@@ -194,6 +194,15 @@ export async function deleteCompUse(id: string): Promise<void> {
   if (!res.success) throw new Error(res.error || '代休取得の削除に失敗しました');
 }
 
+// === 本日の休暇（有給取得・代休取得） ===
+export interface DayAbsences { leave: LeaveRecord[]; comp: CompLeaveUse[] }
+
+export async function listAbsencesByDate(date: string): Promise<DayAbsences> {
+  if (!USE_GAS) return local.listAbsencesByDate(date);
+  const res = await gas.getAbsencesByDate(date, token());
+  return res.success && res.data ? res.data : { leave: [], comp: [] };
+}
+
 // === 有給休暇 ===
 export async function listLeave(staffId: string): Promise<LeaveRecord[]> {
   if (!USE_GAS) return local.listLeave(staffId);

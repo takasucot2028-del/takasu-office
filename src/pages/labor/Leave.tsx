@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import { listStaff, listLeave, addLeave, deleteLeave, computeLeaveBalance, genId, todayStr } from '../../api/data';
 import { EMPLOYMENT_TYPE_LABELS, standardLeaveGrant, LEAVE_HOURS_PER_DAY } from '../../utils/constants';
@@ -11,6 +12,7 @@ function balText(days: number, hours: number): string {
 }
 
 export default function Leave() {
+  const navigate = useNavigate();
   const [allStaff, setAllStaff] = useState<Staff[]>([]);
   const [staffLoaded, setStaffLoaded] = useState(false);
   const staff = useMemo(() => allStaff.filter(s => s.status === 'active'), [allStaff]);
@@ -120,11 +122,17 @@ export default function Leave() {
   return (
     <PageContainer title="有給休暇管理">
       <Card className="mb-4">
-        <Select value={staffId} onChange={e => setStaffId(e.target.value)}>
-          {staff.map(s => (
-            <option key={s.id} value={s.id}>{s.lastName} {s.firstName}（{s.position || '役職なし'}）</option>
-          ))}
-        </Select>
+        <div className="flex items-center gap-2">
+          <div className="flex-1">
+            <Select value={staffId} onChange={e => setStaffId(e.target.value)}>
+              {staff.map(s => (
+                <option key={s.id} value={s.id}>{s.lastName} {s.firstName}（{s.position || '役職なし'}）</option>
+              ))}
+            </Select>
+          </div>
+          <Button variant="secondary" size="sm" disabled={!staffId}
+            onClick={() => navigate(`/labor/leave/print?staffId=${staffId}`)}>PDF帳簿</Button>
+        </div>
       </Card>
 
       {staffLoaded && staff.length === 0 && <Alert type="info">在職中の職員がいません。先に職員名簿から登録してください。</Alert>}
