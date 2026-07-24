@@ -107,7 +107,7 @@ gas/
 - 保存時に resultHours と kind を確定値として記録（saveMonthOvertime、職員×月で置換）。
 - 代休残 = 承認済・代休指定の resultHours 合計 − 代休取得(CompLeaveUse)合計。取得は別途記録。有給とは別枠、1:1換算。
 - **当月集計**（承認済ベース）: 平日時間外総時間・休日勤務総時間・時間外手当時間・手当金額・代休付与・当月代休消化を画面表示。
-- **時間外勤務実績簿(Excel)**: 「実績簿Excel」ボタンで、当月に時間外がある職員ごとにシートを作成（保存済み resultHours ベース。listOvertimeByMonth）。
+- **時間外勤務実績簿(PDF)**: 「実績簿PDF」ボタン → OvertimePrint（/labor/overtime/print?month=）。当月に承認済み時間外がある職員ごとに1ページ（改ページ）で明細＋集計＋作成/確認/承認の押印欄を表示し、印刷ダイアログの「PDFに保存」でPDF化（A4縦。保存済み resultHours ベース。listOvertimeByMonth）。
 - GAS: staff に 時給列、overtime / comp_leave_use シートを追加。
 
 ### シフト（希望→確定の2段階・事務局が代理入力）
