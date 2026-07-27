@@ -112,6 +112,19 @@ export interface CompLeaveUse {
   note: string;
 }
 
+/** 文書の種別 */
+export type DocType = 'form' | 'rule' | 'other';
+
+/** 文書（様式・規則など）。実体はGoogleドライブ等に置き、共有リンクを登録する */
+export interface DocumentItem {
+  id: string;
+  type: DocType;
+  title: string;
+  url: string;                // 共有リンク
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** ログインの役割 */
 export type Role = 'admin' | 'staff';
 

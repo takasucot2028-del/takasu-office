@@ -5,7 +5,7 @@
 import type {
   Staff, AttendanceRecord, LeaveRecord,
   ShiftPattern, AvailabilityRecord, ConfirmedShift, WorkLocation,
-  OvertimeRecord, CompLeaveUse, RequestStatus,
+  OvertimeRecord, CompLeaveUse, RequestStatus, DocumentItem,
 } from '../types';
 
 export interface ApiResponse<T = unknown> {
@@ -62,6 +62,13 @@ export const addMyLeaveRequest = (record: Partial<LeaveRecord>, token: string) =
   request<void>('addMyLeaveRequest', { record, token });
 export const staffChangePassword = (token: string, oldPassword: string, newPassword: string) =>
   request<void>('staffChangePassword', { token, oldPassword, newPassword });
+
+// === 文書管理 ===
+export const getDocuments = (token: string) => request<DocumentItem[]>('getDocuments', { token });
+export const saveDocument = (doc: DocumentItem, token: string) =>
+  request<DocumentItem>('saveDocument', { doc, token });
+export const deleteDocument = (id: string, token: string) =>
+  request<void>('deleteDocument', { id, token });
 
 // === 管理者：従業員パスワード発行・休暇承認 ===
 export const setStaffPassword = (staffId: string, password: string, token: string) =>

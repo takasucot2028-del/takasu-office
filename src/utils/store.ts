@@ -2,7 +2,7 @@
 import type {
   Staff, AttendanceRecord, LeaveRecord, WorkLocation,
   ShiftPattern, AvailabilityRecord, ConfirmedShift,
-  OvertimeRecord, CompLeaveUse,
+  OvertimeRecord, CompLeaveUse, DocumentItem,
 } from '../types';
 import { ADMIN_EMAIL, ADMIN_PASSWORD, DEFAULT_SHIFT_PATTERNS } from './constants';
 
@@ -14,6 +14,7 @@ const KEY_AVAILABILITY = 'tof_availability';
 const KEY_CONFIRMED = 'tof_confirmed';
 const KEY_OVERTIME = 'tof_overtime';
 const KEY_COMP_USE = 'tof_comp_use';
+const KEY_DOCUMENTS = 'tof_documents';
 const KEY_SEEDED = 'tof_seeded';
 
 function load<T>(key: string): T[] {
@@ -248,6 +249,28 @@ export function deleteCompUse(id: string) {
   save(KEY_COMP_USE, load<CompLeaveUse>(KEY_COMP_USE).filter(r => r.id !== id));
 }
 
+// ---- 文書管理 ----
+
+export function listDocuments(): DocumentItem[] {
+  seedDemo();
+  return load<DocumentItem>(KEY_DOCUMENTS).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export function upsertDocument(doc: DocumentItem): DocumentItem {
+  const all = load<DocumentItem>(KEY_DOCUMENTS);
+  const now = new Date().toISOString();
+  const idx = all.findIndex(d => d.id === doc.id);
+  const next = { ...doc, updatedAt: now };
+  if (idx >= 0) { all[idx] = { ...next, createdAt: all[idx].createdAt }; }
+  else { next.createdAt = now; all.push(next); }
+  save(KEY_DOCUMENTS, all);
+  return next;
+}
+
+export function deleteDocument(id: string) {
+  save(KEY_DOCUMENTS, load<DocumentItem>(KEY_DOCUMENTS).filter(d => d.id !== id));
+}
+
 // ---- 有給休暇 ----
 
 export function listLeave(staffId: string): LeaveRecord[] {
@@ -339,6 +362,13 @@ function seedDemo() {
     { id: 'lv003', staffId: 'stf002', kind: 'grant', date: '2025-12-01', days: 12, hours: 0, status: 'approved', note: '年次付与' },
   ];
   save(KEY_LEAVE, leaves);
+  const nowIso = new Date().toISOString();
+  const docs: DocumentItem[] = [
+    { id: 'doc1', type: 'rule', title: '就業規則', url: 'https://drive.google.com/', createdAt: nowIso, updatedAt: nowIso },
+    { id: 'doc2', type: 'form', title: '休暇届（様式）', url: 'https://drive.google.com/', createdAt: nowIso, updatedAt: nowIso },
+    { id: 'doc3', type: 'form', title: '時間外勤務命令書（様式）', url: 'https://drive.google.com/', createdAt: nowIso, updatedAt: nowIso },
+  ];
+  save(KEY_DOCUMENTS, docs);
   // デモの従業員ログイン用パスワード（職員番号1001〜1003、パスワードは全員 1234）
   localStorage.setItem(KEY_STAFF_PW, JSON.stringify({ stf001: '1234', stf002: '1234', stf003: '1234' }));
   localStorage.setItem(KEY_SEEDED, '4');

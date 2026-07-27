@@ -36,6 +36,9 @@ var SHEETS = {
   comp_leave_use: { name: '代休取得', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['hours', '時間'], ['note', '備考'],
   ] },
+  documents: { name: '文書', columns: [
+    ['id', 'ID'], ['type', '種別'], ['title', 'タイトル'], ['url', '共有リンク'], ['createdAt', '作成日時'], ['updatedAt', '更新日時'],
+  ] },
   attendance: { name: '勤怠', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['dayType', '区分'],
     ['startTime', '出勤'], ['endTime', '退勤'], ['breakMinutes', '休憩(分)'], ['note', '備考'],
@@ -163,10 +166,13 @@ var STAFF_ACTIONS = {
   getMyOvertime: true, addMyOvertime: true,
   getMyLeave: true, addMyLeaveRequest: true, staffChangePassword: true,
 };
+// 認証済みなら role を問わず許可（事務局・従業員の両方が閲覧するもの）
+var AUTHED_ACTIONS = { getDocuments: true };
 function enforceAuth(action, body) {
   if (PUBLIC_ACTIONS[action]) return;
   const session = getSession(body.token);
   if (!session) throw new Error('認証が必要です。再度ログインしてください');
+  if (AUTHED_ACTIONS[action]) return; // ログイン済みなら誰でも
   if (STAFF_ACTIONS[action]) {
     if (session.role !== 'staff') throw new Error('従業員のログインが必要です');
     return;
@@ -222,6 +228,16 @@ function doPost(e) {
         break;
       case 'staffChangePassword':
         result = handleStaffChangePassword(getSession(body.token), body.oldPassword, body.newPassword);
+        break;
+      // 文書（閲覧は事務局・従業員の両方、登録/削除は事務局）
+      case 'getDocuments':
+        result = handleGetDocuments();
+        break;
+      case 'saveDocument':
+        result = handleSaveDocument(body.doc);
+        break;
+      case 'deleteDocument':
+        result = handleDeleteDocument(body.id);
         break;
       // 管理者：従業員パスワード発行・休暇申請の承認
       case 'setStaffPassword':
@@ -647,6 +663,37 @@ function handleDeleteLeave(id) {
   const sheet = getSheet('leave');
   const rowIndex = findRowIndex(sheet, 0, id);
   if (rowIndex < 0) return { success: false, error: '有給記録が見つかりません' };
+  sheet.deleteRow(rowIndex);
+  return { success: true };
+}
+
+// --- ハンドラー：文書 ---
+function handleGetDocuments() {
+  const records = sheetToObjects(getSheet('documents'), 'documents');
+  records.sort(function (a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+  return { success: true, data: records };
+}
+
+function handleSaveDocument(doc) {
+  if (!doc || !doc.id) return { success: false, error: '文書データが不正です' };
+  const sheet = getSheet('documents');
+  const now = new Date().toISOString();
+  const rowIndex = findRowIndex(sheet, 0, doc.id);
+  const next = { id: doc.id, type: doc.type, title: doc.title, url: doc.url, createdAt: doc.createdAt || now, updatedAt: now };
+  if (rowIndex < 0) {
+    sheet.appendRow(objectToRow('documents', next));
+  } else {
+    const existingCreated = sheet.getRange(rowIndex, colNum('documents', 'createdAt')).getValue();
+    next.createdAt = existingCreated || next.createdAt;
+    sheet.getRange(rowIndex, 1, 1, colKeys('documents').length).setValues([objectToRow('documents', next)]);
+  }
+  return { success: true, data: next };
+}
+
+function handleDeleteDocument(id) {
+  const sheet = getSheet('documents');
+  const rowIndex = findRowIndex(sheet, 0, id);
+  if (rowIndex < 0) return { success: false, error: '文書が見つかりません' };
   sheet.deleteRow(rowIndex);
   return { success: true };
 }

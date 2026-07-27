@@ -8,7 +8,7 @@
 import type {
   Staff, AttendanceRecord, LeaveRecord,
   ShiftPattern, AvailabilityRecord, ConfirmedShift, WorkLocation,
-  OvertimeRecord, CompLeaveUse,
+  OvertimeRecord, CompLeaveUse, DocumentItem,
 } from '../types';
 import { DEFAULT_SHIFT_PATTERNS, LEAVE_HOURS_PER_DAY } from '../utils/constants';
 import * as local from '../utils/store';
@@ -159,6 +159,22 @@ export async function changeStaffPassword(oldPassword: string, newPassword: stri
   if (!USE_GAS) { local.staffChangePasswordLocal(staffId(), oldPassword, newPassword); return; }
   const res = await gas.staffChangePassword(token(), oldPassword, newPassword);
   if (!res.success) throw new Error(res.error || 'パスワードの変更に失敗しました');
+}
+
+// === 文書管理（閲覧は事務局・従業員の両方、登録/削除は事務局） ===
+export async function listDocuments(): Promise<DocumentItem[]> {
+  if (!USE_GAS) return local.listDocuments();
+  return unwrap(await gas.getDocuments(token()), []);
+}
+export async function saveDocument(doc: DocumentItem): Promise<void> {
+  if (!USE_GAS) { local.upsertDocument(doc); return; }
+  const res = await gas.saveDocument(doc, token());
+  if (!res.success) throw new Error(res.error || '文書の保存に失敗しました');
+}
+export async function deleteDocument(id: string): Promise<void> {
+  if (!USE_GAS) { local.deleteDocument(id); return; }
+  const res = await gas.deleteDocument(id, token());
+  if (!res.success) throw new Error(res.error || '文書の削除に失敗しました');
 }
 
 // === 管理者：従業員パスワード発行・休暇承認 ===

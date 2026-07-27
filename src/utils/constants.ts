@@ -1,4 +1,4 @@
-import type { EmploymentType, StaffStatus, AttendanceDayType, WorkLocation, ShiftPattern, Staff } from '../types';
+import type { EmploymentType, StaffStatus, AttendanceDayType, WorkLocation, ShiftPattern, Staff, DocType } from '../types';
 
 // 事務局デモアカウント
 export const ADMIN_EMAIL = 'admin@takasu-sc.jp';
@@ -76,3 +76,11 @@ export const DAY_TYPE_LABELS: Record<AttendanceDayType, string> = {
 };
 
 export const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+
+export const DOC_TYPE_LABELS: Record<DocType, string> = {
+  form: '様式',
+  rule: '規則',
+  other: 'その他',
+};
+/** 一覧表示・グループの順序 */
+export const DOC_TYPE_ORDER: DocType[] = ['form', 'rule', 'other'];

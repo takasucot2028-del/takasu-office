@@ -130,9 +130,20 @@ export default function Dashboard() {
           </div>
         </Card>
 
+        {/* 文書管理 */}
+        <Card>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-bold text-gray-800">文書管理</h2>
+            <Badge color="green">稼働中</Badge>
+          </div>
+          <p className="text-xs text-gray-400 mb-4">様式・規則をドライブのリンクで登録し、従業員が閲覧</p>
+          <div className="flex flex-wrap gap-2">
+            <ModuleLink to="/labor/documents">文書管理</ModuleLink>
+          </div>
+        </Card>
+
         {/* 今後追加予定のモジュール */}
         <ComingSoonCard title="会計管理" description="収支管理・予算管理・帳票出力" />
-        <ComingSoonCard title="文書管理" description="規程・議事録・契約書類の管理" />
         <ComingSoonCard title="備品・施設管理" description="備品台帳・施設利用状況の管理" />
       </div>
     </PageContainer>

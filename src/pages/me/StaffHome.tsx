@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageContainer, Card, Button, Alert } from '../../components/UI';
-import { getMyProfile, getMyAttendance, punch, todayStr } from '../../api/data';
-import { WEEKDAY_LABELS } from '../../utils/constants';
-import type { Staff, AttendanceRecord } from '../../types';
+import { getMyProfile, getMyAttendance, punch, listDocuments, todayStr } from '../../api/data';
+import { WEEKDAY_LABELS, DOC_TYPE_LABELS } from '../../utils/constants';
+import type { Staff, AttendanceRecord, DocumentItem } from '../../types';
 
 function parseHM(hm: string): number | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(hm || '');
@@ -20,6 +20,7 @@ function workedText(rec?: AttendanceRecord): string {
 export default function StaffHome() {
   const [staff, setStaff] = useState<Staff | null>(null);
   const [today, setToday] = useState<AttendanceRecord | undefined>();
+  const [recentDocs, setRecentDocs] = useState<DocumentItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -29,9 +30,10 @@ export default function StaffHome() {
   const wd = WEEKDAY_LABELS[new Date(`${date}T00:00:00`).getDay()];
 
   const load = async () => {
-    const [p, att] = await Promise.all([getMyProfile(), getMyAttendance(date.slice(0, 7))]);
+    const [p, att, docs] = await Promise.all([getMyProfile(), getMyAttendance(date.slice(0, 7)), listDocuments()]);
     setStaff(p);
     setToday(att.find(r => r.date === date));
+    setRecentDocs(docs.slice(0, 4));
     setLoading(false);
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
@@ -72,12 +74,38 @@ export default function StaffHome() {
       </Card>
 
       {/* メニュー */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
         <MenuLink to="/me/shifts" label="シフト希望" desc="勤務できる日を申請" />
         <MenuLink to="/me/overtime" label="時間外申請" desc="残業・休日勤務を申請" />
         <MenuLink to="/me/leave" label="休暇申請" desc="有給の申請・残の確認" />
+        <MenuLink to="/me/documents" label="文書・様式" desc="規則や様式を閲覧" />
         <MenuLink to="/me/settings" label="設定" desc="パスワード変更" />
       </div>
+
+      {/* 新着文書 */}
+      <Card>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="font-bold text-gray-800">最近の文書</h2>
+          <Link to="/me/documents" className="text-xs text-emerald-700 hover:underline">すべて見る →</Link>
+        </div>
+        {loading ? (
+          <p className="text-xs text-gray-400">読み込み中…</p>
+        ) : recentDocs.length === 0 ? (
+          <p className="text-xs text-gray-400">文書はまだ登録されていません</p>
+        ) : (
+          <ul className="divide-y divide-gray-100">
+            {recentDocs.map(d => (
+              <li key={d.id}>
+                <a href={d.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 py-2">
+                  <span className="text-xs text-gray-400 w-10 shrink-0">{DOC_TYPE_LABELS[d.type]}</span>
+                  <span className="flex-1 text-blue-600 text-sm">{d.title}</span>
+                  <span className="text-gray-300 text-xs">開く ↗</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
     </PageContainer>
   );
 }
