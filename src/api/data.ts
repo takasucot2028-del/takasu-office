@@ -89,7 +89,9 @@ export async function staffLogin(employeeNumber: string, password: string): Prom
              : { success: false, error: '職員番号またはパスワードが正しくありません' };
   }
   const res = await gas.staffLogin(employeeNumber, password);
-  return { success: res.success, token: res.token, staffId: res.data?.id, staff: res.data, error: res.error };
+  // GAS は職員情報を staff キーで返す（data ではない）。両対応で取り出す。
+  const s = ((res as unknown as { staff?: Staff }).staff) ?? res.data;
+  return { success: res.success, token: res.token, staffId: s?.id, staff: s, error: res.error };
 }
 
 export async function getMyProfile(): Promise<Staff | null> {
