@@ -710,28 +710,37 @@ function handlePunch(session, punchType) {
   const now = Utilities.formatDate(new Date(), tz, 'HH:mm');
   const sheet = getSheet('attendance');
   const ncol = colKeys('attendance').length;
+
+  // 生値の日付を yyyy-MM-dd に整形して比較（旧データで日付がDate化していても照合できる）
   const data = sheet.getDataRange().getValues();
-  let rowIndex = -1;
+  const ymd = function (v) {
+    return (Object.prototype.toString.call(v) === '[object Date]')
+      ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : String(v == null ? '' : v).trim();
+  };
+  // 当日・当該職員の行をすべて集める（重複があれば統合する）
+  const rows = [];
   for (let i = 1; i < data.length; i++) {
-    if (String(data[i][1]) === staff.id && String(data[i][2]) === today) { rowIndex = i + 1; break; }
+    if (String(data[i][1]) === staff.id && ymd(data[i][2]) === today) rows.push(i + 1);
   }
-  if (rowIndex < 0) {
-    rowIndex = sheet.getLastRow() + 1;
-    // 行をテキスト書式に固定してから書き込む（"13:36" が時刻値に変換されるのを防ぐ）
-    sheet.getRange(rowIndex, 1, 1, ncol).setNumberFormat('@');
-    const rec = {
-      id: staff.id + '_' + today, staffId: staff.id, date: today, dayType: 'work',
-      startTime: punchType === 'in' ? now : '', endTime: punchType === 'out' ? now : '',
-      breakMinutes: 0, note: '',
-    };
-    sheet.getRange(rowIndex, 1, 1, ncol).setValues([objectToRow('attendance', rec)]);
-  } else {
-    const col = punchType === 'in' ? colNum('attendance', 'startTime') : colNum('attendance', 'endTime');
-    const cell = sheet.getRange(rowIndex, col);
-    cell.setNumberFormat('@');
-    cell.setValue(now);
-    sheet.getRange(rowIndex, colNum('attendance', 'dayType')).setValue('work');
-  }
+
+  // 既存の（整形済み）当日レコードから開始・終了を引き継ぐ
+  const objs = sheetToObjects(sheet, 'attendance').filter(function (r) {
+    return String(r.staffId) === staff.id && String(r.date) === today;
+  });
+  const firstOf = function (key) { for (let j = 0; j < objs.length; j++) { if (objs[j][key]) return objs[j][key]; } return ''; };
+  const rec = {
+    id: staff.id + '_' + today, staffId: staff.id, date: today, dayType: 'work',
+    startTime: firstOf('startTime'), endTime: firstOf('endTime'),
+    breakMinutes: Number(firstOf('breakMinutes')) || 0, note: firstOf('note'),
+  };
+  if (punchType === 'in') rec.startTime = now; else rec.endTime = now;
+
+  const target = rows.length ? rows[0] : sheet.getLastRow() + 1;
+  sheet.getRange(target, 1, 1, ncol).setNumberFormat('@'); // テキスト書式で保存（時刻の自動変換を防ぐ）
+  sheet.getRange(target, 1, 1, ncol).setValues([objectToRow('attendance', rec)]);
+  // 重複行（2件目以降）を削除。行番号の大きい方から消す。
+  for (let k = rows.length - 1; k >= 1; k--) sheet.deleteRow(rows[k]);
+
   return { success: true, data: { date: today, time: now, punchType: punchType } };
 }
 
