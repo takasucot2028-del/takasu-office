@@ -1,7 +1,7 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 
-const NAV_ITEMS = [
+const ADMIN_NAV = [
   { to: '/dashboard', label: 'ダッシュボード', short: 'ホーム' },
   { to: '/labor/staff', label: '職員名簿', short: '職員' },
   { to: '/labor/shifts', label: 'シフト管理', short: 'シフト' },
@@ -10,9 +10,16 @@ const NAV_ITEMS = [
   { to: '/labor/leave', label: '有給休暇', short: '有給' },
   { to: '/settings', label: '設定', short: '設定' },
 ];
+const STAFF_NAV = [
+  { to: '/me', label: '打刻・ホーム', short: '打刻' },
+  { to: '/me/shifts', label: 'シフト希望', short: 'シフト' },
+  { to: '/me/overtime', label: '時間外申請', short: '時間外' },
+  { to: '/me/leave', label: '休暇申請', short: '休暇' },
+  { to: '/me/settings', label: '設定', short: '設定' },
+];
 
 export default function Header() {
-  const { isLoggedIn, logout } = useAuth();
+  const { isLoggedIn, isAdmin, isStaff, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -21,16 +28,19 @@ export default function Header() {
     navigate('/');
   };
 
+  const items = isAdmin ? ADMIN_NAV : isStaff ? STAFF_NAV : [];
+  const home = isAdmin ? '/dashboard' : isStaff ? '/me' : '/';
+
   return (
-    <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
+    <header className="bg-white border-b border-gray-200 sticky top-0 z-40 no-print">
       <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
-        <Link to={isLoggedIn ? '/dashboard' : '/'} className="font-bold text-gray-800 text-sm">
-          <span className="text-emerald-600">TSC</span> 事務管理
+        <Link to={home} className="font-bold text-gray-800 text-sm">
+          <span className="text-emerald-600">TSC</span> {isStaff ? '勤怠' : '事務管理'}
         </Link>
 
-        {isLoggedIn && (
+        {items.length > 0 && (
           <nav className="hidden sm:flex items-center gap-1 text-xs">
-            {NAV_ITEMS.map(item => (
+            {items.map(item => (
               <NavLink key={item.to} to={item.to} current={location.pathname}>{item.label}</NavLink>
             ))}
           </nav>
@@ -46,9 +56,9 @@ export default function Header() {
       </div>
 
       {/* モバイルナビ */}
-      {isLoggedIn && (
+      {items.length > 0 && (
         <nav className="sm:hidden flex overflow-x-auto border-t border-gray-100 px-4 gap-1 text-xs">
-          {NAV_ITEMS.map(item => (
+          {items.map(item => (
             <NavLink key={item.to} to={item.to} current={location.pathname}>{item.short}</NavLink>
           ))}
         </nav>
@@ -58,7 +68,7 @@ export default function Header() {
 }
 
 function NavLink({ to, current, children }: { to: string; current: string; children: React.ReactNode }) {
-  const active = current === to || current.startsWith(`${to}/`);
+  const active = current === to || (to !== '/me' && current.startsWith(`${to}/`));
   return (
     <Link
       to={to}

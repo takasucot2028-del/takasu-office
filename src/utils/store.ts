@@ -66,7 +66,10 @@ export function changeAdminPassword(oldPassword: string, newPassword: string): v
 
 export function listStaff(): Staff[] {
   seedDemo();
-  return load<Staff>(KEY_STAFF).sort((a, b) => a.lastKana.localeCompare(b.lastKana, 'ja'));
+  const pw = staffPwMap();
+  return load<Staff>(KEY_STAFF)
+    .map(s => ({ ...s, hasPassword: !!pw[s.id] }))
+    .sort((a, b) => a.lastKana.localeCompare(b.lastKana, 'ja'));
 }
 
 export function getStaff(id: string): Staff | null {
@@ -151,7 +154,58 @@ export function saveMonthConfirmed(month: string, location: WorkLocation, record
   save(KEY_CONFIRMED, [...others, ...records]);
 }
 
+// ---- 従業員ログイン（デモ。パスワードは平文でlocalStorage・デモ専用） ----
+const KEY_STAFF_PW = 'tof_staff_pw';
+function staffPwMap(): Record<string, string> {
+  try { return JSON.parse(localStorage.getItem(KEY_STAFF_PW) || '{}'); } catch { return {}; }
+}
+export function setStaffPassword(staffId: string, password: string) {
+  if (!password || password.length < 4) throw new Error('パスワードは4文字以上で入力してください');
+  const m = staffPwMap(); m[staffId] = password; localStorage.setItem(KEY_STAFF_PW, JSON.stringify(m));
+}
+export function staffHasPassword(staffId: string): boolean {
+  return !!staffPwMap()[staffId];
+}
+export function verifyStaffLogin(employeeNumber: string, password: string): Staff | null {
+  const num = (employeeNumber || '').trim();
+  const staff = listStaff().find(s => (s.employeeNumber || '').trim() === num && s.status !== 'retired');
+  if (!staff) return null;
+  if (staffPwMap()[staff.id] !== password) return null;
+  return staff;
+}
+export function staffChangePasswordLocal(staffId: string, oldPw: string, newPw: string) {
+  const m = staffPwMap();
+  if (m[staffId] !== oldPw) throw new Error('現在のパスワードが正しくありません');
+  if (!newPw || newPw.length < 4) throw new Error('パスワードは4文字以上で入力してください');
+  m[staffId] = newPw; localStorage.setItem(KEY_STAFF_PW, JSON.stringify(m));
+}
+
+// 打刻（出勤=in / 退勤=out）
+export function punchLocal(staffId: string, type: 'in' | 'out'): { date: string; time: string; punchType: 'in' | 'out' } {
+  const date = todayStr();
+  const d = new Date();
+  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const all = load<AttendanceRecord>(KEY_ATTENDANCE);
+  let rec = all.find(r => r.staffId === staffId && r.date === date);
+  if (!rec) {
+    rec = { id: `${staffId}_${date}`, staffId, date, dayType: 'work', startTime: type === 'in' ? time : '', endTime: type === 'out' ? time : '', breakMinutes: 0, note: '' };
+    all.push(rec);
+  } else {
+    if (type === 'in') rec.startTime = time; else rec.endTime = time;
+    rec.dayType = 'work';
+  }
+  save(KEY_ATTENDANCE, all);
+  return { date, time, punchType: type };
+}
+
 // ---- 時間外・休日勤務 ----
+
+/** 1件追加（従業員の時間外申請用） */
+export function addOvertime(record: OvertimeRecord) {
+  const all = load<OvertimeRecord>(KEY_OVERTIME);
+  all.push(record);
+  save(KEY_OVERTIME, all);
+}
 
 export function listOvertimeByMonth(month: string): OvertimeRecord[] {
   return load<OvertimeRecord>(KEY_OVERTIME).filter(r => r.date.startsWith(month));
@@ -212,6 +266,13 @@ export function deleteLeave(id: string) {
   save(KEY_LEAVE, load<LeaveRecord>(KEY_LEAVE).filter(r => r.id !== id));
 }
 
+/** 休暇申請の状態を更新（承認/却下） */
+export function setLeaveStatus(id: string, status: LeaveRecord['status']) {
+  const all = load<LeaveRecord>(KEY_LEAVE);
+  const r = all.find(x => x.id === id);
+  if (r) { r.status = status; save(KEY_LEAVE, all); }
+}
+
 /** 残日数 = 付与合計 - 取得合計 */
 export function leaveBalance(staffId: string): { granted: number; used: number; balance: number } {
   const records = listLeave(staffId);
@@ -224,23 +285,24 @@ export function leaveBalance(staffId: string): { granted: number; used: number; 
 
 function seedDemo() {
   const seeded = localStorage.getItem(KEY_SEEDED);
-  if (seeded === '3') return;
+  if (seeded === '4') return;
   if (seeded) {
-    // 既存データに不足フィールドを補う（勤務場所・時給）
+    // 既存データに不足フィールドを補う（勤務場所・時給・職員番号）
     const locDefaults: Record<string, WorkLocation> = { stf001: 'sotai', stf002: 'sotai', stf003: 'kaiyo' };
     const migrated = load<Staff>(KEY_STAFF).map(s => ({
       ...s,
       workLocation: s.workLocation ?? locDefaults[s.id] ?? '',
       hourlyWage: typeof s.hourlyWage === 'number' ? s.hourlyWage : 0,
+      employeeNumber: s.employeeNumber ?? '',
     }));
     save(KEY_STAFF, migrated);
-    localStorage.setItem(KEY_SEEDED, '3');
+    localStorage.setItem(KEY_SEEDED, '4');
     return;
   }
   const now = new Date().toISOString();
   const demo: Staff[] = [
     {
-      id: 'stf001',
+      id: 'stf001', employeeNumber: '1001',
       lastName: '高須', firstName: '太郎', lastKana: 'タカス', firstKana: 'タロウ',
       birthDate: '1975-04-10',
       employmentType: 'fulltime', workLocation: 'sotai', position: '事務局長',
@@ -250,7 +312,7 @@ function seedDemo() {
       hourlyWage: 1500, note: '', createdAt: now, updatedAt: now,
     },
     {
-      id: 'stf002',
+      id: 'stf002', employeeNumber: '1002',
       lastName: '鈴木', firstName: '花子', lastKana: 'スズキ', firstKana: 'ハナコ',
       birthDate: '1988-09-22',
       employmentType: 'parttime', workLocation: 'sotai', position: '事務員',
@@ -260,7 +322,7 @@ function seedDemo() {
       hourlyWage: 1100, note: '週4日勤務', createdAt: now, updatedAt: now,
     },
     {
-      id: 'stf003',
+      id: 'stf003', employeeNumber: '1003',
       lastName: '佐藤', firstName: '健', lastKana: 'サトウ', firstKana: 'ケン',
       birthDate: '1992-01-15',
       employmentType: 'instructor', workLocation: 'kaiyo', position: '水泳教室 指導員',
@@ -272,10 +334,12 @@ function seedDemo() {
   ];
   save(KEY_STAFF, demo);
   const leaves: LeaveRecord[] = [
-    { id: 'lv001', staffId: 'stf001', kind: 'grant', date: '2025-10-01', days: 20, hours: 0, note: '年次付与' },
-    { id: 'lv002', staffId: 'stf001', kind: 'use', date: '2026-01-09', days: 1, hours: 0, note: '' },
-    { id: 'lv003', staffId: 'stf002', kind: 'grant', date: '2025-12-01', days: 12, hours: 0, note: '年次付与' },
+    { id: 'lv001', staffId: 'stf001', kind: 'grant', date: '2025-10-01', days: 20, hours: 0, status: 'approved', note: '年次付与' },
+    { id: 'lv002', staffId: 'stf001', kind: 'use', date: '2026-01-09', days: 1, hours: 0, status: 'approved', note: '' },
+    { id: 'lv003', staffId: 'stf002', kind: 'grant', date: '2025-12-01', days: 12, hours: 0, status: 'approved', note: '年次付与' },
   ];
   save(KEY_LEAVE, leaves);
-  localStorage.setItem(KEY_SEEDED, '3');
+  // デモの従業員ログイン用パスワード（職員番号1001〜1003、パスワードは全員 1234）
+  localStorage.setItem(KEY_STAFF_PW, JSON.stringify({ stf001: '1234', stf002: '1234', stf003: '1234' }));
+  localStorage.setItem(KEY_SEEDED, '4');
 }

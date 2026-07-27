@@ -17,6 +17,7 @@ export interface Staff {
   lastKana: string;
   firstKana: string;
   birthDate: string;          // YYYY-MM-DD
+  employeeNumber: string;     // 職員番号（従業員ログインのID。未設定は空）
   employmentType: EmploymentType;
   workLocation: WorkLocation | '' | 'both';  // 勤務場所（未設定は空、both=総体・海洋センター両方）
   position: string;           // 役職・担当
@@ -28,6 +29,7 @@ export interface Staff {
   address: string;
   qualifications: string;     // 保有資格
   hourlyWage: number;         // 時給（時間外手当の計算に使用。0=未設定）
+  hasPassword?: boolean;      // 従業員ログイン用パスワードが設定済みか（サーバー算出・読取専用）
   note: string;
   createdAt: string;
   updatedAt: string;
@@ -110,6 +112,12 @@ export interface CompLeaveUse {
   note: string;
 }
 
+/** ログインの役割 */
+export type Role = 'admin' | 'staff';
+
+/** 申請の承認状態（従業員申請＝requested、事務局登録/承認＝approved） */
+export type RequestStatus = 'requested' | 'approved' | 'rejected';
+
 /** 有給休暇の記録種別 */
 export type LeaveKind = 'grant' | 'use';
 
@@ -121,5 +129,6 @@ export interface LeaveRecord {
   date: string;               // 付与日または取得日 YYYY-MM-DD
   days: number;               // 日単位の量（0.5日単位可）。時間単位の記録では0
   hours: number;              // 時間単位の量（1時間単位）。日単位の記録では0
+  status: RequestStatus;      // 承認状態（付与・事務局登録=approved、従業員申請=requested）
   note: string;
 }

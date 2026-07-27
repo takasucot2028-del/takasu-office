@@ -16,9 +16,24 @@ import Leave from './pages/labor/Leave';
 import LeavePrint from './pages/labor/LeavePrint';
 import Settings from './pages/Settings';
 
-function Guard({ children }: { children: React.ReactNode }) {
-  const { isLoggedIn } = useAuth();
+import StaffHome from './pages/me/StaffHome';
+import StaffShiftRequest from './pages/me/StaffShiftRequest';
+import StaffOvertimeRequest from './pages/me/StaffOvertimeRequest';
+import StaffLeaveRequest from './pages/me/StaffLeaveRequest';
+import StaffSettings from './pages/me/StaffSettings';
+
+// 管理者専用
+function AdminGuard({ children }: { children: React.ReactNode }) {
+  const { isLoggedIn, isAdmin } = useAuth();
   if (!isLoggedIn) return <Navigate to="/" replace />;
+  if (!isAdmin) return <Navigate to="/me" replace />;
+  return <>{children}</>;
+}
+// 従業員専用
+function StaffGuard({ children }: { children: React.ReactNode }) {
+  const { isLoggedIn, isStaff } = useAuth();
+  if (!isLoggedIn) return <Navigate to="/" replace />;
+  if (!isStaff) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 }
 
@@ -28,18 +43,27 @@ function AppRoutes() {
       <Header />
       <Routes>
         <Route path="/" element={<Login />} />
-        <Route path="/dashboard" element={<Guard><Dashboard /></Guard>} />
-        <Route path="/labor/staff" element={<Guard><StaffList /></Guard>} />
-        <Route path="/labor/staff/:id" element={<Guard><StaffDetail /></Guard>} />
-        <Route path="/labor/shifts" element={<Guard><Shifts /></Guard>} />
-        <Route path="/labor/shifts/print" element={<Guard><ShiftsPrint /></Guard>} />
-        <Route path="/labor/shift-patterns" element={<Guard><ShiftPatterns /></Guard>} />
-        <Route path="/labor/attendance" element={<Guard><Attendance /></Guard>} />
-        <Route path="/labor/overtime" element={<Guard><Overtime /></Guard>} />
-        <Route path="/labor/overtime/print" element={<Guard><OvertimePrint /></Guard>} />
-        <Route path="/labor/leave" element={<Guard><Leave /></Guard>} />
-        <Route path="/labor/leave/print" element={<Guard><LeavePrint /></Guard>} />
-        <Route path="/settings" element={<Guard><Settings /></Guard>} />
+
+        {/* 事務局 */}
+        <Route path="/dashboard" element={<AdminGuard><Dashboard /></AdminGuard>} />
+        <Route path="/labor/staff" element={<AdminGuard><StaffList /></AdminGuard>} />
+        <Route path="/labor/staff/:id" element={<AdminGuard><StaffDetail /></AdminGuard>} />
+        <Route path="/labor/shifts" element={<AdminGuard><Shifts /></AdminGuard>} />
+        <Route path="/labor/shifts/print" element={<AdminGuard><ShiftsPrint /></AdminGuard>} />
+        <Route path="/labor/shift-patterns" element={<AdminGuard><ShiftPatterns /></AdminGuard>} />
+        <Route path="/labor/attendance" element={<AdminGuard><Attendance /></AdminGuard>} />
+        <Route path="/labor/overtime" element={<AdminGuard><Overtime /></AdminGuard>} />
+        <Route path="/labor/overtime/print" element={<AdminGuard><OvertimePrint /></AdminGuard>} />
+        <Route path="/labor/leave" element={<AdminGuard><Leave /></AdminGuard>} />
+        <Route path="/labor/leave/print" element={<AdminGuard><LeavePrint /></AdminGuard>} />
+        <Route path="/settings" element={<AdminGuard><Settings /></AdminGuard>} />
+
+        {/* 従業員 */}
+        <Route path="/me" element={<StaffGuard><StaffHome /></StaffGuard>} />
+        <Route path="/me/shifts" element={<StaffGuard><StaffShiftRequest /></StaffGuard>} />
+        <Route path="/me/overtime" element={<StaffGuard><StaffOvertimeRequest /></StaffGuard>} />
+        <Route path="/me/leave" element={<StaffGuard><StaffLeaveRequest /></StaffGuard>} />
+        <Route path="/me/settings" element={<StaffGuard><StaffSettings /></StaffGuard>} />
       </Routes>
     </div>
   );

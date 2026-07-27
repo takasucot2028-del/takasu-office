@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PageContainer, Card, Field, Input, Select, Button, Alert, Modal } from '../../components/UI';
-import { getStaff, upsertStaff, genId } from '../../api/data';
+import { getStaff, upsertStaff, setStaffPassword, genId } from '../../api/data';
 import { EMPLOYMENT_TYPE_LABELS, WORK_LOCATION_LABELS } from '../../utils/constants';
 import type { Staff, EmploymentType, WorkLocation } from '../../types';
 
 function emptyStaff(): Staff {
   return {
     id: genId('stf'),
+    employeeNumber: '',
     lastName: '', firstName: '', lastKana: '', firstKana: '',
     birthDate: '',
     employmentType: 'fulltime', workLocation: '', position: '',
@@ -28,6 +29,22 @@ export default function StaffDetail() {
   const [error, setError] = useState('');
   const [retireOpen, setRetireOpen] = useState(false);
   const [retireDate, setRetireDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [newPw, setNewPw] = useState('');
+  const [pwMsg, setPwMsg] = useState('');
+
+  const issuePassword = async () => {
+    setPwMsg(''); setError('');
+    if (!form?.employeeNumber) { setError('先に職員番号を入力して保存してください'); return; }
+    if (newPw.length < 4) { setError('パスワードは4文字以上で入力してください'); return; }
+    try {
+      await setStaffPassword(form.id, newPw);
+      setNewPw('');
+      setPwMsg('パスワードを設定しました。職員番号とこのパスワードで従業員ログインできます。');
+      setForm(prev => (prev ? { ...prev, hasPassword: true } : prev));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'パスワードの設定に失敗しました');
+    }
+  };
 
   useEffect(() => {
     if (isNew) return;
@@ -187,6 +204,9 @@ export default function StaffDetail() {
               <Input type="number" min={0} step={10} value={form.hourlyWage || ''}
                 onChange={e => set('hourlyWage', Number(e.target.value) || 0)} placeholder="時間外手当の計算に使用" />
             </Field>
+            <Field label="職員番号">
+              <Input value={form.employeeNumber} onChange={e => set('employeeNumber', e.target.value)} placeholder="従業員アプリのログインID" />
+            </Field>
           </div>
         </Card>
 
@@ -227,6 +247,31 @@ export default function StaffDetail() {
           )}
         </div>
       </form>
+
+      {/* 従業員ログイン（保存済みの職員のみ） */}
+      {!isNew && (
+        <Card className="mt-4">
+          <h2 className="font-bold text-gray-800 mb-1">従業員アプリのログイン</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            職員番号「{form.employeeNumber || '未設定'}」／ パスワード:{' '}
+            <span className={form.hasPassword ? 'text-emerald-600' : 'text-gray-400'}>{form.hasPassword ? '設定済み' : '未設定'}</span>
+          </p>
+          {pwMsg && <Alert type="success">{pwMsg}</Alert>}
+          <div className="grid sm:grid-cols-3 gap-3 items-end">
+            <div className="sm:col-span-2">
+              <Field label={form.hasPassword ? 'パスワードを再設定（4文字以上）' : '初期パスワードを設定（4文字以上）'}>
+                <Input type="text" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="例: 半角英数字" />
+              </Field>
+            </div>
+            <div className="mb-4">
+              <Button type="button" variant="secondary" className="w-full" onClick={issuePassword}>
+                {form.hasPassword ? 'パスワードを再設定' : 'パスワードを発行'}
+              </Button>
+            </div>
+          </div>
+          <p className="text-xs text-gray-400">職員番号を変更したら「保存する」を押してから発行してください。従業員はこの職員番号とパスワードでログインします。</p>
+        </Card>
+      )}
 
       <Modal open={retireOpen} onClose={() => setRetireOpen(false)} title="退職処理">
         <p className="text-sm text-gray-600 mb-4">

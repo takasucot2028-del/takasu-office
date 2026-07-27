@@ -1,8 +1,13 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
+import type { Role } from '../types';
 
 interface AuthState {
   isLoggedIn: boolean;
-  login: (token: string) => void;
+  role: Role | null;
+  staffId: string | null;
+  isAdmin: boolean;
+  isStaff: boolean;
+  login: (token: string, role: Role, staffId?: string) => void;
   logout: () => void;
 }
 
@@ -10,19 +15,30 @@ const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('tof_token'));
+  const [role, setRole] = useState<Role | null>(() => (sessionStorage.getItem('tof_role') as Role | null));
+  const [staffId, setStaffId] = useState<string | null>(() => sessionStorage.getItem('tof_staffId'));
 
-  const login = (t: string) => {
-    setToken(t);
+  const login = (t: string, r: Role, sid?: string) => {
+    setToken(t); setRole(r); setStaffId(sid ?? null);
     sessionStorage.setItem('tof_token', t);
+    sessionStorage.setItem('tof_role', r);
+    if (sid) sessionStorage.setItem('tof_staffId', sid);
+    else sessionStorage.removeItem('tof_staffId');
   };
 
   const logout = () => {
-    setToken(null);
+    setToken(null); setRole(null); setStaffId(null);
     sessionStorage.removeItem('tof_token');
+    sessionStorage.removeItem('tof_role');
+    sessionStorage.removeItem('tof_staffId');
   };
 
   return (
-    <AuthContext.Provider value={{ isLoggedIn: !!token, login, logout }}>
+    <AuthContext.Provider value={{
+      isLoggedIn: !!token, role, staffId,
+      isAdmin: role === 'admin', isStaff: role === 'staff',
+      login, logout,
+    }}>
       {children}
     </AuthContext.Provider>
   );

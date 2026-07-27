@@ -77,9 +77,24 @@ gas/
 - 時刻("09:00")・年月の自動変換を防ぐため GAS はデータ列をテキスト書式に固定する。
 - 接続手順は [gas/SETUP.md](gas/SETUP.md) を参照。
 
+## 認証・役割
+
+- ログインは2種類（`/` のタブで切替）: **事務局（admin）**＝メール+パスワード、**従業員（staff）**＝職員番号+パスワード。
+- AuthContext が role(admin/staff)+staffId を保持。App.tsx は AdminGuard / StaffGuard で役割別にルート保護。
+- 従業員アプリは同一サイト内の `/me` 以下。スマホ/PC両対応（レスポンシブ）。
+- GAS: セッションに staffId を保持。従業員アクション（STAFF_ACTIONS）は role=staff 必須で session.staffId のデータのみ操作。staff シートに職員番号・パスワードハッシュ列。パスワードは管理者が StaffDetail で発行（setStaffPassword）、従業員は設定で変更。
+
 ## ルーティング（HashRouter）
 
-- `#/` - 事務局ログイン
+### 従業員（要 staff ログイン）
+- `#/me` - 打刻ホーム（出勤/退勤・本日状況）
+- `#/me/shifts` - シフト希望申請（月別・区分を日ごとに複数選択）
+- `#/me/overtime` - 時間外申請（申請→事務局が承認・実績確定）
+- `#/me/leave` - 休暇申請（残表示・日/時間単位で申請）
+- `#/me/settings` - パスワード変更
+
+### 事務局（要 admin ログイン）
+- `#/` - ログイン（事務局/従業員タブ）
 - `#/dashboard` - ダッシュボード（要認証）
 - `#/labor/staff` - 職員名簿
 - `#/labor/staff/new` - 新規職員登録

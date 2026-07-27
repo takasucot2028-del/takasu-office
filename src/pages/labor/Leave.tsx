@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
-import { listStaff, listLeave, addLeave, deleteLeave, computeLeaveBalance, genId, todayStr } from '../../api/data';
+import { listStaff, listLeave, addLeave, deleteLeave, setLeaveStatus, computeLeaveBalance, genId, todayStr } from '../../api/data';
 import { EMPLOYMENT_TYPE_LABELS, standardLeaveGrant, LEAVE_HOURS_PER_DAY } from '../../utils/constants';
 import type { LeaveKind, LeaveRecord, Staff } from '../../types';
 
@@ -77,6 +77,7 @@ export default function Leave() {
       id: genId('lv'), staffId, kind, date, note,
       days: effUnit === 'day' ? v : 0,
       hours: effUnit === 'hour' ? v : 0,
+      status: 'approved', // 事務局が直接登録する分は承認済み
     };
     setSaving(true);
     try {
@@ -100,7 +101,7 @@ export default function Leave() {
     if (!confirm(`${selectedStaff.lastName} ${selectedStaff.firstName} さんに 標準付与 ${g.days}日 を付与します。よろしいですか？`)) return;
     setSaving(true);
     try {
-      await addLeave({ id: genId('lv'), staffId, kind: 'grant', date: todayStr(), days: g.days, hours: 0, note: `標準付与（${typeLabel}）` });
+      await addLeave({ id: genId('lv'), staffId, kind: 'grant', date: todayStr(), days: g.days, hours: 0, status: 'approved', note: `標準付与（${typeLabel}）` });
       setVersion(v => v + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : '標準付与に失敗しました');
@@ -118,6 +119,16 @@ export default function Leave() {
       setError(err instanceof Error ? err.message : '有給記録の削除に失敗しました');
     }
   };
+
+  const changeStatus = async (id: string, status: 'approved' | 'rejected') => {
+    try {
+      await setLeaveStatus(id, status);
+      setVersion(v => v + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '状態の更新に失敗しました');
+    }
+  };
+  const pending = records.filter(r => r.status === 'requested');
 
   return (
     <PageContainer title="有給休暇管理">
@@ -145,6 +156,25 @@ export default function Leave() {
             <SummaryTile label="取得合計" value={`${summary.usedDays}日`} sub={`${summary.usedHours}h`} />
             <SummaryTile label="残（1日=7.5h）" value={`${summary.balanceDays}日`} sub={`${summary.balanceHours}h`} highlight />
           </div>
+
+          {/* 承認待ちの休暇申請 */}
+          {pending.length > 0 && (
+            <Card className="mb-4 border-yellow-300">
+              <h2 className="font-bold text-gray-800 mb-3">承認待ちの休暇申請（{pending.length}件）</h2>
+              <div className="space-y-2">
+                {pending.map(r => (
+                  <div key={r.id} className="flex items-center gap-3 flex-wrap text-sm">
+                    <span className="font-medium">{r.date}</span>
+                    <span>{r.hours > 0 ? `${r.hours}時間` : `${r.days}日`}</span>
+                    {r.note && <span className="text-xs text-gray-500">{r.note}</span>}
+                    <div className="flex-1" />
+                    <Button size="sm" onClick={() => changeStatus(r.id, 'approved')}>承認</Button>
+                    <Button size="sm" variant="secondary" onClick={() => changeStatus(r.id, 'rejected')}>却下</Button>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
 
           {/* 標準付与 */}
           {selectedStaff && (
@@ -212,12 +242,15 @@ export default function Leave() {
                   <Th>日付</Th>
                   <Th>種別</Th>
                   <Th>日数/時間</Th>
+                  <Th>状態</Th>
                   <Th>備考</Th>
                   <Th className="w-16"></Th>
                 </tr>
               </thead>
               <tbody>
-                {records.map(r => (
+                {records.map(r => {
+                  const st = r.status || 'approved';
+                  return (
                   <tr key={r.id}>
                     <Td>{r.date}</Td>
                     <Td>
@@ -226,15 +259,21 @@ export default function Leave() {
                       </Badge>
                     </Td>
                     <Td>{r.hours > 0 ? `${r.hours}時間` : `${r.days}日`}</Td>
+                    <Td>
+                      <Badge color={st === 'approved' ? 'green' : st === 'requested' ? 'yellow' : 'red'}>
+                        {st === 'approved' ? '承認済' : st === 'requested' ? '申請中' : '却下'}
+                      </Badge>
+                    </Td>
                     <Td>{r.note}</Td>
                     <Td>
                       <Button variant="ghost" size="sm" onClick={() => handleDelete(r.id)}>削除</Button>
                     </Td>
                   </tr>
-                ))}
+                  );
+                })}
                 {records.length === 0 && (
                   <tr>
-                    <Td className="text-center text-gray-400 py-8" colSpan={5}>
+                    <Td className="text-center text-gray-400 py-8" colSpan={6}>
                       記録がありません
                     </Td>
                   </tr>

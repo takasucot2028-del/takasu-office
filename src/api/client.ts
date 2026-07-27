@@ -5,7 +5,7 @@
 import type {
   Staff, AttendanceRecord, LeaveRecord,
   ShiftPattern, AvailabilityRecord, ConfirmedShift, WorkLocation,
-  OvertimeRecord, CompLeaveUse,
+  OvertimeRecord, CompLeaveUse, RequestStatus,
 } from '../types';
 
 export interface ApiResponse<T = unknown> {
@@ -41,6 +41,33 @@ export const adminLogin = (email: string, password: string) =>
 
 export const changePassword = (token: string, oldPassword: string, newPassword: string) =>
   request<void>('changePassword', { token, oldPassword, newPassword });
+
+// === 従業員ログイン・自分用 ===
+export const staffLogin = (employeeNumber: string, password: string) =>
+  request<Staff>('staffLogin', { employeeNumber, password });
+export const getMyProfile = (token: string) => request<Staff>('getMyProfile', { token });
+export const getMyAttendance = (month: string, token: string) =>
+  request<AttendanceRecord[]>('getMyAttendance', { month, token });
+export const punch = (punchType: 'in' | 'out', token: string) =>
+  request<{ date: string; time: string; punchType: string }>('punch', { punchType, token });
+export const getMyAvailability = (month: string, token: string) =>
+  request<AvailabilityRecord[]>('getMyAvailability', { month, token });
+export const saveMyAvailability = (month: string, records: AvailabilityRecord[], token: string) =>
+  request<void>('saveMyAvailability', { month, records, token });
+export const getMyOvertime = (token: string) => request<OvertimeRecord[]>('getMyOvertime', { token });
+export const addMyOvertime = (record: Partial<OvertimeRecord>, token: string) =>
+  request<void>('addMyOvertime', { record, token });
+export const getMyLeave = (token: string) => request<LeaveRecord[]>('getMyLeave', { token });
+export const addMyLeaveRequest = (record: Partial<LeaveRecord>, token: string) =>
+  request<void>('addMyLeaveRequest', { record, token });
+export const staffChangePassword = (token: string, oldPassword: string, newPassword: string) =>
+  request<void>('staffChangePassword', { token, oldPassword, newPassword });
+
+// === 管理者：従業員パスワード発行・休暇承認 ===
+export const setStaffPassword = (staffId: string, password: string, token: string) =>
+  request<void>('setStaffPassword', { staffId, password, token });
+export const setLeaveStatus = (id: string, status: RequestStatus, token: string) =>
+  request<void>('setLeaveStatus', { id, status, token });
 
 // === 職員 ===
 export const getStaff = (token: string) =>

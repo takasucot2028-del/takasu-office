@@ -23,6 +23,10 @@ export const usingGas = USE_GAS;
 function token(): string {
   return sessionStorage.getItem('tof_token') || '';
 }
+// ログイン中の従業員ID（デモモードで自分用データの対象に使う）
+function staffId(): string {
+  return sessionStorage.getItem('tof_staffId') || '';
+}
 
 // ApiResponse から data を取り出す。失敗時は fallback を返す。
 function unwrap<T>(res: { success: boolean; data?: T; error?: string }, fallback: T): T {
@@ -45,8 +49,9 @@ export function computeLeaveBalance(records: LeaveRecord[]): LeaveBalance {
   const hpd = LEAVE_HOURS_PER_DAY;
   const toHours = (r: LeaveRecord) => (r.days || 0) * hpd + (r.hours || 0);
   const r1 = (n: number) => Math.round(n * 10) / 10;
-  const grantedHours = records.filter(r => r.kind === 'grant').reduce((s, r) => s + toHours(r), 0);
-  const usedHours = records.filter(r => r.kind === 'use').reduce((s, r) => s + toHours(r), 0);
+  const approved = (r: LeaveRecord) => !r.status || r.status === 'approved'; // 旧データ（空）は承認扱い
+  const grantedHours = records.filter(r => r.kind === 'grant' && approved(r)).reduce((s, r) => s + toHours(r), 0);
+  const usedHours = records.filter(r => r.kind === 'use' && approved(r)).reduce((s, r) => s + toHours(r), 0);
   const balanceHours = grantedHours - usedHours;
   return {
     grantedHours: r1(grantedHours), usedHours: r1(usedHours), balanceHours: r1(balanceHours),
@@ -72,6 +77,98 @@ export async function changeAdminPassword(oldPassword: string, newPassword: stri
   if (!USE_GAS) { local.changeAdminPassword(oldPassword, newPassword); return; }
   const res = await gas.changePassword(token(), oldPassword, newPassword);
   if (!res.success) throw new Error(res.error || 'パスワードの変更に失敗しました');
+}
+
+// === 従業員ログイン・自分用 ===
+export interface StaffLoginResult { success: boolean; token?: string; staffId?: string; staff?: Staff; error?: string }
+
+export async function staffLogin(employeeNumber: string, password: string): Promise<StaffLoginResult> {
+  if (!USE_GAS) {
+    const s = local.verifyStaffLogin(employeeNumber, password);
+    return s ? { success: true, token: `demo-${Date.now()}`, staffId: s.id, staff: s }
+             : { success: false, error: '職員番号またはパスワードが正しくありません' };
+  }
+  const res = await gas.staffLogin(employeeNumber, password);
+  return { success: res.success, token: res.token, staffId: res.data?.id, staff: res.data, error: res.error };
+}
+
+export async function getMyProfile(): Promise<Staff | null> {
+  if (!USE_GAS) return local.getStaff(staffId());
+  const res = await gas.getMyProfile(token());
+  return res.success ? (res.data ?? null) : null;
+}
+
+export async function getMyAttendance(month: string): Promise<AttendanceRecord[]> {
+  if (!USE_GAS) return local.listAttendance(staffId(), month);
+  return unwrap(await gas.getMyAttendance(month, token()), []);
+}
+
+export async function punch(punchType: 'in' | 'out'): Promise<{ date: string; time: string; punchType: string }> {
+  if (!USE_GAS) return local.punchLocal(staffId(), punchType);
+  const res = await gas.punch(punchType, token());
+  if (!res.success || !res.data) throw new Error(res.error || '打刻に失敗しました');
+  return res.data;
+}
+
+export async function getMyAvailability(month: string): Promise<AvailabilityRecord[]> {
+  if (!USE_GAS) return local.listAvailabilityByMonth(month).filter(r => r.staffId === staffId());
+  return unwrap(await gas.getMyAvailability(month, token()), []);
+}
+export async function saveMyAvailability(month: string, records: AvailabilityRecord[]): Promise<void> {
+  if (!USE_GAS) { local.saveMonthAvailability(month, [staffId()], records); return; }
+  const res = await gas.saveMyAvailability(month, records, token());
+  if (!res.success) throw new Error(res.error || '希望の保存に失敗しました');
+}
+
+export async function getMyOvertime(): Promise<OvertimeRecord[]> {
+  if (!USE_GAS) return local.listOvertimeByStaff(staffId());
+  return unwrap(await gas.getMyOvertime(token()), []);
+}
+export async function addMyOvertime(record: Partial<OvertimeRecord>): Promise<void> {
+  if (!USE_GAS) {
+    local.addOvertime({
+      id: local.genId('ot'), staffId: staffId(), date: record.date || '', kind: record.kind || 'overtime',
+      appliedHours: record.appliedHours || 0, reason: record.reason || '',
+      status: 'applied', disposition: '', resultHours: 0, note: '',
+    });
+    return;
+  }
+  const res = await gas.addMyOvertime(record, token());
+  if (!res.success) throw new Error(res.error || '時間外申請に失敗しました');
+}
+
+export async function getMyLeave(): Promise<LeaveRecord[]> {
+  if (!USE_GAS) return local.listLeave(staffId());
+  return unwrap(await gas.getMyLeave(token()), []);
+}
+export async function addMyLeaveRequest(record: Partial<LeaveRecord>): Promise<void> {
+  if (!USE_GAS) {
+    local.addLeave({
+      id: local.genId('lv'), staffId: staffId(), kind: 'use', date: record.date || '',
+      days: record.days || 0, hours: record.hours || 0, status: 'requested', note: record.note || '',
+    });
+    return;
+  }
+  const res = await gas.addMyLeaveRequest(record, token());
+  if (!res.success) throw new Error(res.error || '休暇申請に失敗しました');
+}
+
+export async function changeStaffPassword(oldPassword: string, newPassword: string): Promise<void> {
+  if (!USE_GAS) { local.staffChangePasswordLocal(staffId(), oldPassword, newPassword); return; }
+  const res = await gas.staffChangePassword(token(), oldPassword, newPassword);
+  if (!res.success) throw new Error(res.error || 'パスワードの変更に失敗しました');
+}
+
+// === 管理者：従業員パスワード発行・休暇承認 ===
+export async function setStaffPassword(sid: string, password: string): Promise<void> {
+  if (!USE_GAS) { local.setStaffPassword(sid, password); return; }
+  const res = await gas.setStaffPassword(sid, password, token());
+  if (!res.success) throw new Error(res.error || 'パスワードの設定に失敗しました');
+}
+export async function setLeaveStatus(id: string, status: LeaveRecord['status']): Promise<void> {
+  if (!USE_GAS) { local.setLeaveStatus(id, status); return; }
+  const res = await gas.setLeaveStatus(id, status, token());
+  if (!res.success) throw new Error(res.error || '状態の更新に失敗しました');
 }
 
 // === 職員 ===

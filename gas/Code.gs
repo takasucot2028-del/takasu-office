@@ -26,7 +26,7 @@ var SHEETS = {
     ['position', '役職・担当'], ['hireDate', '入職日'], ['retireDate', '退職日'], ['status', '在職状況'],
     ['phone', '電話番号'], ['email', 'メールアドレス'], ['address', '住所'],
     ['qualifications', '保有資格'], ['note', '備考'], ['createdAt', '作成日時'], ['updatedAt', '更新日時'],
-    ['hourlyWage', '時給'],
+    ['hourlyWage', '時給'], ['employeeNumber', '職員番号'], ['passwordHash', 'パスワードハッシュ'],
   ] },
   overtime: { name: '時間外', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['kind', '種別'],
@@ -41,7 +41,7 @@ var SHEETS = {
     ['startTime', '出勤'], ['endTime', '退勤'], ['breakMinutes', '休憩(分)'], ['note', '備考'],
   ] },
   leave: { name: '有給休暇', columns: [
-    ['id', 'ID'], ['staffId', '職員ID'], ['kind', '種別'], ['date', '日付'], ['days', '日数'], ['note', '備考'], ['hours', '時間'],
+    ['id', 'ID'], ['staffId', '職員ID'], ['kind', '種別'], ['date', '日付'], ['days', '日数'], ['note', '備考'], ['hours', '時間'], ['status', '状態'],
   ] },
   shift_patterns: { name: 'シフト区分', columns: [
     ['id', 'ID'], ['name', '区分名'], ['startTime', '開始'], ['endTime', '終了'], ['order', '並び順'], ['location', '対象'],
@@ -143,9 +143,9 @@ function hashPassword(pw) {
 // --- セッション管理（CacheService・TTL 6時間）---
 var SESSION_TTL_SECONDS = 21600;
 
-function issueToken(role) {
+function issueToken(role, staffId) {
   const token = genId() + genId(); // 24文字
-  CacheService.getScriptCache().put('sess_' + token, JSON.stringify({ role: role }), SESSION_TTL_SECONDS);
+  CacheService.getScriptCache().put('sess_' + token, JSON.stringify({ role: role, staffId: staffId || '' }), SESSION_TTL_SECONDS);
   return token;
 }
 function getSession(token) {
@@ -155,12 +155,22 @@ function getSession(token) {
   try { return JSON.parse(raw); } catch (err) { return null; }
 }
 
-// 認可: adminLogin 以外はすべて管理者トークン必須。
-var PUBLIC_ACTIONS = { adminLogin: true };
+// 認可: 公開＝ログイン系。従業員アクションは role=staff（自分のデータのみ）。それ以外は管理者専用。
+var PUBLIC_ACTIONS = { adminLogin: true, staffLogin: true };
+var STAFF_ACTIONS = {
+  getMyProfile: true, getMyAttendance: true, punch: true,
+  getMyAvailability: true, saveMyAvailability: true,
+  getMyOvertime: true, addMyOvertime: true,
+  getMyLeave: true, addMyLeaveRequest: true, staffChangePassword: true,
+};
 function enforceAuth(action, body) {
   if (PUBLIC_ACTIONS[action]) return;
   const session = getSession(body.token);
   if (!session) throw new Error('認証が必要です。再度ログインしてください');
+  if (STAFF_ACTIONS[action]) {
+    if (session.role !== 'staff') throw new Error('従業員のログインが必要です');
+    return;
+  }
   if (session.role !== 'admin') throw new Error('管理者権限が必要です');
 }
 
@@ -178,6 +188,47 @@ function doPost(e) {
         break;
       case 'changePassword':
         result = handleChangePassword(body.oldPassword, body.newPassword);
+        break;
+      // 従業員ログイン・自分用（session.staffId のみ操作）
+      case 'staffLogin':
+        result = handleStaffLogin(body.employeeNumber, body.password);
+        break;
+      case 'getMyProfile':
+        result = handleGetMyProfile(getSession(body.token));
+        break;
+      case 'getMyAttendance':
+        result = handleGetMyAttendance(getSession(body.token), body.month);
+        break;
+      case 'punch':
+        result = handlePunch(getSession(body.token), body.punchType);
+        break;
+      case 'getMyAvailability':
+        result = handleGetMyAvailability(getSession(body.token), body.month);
+        break;
+      case 'saveMyAvailability':
+        result = handleSaveMyAvailability(getSession(body.token), body.month, body.records);
+        break;
+      case 'getMyOvertime':
+        result = handleGetMyOvertime(getSession(body.token));
+        break;
+      case 'addMyOvertime':
+        result = handleAddMyOvertime(getSession(body.token), body.record);
+        break;
+      case 'getMyLeave':
+        result = handleGetMyLeave(getSession(body.token));
+        break;
+      case 'addMyLeaveRequest':
+        result = handleAddMyLeaveRequest(getSession(body.token), body.record);
+        break;
+      case 'staffChangePassword':
+        result = handleStaffChangePassword(getSession(body.token), body.oldPassword, body.newPassword);
+        break;
+      // 管理者：従業員パスワード発行・休暇申請の承認
+      case 'setStaffPassword':
+        result = handleSetStaffPassword(body.staffId, body.password);
+        break;
+      case 'setLeaveStatus':
+        result = handleSetLeaveStatus(body.id, body.status);
         break;
       case 'getStaff':
         result = handleGetStaff();
@@ -329,7 +380,11 @@ function handleChangePassword(oldPassword, newPassword) {
 function handleGetStaff() {
   const sheet = getSheet('staff');
   const list = sheetToObjects(sheet, 'staff');
-  list.forEach(function (s) { s.hourlyWage = Number(s.hourlyWage) || 0; });
+  list.forEach(function (s) {
+    s.hourlyWage = Number(s.hourlyWage) || 0;
+    s.hasPassword = !!(s.passwordHash && String(s.passwordHash).length);
+    delete s.passwordHash; // ハッシュは返さない
+  });
   return { success: true, data: list };
 }
 
@@ -343,15 +398,30 @@ function handleUpsertStaff(staff) {
   next.updatedAt = now;
   if (rowIndex < 0) {
     next.createdAt = staff.createdAt || now;
+    next.passwordHash = ''; // 新規はパスワード未設定
     sheet.appendRow(objectToRow('staff', next));
   } else {
-    // createdAt は既存値を保持
+    // createdAt と パスワードハッシュ は既存値を保持（フォームからは送られないため）
     const existingCreated = sheet.getRange(rowIndex, colNum('staff', 'createdAt')).getValue();
     next.createdAt = existingCreated || staff.createdAt || now;
+    next.passwordHash = sheet.getRange(rowIndex, colNum('staff', 'passwordHash')).getValue();
     const row = objectToRow('staff', next);
     sheet.getRange(rowIndex, 1, 1, row.length).setValues([row]);
   }
+  delete next.passwordHash;
   return { success: true, data: next };
+}
+
+// 管理者：従業員のログインパスワードを設定/リセット
+function handleSetStaffPassword(staffId, password) {
+  if (!password || String(password).length < 4) {
+    return { success: false, error: 'パスワードは4文字以上で入力してください' };
+  }
+  const sheet = getSheet('staff');
+  const rowIndex = findRowIndex(sheet, 0, staffId);
+  if (rowIndex < 0) return { success: false, error: '職員が見つかりません' };
+  sheet.getRange(rowIndex, colNum('staff', 'passwordHash')).setValue(hashPassword(password));
+  return { success: true };
 }
 
 // --- ハンドラー：勤怠 ---
@@ -541,7 +611,7 @@ function handleDeleteCompUse(id) {
 // --- ハンドラー：本日の休暇（有給取得・代休取得） ---
 function handleGetAbsencesByDate(date) {
   var leave = sheetToObjects(getSheet('leave'), 'leave').filter(function (r) {
-    return String(r.date) === String(date) && r.kind === 'use';
+    return String(r.date) === String(date) && r.kind === 'use' && String(r.status || 'approved') === 'approved';
   });
   leave.forEach(function (r) { r.days = Number(r.days) || 0; r.hours = Number(r.hours) || 0; });
   var comp = sheetToObjects(getSheet('comp_leave_use'), 'comp_leave_use').filter(function (r) {
@@ -555,13 +625,14 @@ function handleGetAbsencesByDate(date) {
 function handleGetLeave(staffId) {
   const sheet = getSheet('leave');
   const records = sheetToObjects(sheet, 'leave').filter(function (r) { return String(r.staffId) === String(staffId); });
-  records.forEach(function (r) { r.days = Number(r.days) || 0; r.hours = Number(r.hours) || 0; });
+  records.forEach(function (r) { r.days = Number(r.days) || 0; r.hours = Number(r.hours) || 0; r.status = String(r.status || 'approved'); });
   records.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
   return { success: true, data: records };
 }
 
 function handleAddLeave(record) {
   if (!record || !record.id) return { success: false, error: '有給記録が不正です' };
+  if (!record.status) record.status = 'approved';
   const sheet = getSheet('leave');
   sheet.appendRow(objectToRow('leave', record));
   return { success: true };
@@ -572,5 +643,170 @@ function handleDeleteLeave(id) {
   const rowIndex = findRowIndex(sheet, 0, id);
   if (rowIndex < 0) return { success: false, error: '有給記録が見つかりません' };
   sheet.deleteRow(rowIndex);
+  return { success: true };
+}
+
+// 管理者：休暇申請の承認/却下
+function handleSetLeaveStatus(id, status) {
+  const sheet = getSheet('leave');
+  const rowIndex = findRowIndex(sheet, 0, id);
+  if (rowIndex < 0) return { success: false, error: '有給記録が見つかりません' };
+  sheet.getRange(rowIndex, colNum('leave', 'status')).setValue(status);
+  return { success: true };
+}
+
+// ============================================================
+// 従業員（staff）自分用ハンドラー。session.staffId のデータのみ操作する。
+// ============================================================
+function staffOf_(session) {
+  const id = session && session.staffId;
+  if (!id) throw new Error('従業員のログインが必要です');
+  const staff = sheetToObjects(getSheet('staff'), 'staff').find(function (s) { return s.id === id; });
+  if (!staff) throw new Error('職員が見つかりません');
+  return staff;
+}
+function stripStaff_(s) {
+  const out = {}; Object.keys(s).forEach(function (k) { if (k !== 'passwordHash') out[k] = s[k]; });
+  out.hourlyWage = Number(out.hourlyWage) || 0;
+  return out;
+}
+
+function handleStaffLogin(employeeNumber, password) {
+  const num = String(employeeNumber || '').trim();
+  if (!num) return { success: false, error: '職員番号を入力してください' };
+  const staff = sheetToObjects(getSheet('staff'), 'staff').find(function (s) {
+    return String(s.employeeNumber || '').trim() === num;
+  });
+  if (!staff || staff.status === 'retired') return { success: false, error: '職員番号またはパスワードが正しくありません' };
+  if (!staff.passwordHash || String(staff.passwordHash) !== hashPassword(password)) {
+    return { success: false, error: '職員番号またはパスワードが正しくありません' };
+  }
+  return { success: true, token: issueToken('staff', staff.id), role: 'staff', staff: stripStaff_(staff) };
+}
+
+function handleGetMyProfile(session) {
+  return { success: true, data: stripStaff_(staffOf_(session)) };
+}
+
+function handleGetMyAttendance(session, month) {
+  const staff = staffOf_(session);
+  const records = sheetToObjects(getSheet('attendance'), 'attendance').filter(function (r) {
+    return String(r.staffId) === staff.id && String(r.date).slice(0, 7) === month;
+  });
+  records.forEach(function (r) { r.breakMinutes = Number(r.breakMinutes) || 0; });
+  return { success: true, data: records };
+}
+
+// 打刻（出勤=in / 退勤=out）。サーバー時刻で当日レコードを更新。
+function handlePunch(session, punchType) {
+  const staff = staffOf_(session);
+  const tz = Session.getScriptTimeZone();
+  const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const now = Utilities.formatDate(new Date(), tz, 'HH:mm');
+  const sheet = getSheet('attendance');
+  const data = sheet.getDataRange().getValues();
+  let rowIndex = -1;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][1]) === staff.id && String(data[i][2]) === today) { rowIndex = i + 1; break; }
+  }
+  if (rowIndex < 0) {
+    const rec = {
+      id: staff.id + '_' + today, staffId: staff.id, date: today, dayType: 'work',
+      startTime: punchType === 'in' ? now : '', endTime: punchType === 'out' ? now : '',
+      breakMinutes: 0, note: '',
+    };
+    sheet.appendRow(objectToRow('attendance', rec));
+  } else {
+    const col = punchType === 'in' ? colNum('attendance', 'startTime') : colNum('attendance', 'endTime');
+    sheet.getRange(rowIndex, col).setValue(now);
+    sheet.getRange(rowIndex, colNum('attendance', 'dayType')).setValue('work');
+  }
+  return { success: true, data: { date: today, time: now, punchType: punchType } };
+}
+
+function handleGetMyAvailability(session, month) {
+  const staff = staffOf_(session);
+  const records = sheetToObjects(getSheet('availability'), 'availability').filter(function (r) {
+    return String(r.staffId) === staff.id && String(r.date).slice(0, 7) === month;
+  });
+  return { success: true, data: records };
+}
+
+// 自分の当月希望を置換
+function handleSaveMyAvailability(session, month, records) {
+  const staff = staffOf_(session);
+  const sheet = getSheet('availability');
+  const ncol = colKeys('availability').length;
+  const data = sheet.getDataRange().getValues();
+  const kept = [];
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][1]) === staff.id && String(data[i][2]).slice(0, 7) === month) continue;
+    kept.push(data[i].slice(0, ncol));
+  }
+  const mine = (records || []).map(function (r) {
+    return objectToRow('availability', { id: r.id, staffId: staff.id, date: r.date, patternId: r.patternId });
+  });
+  const out = [colLabels('availability')].concat(kept).concat(mine);
+  sheet.clearContents();
+  sheet.getRange(1, 1, sheet.getMaxRows(), ncol).setNumberFormat('@');
+  sheet.getRange(1, 1, out.length, ncol).setValues(out);
+  sheet.setFrozenRows(1);
+  return { success: true };
+}
+
+function handleGetMyOvertime(session) {
+  const staff = staffOf_(session);
+  const records = sheetToObjects(getSheet('overtime'), 'overtime').filter(function (r) { return String(r.staffId) === staff.id; });
+  records.forEach(function (r) { r.appliedHours = Number(r.appliedHours) || 0; r.resultHours = Number(r.resultHours) || 0; });
+  records.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+  return { success: true, data: records };
+}
+
+// 従業員の時間外申請（status=applied、実績・処理は事務局側）
+function handleAddMyOvertime(session, record) {
+  const staff = staffOf_(session);
+  if (!record || !record.date) return { success: false, error: '申請内容が不正です' };
+  const rec = {
+    id: genId('ot'), staffId: staff.id, date: record.date,
+    kind: record.kind || 'overtime',
+    appliedHours: Number(record.appliedHours) || 0, reason: record.reason || '',
+    status: 'applied', disposition: '', resultHours: 0, note: '',
+  };
+  getSheet('overtime').appendRow(objectToRow('overtime', rec));
+  return { success: true };
+}
+
+function handleGetMyLeave(session) {
+  const staff = staffOf_(session);
+  const records = sheetToObjects(getSheet('leave'), 'leave').filter(function (r) { return String(r.staffId) === staff.id; });
+  records.forEach(function (r) { r.days = Number(r.days) || 0; r.hours = Number(r.hours) || 0; r.status = String(r.status || 'approved'); });
+  records.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+  return { success: true, data: records };
+}
+
+// 従業員の休暇申請（kind=use、status=requested）
+function handleAddMyLeaveRequest(session, record) {
+  const staff = staffOf_(session);
+  if (!record || !record.date) return { success: false, error: '申請内容が不正です' };
+  const rec = {
+    id: genId('lv'), staffId: staff.id, kind: 'use', date: record.date,
+    days: Number(record.days) || 0, hours: Number(record.hours) || 0,
+    status: 'requested', note: record.note || '',
+  };
+  getSheet('leave').appendRow(objectToRow('leave', rec));
+  return { success: true };
+}
+
+function handleStaffChangePassword(session, oldPassword, newPassword) {
+  const staff = staffOf_(session);
+  if (!newPassword || String(newPassword).length < 4) {
+    return { success: false, error: 'パスワードは4文字以上で入力してください' };
+  }
+  if (!staff.passwordHash || String(staff.passwordHash) !== hashPassword(oldPassword)) {
+    return { success: false, error: '現在のパスワードが正しくありません' };
+  }
+  const sheet = getSheet('staff');
+  const rowIndex = findRowIndex(sheet, 0, staff.id);
+  sheet.getRange(rowIndex, colNum('staff', 'passwordHash')).setValue(hashPassword(newPassword));
   return { success: true };
 }
