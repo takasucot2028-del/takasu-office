@@ -322,10 +322,15 @@ function sheetToObjects(sheet, key) {
     const obj = {};
     keys.forEach(function (k, i) {
       const v = row[i];
-      // 万一 Date 型で入っていた場合は yyyy-MM-dd の文字列へ戻す（通常はテキスト書式のため文字列）。
-      obj[k] = (Object.prototype.toString.call(v) === '[object Date]')
-        ? Utilities.formatDate(v, tz, 'yyyy-MM-dd')
-        : (v === null || v === undefined ? '' : v);
+      // Date 型で入っていた場合、時刻のみ（Sheetsの基準日 1899-12-30）は HH:mm、
+      // それ以外は yyyy-MM-dd に戻す（通常はテキスト書式のため文字列で入る）。
+      if (Object.prototype.toString.call(v) === '[object Date]') {
+        obj[k] = (v.getFullYear() <= 1900)
+          ? Utilities.formatDate(v, tz, 'HH:mm')
+          : Utilities.formatDate(v, tz, 'yyyy-MM-dd');
+      } else {
+        obj[k] = (v === null || v === undefined) ? '' : v;
+      }
     });
     return obj;
   });
@@ -704,21 +709,27 @@ function handlePunch(session, punchType) {
   const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
   const now = Utilities.formatDate(new Date(), tz, 'HH:mm');
   const sheet = getSheet('attendance');
+  const ncol = colKeys('attendance').length;
   const data = sheet.getDataRange().getValues();
   let rowIndex = -1;
   for (let i = 1; i < data.length; i++) {
     if (String(data[i][1]) === staff.id && String(data[i][2]) === today) { rowIndex = i + 1; break; }
   }
   if (rowIndex < 0) {
+    rowIndex = sheet.getLastRow() + 1;
+    // 行をテキスト書式に固定してから書き込む（"13:36" が時刻値に変換されるのを防ぐ）
+    sheet.getRange(rowIndex, 1, 1, ncol).setNumberFormat('@');
     const rec = {
       id: staff.id + '_' + today, staffId: staff.id, date: today, dayType: 'work',
       startTime: punchType === 'in' ? now : '', endTime: punchType === 'out' ? now : '',
       breakMinutes: 0, note: '',
     };
-    sheet.appendRow(objectToRow('attendance', rec));
+    sheet.getRange(rowIndex, 1, 1, ncol).setValues([objectToRow('attendance', rec)]);
   } else {
     const col = punchType === 'in' ? colNum('attendance', 'startTime') : colNum('attendance', 'endTime');
-    sheet.getRange(rowIndex, col).setValue(now);
+    const cell = sheet.getRange(rowIndex, col);
+    cell.setNumberFormat('@');
+    cell.setValue(now);
     sheet.getRange(rowIndex, colNum('attendance', 'dayType')).setValue('work');
   }
   return { success: true, data: { date: today, time: now, punchType: punchType } };
