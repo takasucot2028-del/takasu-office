@@ -7,7 +7,10 @@ import {
   saveMonthAvailability, saveMonthConfirmed, getShiftMonthData, genId,
 } from '../../api/data';
 import { WORK_LOCATION_LABELS, WEEKDAY_LABELS, staffInLocation } from '../../utils/constants';
+import { isClosedDay, isNationalHoliday } from '../../utils/holidays';
 import type { Staff, ShiftPattern, WorkLocation, AvailabilityRecord, ConfirmedShift } from '../../types';
+
+interface ShiftProblem { loc: WorkLocation; date: string; missing: ShiftPattern[] }
 
 type Mode = 'request' | 'confirm';
 
@@ -64,6 +67,12 @@ export default function Shifts() {
     () => allStaff.filter(s => s.status === 'active' && staffInLocation(s.workLocation, location)),
     [allStaff, location]
   );
+  // 入力チェックで使う①②③（全場所共通の区分を order 順に3つ）
+  const slotPatterns = useMemo(
+    () => patterns.filter(p => p.location === '').slice().sort((a, b) => a.order - b.order).slice(0, 3),
+    [patterns]
+  );
+  const [checkResult, setCheckResult] = useState<{ problems: ShiftProblem[]; warn?: string } | null>(null);
 
   // 初回：職員・区分を読み込む
   useEffect(() => {
@@ -84,6 +93,7 @@ export default function Shifts() {
     setLoading(true);
     setMessage('');
     setMenu(null);
+    setCheckResult(null);
     (async () => {
       const { availability: avail, confirmed: conf } = await getShiftMonthData(month);
       if (!alive) return;
@@ -195,6 +205,36 @@ export default function Shifts() {
   const dayCount = (date: string) =>
     staffOfLoc.reduce((n, s) => n + (confIds(s.id, date).length ? 1 : 0), 0);
 
+  // 入力チェック：総体・B&G（海洋センター）の確定シフトに必要な区分が入っているか
+  //  ・総体の平日        … ③のみ必須（①②は常勤職員が勤務するため不問）
+  //  ・総体の休日・祝日   … ①②③すべて必須
+  //  ・海洋センターの全日 … ①②③すべて必須
+  // 現在編集中（未保存）の確定内容に対して判定する。
+  const runCheck = () => {
+    setMenu(null);
+    if (slotPatterns.length < 3) {
+      setCheckResult({ problems: [], warn: '区分①②③（全場所共通）が揃っていないためチェックできません。区分マスタをご確認ください。' });
+      return;
+    }
+    const [p1, p2, p3] = slotPatterns;
+    const locs = Object.keys(WORK_LOCATION_LABELS) as WorkLocation[];
+    const problems: ShiftProblem[] = [];
+    for (const date of days) {
+      const closed = isClosedDay(date);
+      for (const loc of locs) {
+        const required = loc === 'sotai' && !closed ? [p3] : [p1, p2, p3];
+        const suffix = `_${date}_${loc}`;
+        const covered = new Set<string>();
+        for (const [k, ids] of Object.entries(confMap)) {
+          if (k.endsWith(suffix)) for (const id of ids) covered.add(id);
+        }
+        const missing = required.filter(p => !covered.has(p.id));
+        if (missing.length) problems.push({ loc, date, missing });
+      }
+    }
+    setCheckResult({ problems });
+  };
+
   const exportExcel = () => {
     const header = ['職員', ...days.map(d => `${Number(d.slice(8))}(${WEEKDAY_LABELS[new Date(`${d}T00:00:00`).getDay()]})`)];
     if (mode === 'confirm') header.push('勤務日数', '実働時間');
@@ -249,6 +289,7 @@ export default function Shifts() {
           </div>
           <div className="flex-1" />
           <Link to="/labor/shift-patterns" className="text-xs text-emerald-700 hover:underline">区分マスタ →</Link>
+          <Button variant="secondary" size="sm" onClick={runCheck}>入力チェック</Button>
           {mode === 'confirm' && <Button variant="secondary" size="sm" onClick={handlePrint}>印刷</Button>}
           <Button variant="secondary" size="sm" onClick={exportExcel}>Excel出力</Button>
           <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? '保存中…' : '保存する'}</Button>
@@ -267,6 +308,60 @@ export default function Shifts() {
 
       {message && <Alert type="success">{message}</Alert>}
       {error && <Alert type="error">{error}</Alert>}
+
+      {checkResult && (
+        <Card className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-bold text-gray-800">入力チェック（{month}）</h2>
+            <button onClick={() => setCheckResult(null)} className="text-gray-400 hover:text-gray-600 text-sm">閉じる ✕</button>
+          </div>
+          {checkResult.warn ? (
+            <Alert type="warning">{checkResult.warn}</Alert>
+          ) : checkResult.problems.length === 0 ? (
+            <Alert type="success">総体・B&G（海洋センター）ともに、必要な区分がすべて入力されています。</Alert>
+          ) : (
+            <>
+              <p className="text-sm text-gray-600 mb-3">
+                未入力の箇所が <span className="font-bold text-red-600">{checkResult.problems.length}</span> 件あります。
+                （総体の平日は③のみ、総体の休日・祝日とB&Gの全日は①②③が必要です）
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {(Object.keys(WORK_LOCATION_LABELS) as WorkLocation[]).map(loc => {
+                  const list = checkResult.problems.filter(p => p.loc === loc);
+                  return (
+                    <div key={loc}>
+                      <div className="text-sm font-medium text-gray-700 mb-1">
+                        {WORK_LOCATION_LABELS[loc]}
+                        <span className="ml-2 text-xs text-gray-400">{list.length}件</span>
+                      </div>
+                      {list.length === 0 ? (
+                        <p className="text-xs text-emerald-600">すべて入力済み ✓</p>
+                      ) : (
+                        <ul className="text-sm divide-y divide-gray-100 border border-gray-100 rounded-md">
+                          {list.map(pr => {
+                            const wd = new Date(`${pr.date}T00:00:00`).getDay();
+                            const holiday = isNationalHoliday(pr.date);
+                            const tag = holiday ? '祝' : wd === 0 ? '日' : wd === 6 ? '土' : '平';
+                            return (
+                              <li key={pr.date} className="flex items-center justify-between px-3 py-1.5">
+                                <span className={holiday || wd === 0 ? 'text-red-600' : wd === 6 ? 'text-blue-600' : 'text-gray-700'}>
+                                  {Number(pr.date.slice(5, 7))}/{Number(pr.date.slice(8))}（{WEEKDAY_LABELS[wd]}{holiday ? '・祝' : ''}）
+                                  <span className="ml-1 text-xs text-gray-400">{tag}</span>
+                                </span>
+                                <span className="text-red-600 font-medium">{pr.missing.map(p => p.name).join('') } 未入力</span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </Card>
+      )}
       {staffLoaded && staffOfLoc.length === 0 && (
         <Alert type="info">
           {WORK_LOCATION_LABELS[location]}を主な勤務場所とする在職職員がいません。職員名簿で勤務場所を設定してください。
