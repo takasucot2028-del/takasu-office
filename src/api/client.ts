@@ -29,9 +29,20 @@ async function request<T>(action: string, payload?: Record<string, unknown>): Pr
       headers: { 'Content-Type': 'text/plain' }, // プリフライト回避のため text/plain
       body: JSON.stringify({ action, ...payload }),
     });
-    return await res.json();
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      // GAS が JSON でない応答（HTMLエラー/ログイン画面など）を返した場合
+      console.error(`GAS応答がJSONではありません [${action}] status=${res.status}:`, text.slice(0, 500));
+      const snippet = text.replace(/\s+/g, ' ').trim().slice(0, 120);
+      const hint = res.status >= 400
+        ? `サーバーエラー(${res.status})`
+        : 'サーバーがHTMLを返しました（GASのデプロイURL／アクセス権／実行時間をご確認ください）';
+      return { success: false, error: `${hint}: ${snippet}` };
+    }
   } catch (e) {
-    return { success: false, error: String(e) };
+    return { success: false, error: `通信に失敗しました: ${String(e)}` };
   }
 }
 
