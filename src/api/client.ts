@@ -6,7 +6,14 @@ import type {
   Staff, AttendanceRecord, LeaveRecord,
   ShiftPattern, AvailabilityRecord, ConfirmedShift, WorkLocation,
   OvertimeRecord, CompLeaveUse, RequestStatus, DocumentItem,
+  ExpenseCategory, Budget, Expense,
 } from '../types';
+
+/** 従業員の経費申請フォーム用コンテキスト（年度の予算行＋残額） */
+export interface ExpenseContext {
+  categories: ExpenseCategory[];
+  lines: { project: string; categoryId: string; budget: number; used: number; remaining: number }[];
+}
 
 export interface ApiResponse<T = unknown> {
   success: boolean;
@@ -80,6 +87,32 @@ export const saveDocument = (doc: DocumentItem, token: string) =>
   request<DocumentItem>('saveDocument', { doc, token });
 export const deleteDocument = (id: string, token: string) =>
   request<void>('deleteDocument', { id, token });
+
+// === 会計管理（事務局） ===
+export const getExpenseCategories = (token: string) =>
+  request<ExpenseCategory[]>('getExpenseCategories', { token });
+export const saveExpenseCategories = (categories: ExpenseCategory[], token: string) =>
+  request<{ saved: number }>('saveExpenseCategories', { categories, token });
+export const getBudgets = (fiscalYear: number, token: string) =>
+  request<Budget[]>('getBudgets', { fiscalYear, token });
+export const saveBudgets = (fiscalYear: number, records: Budget[], token: string) =>
+  request<void>('saveBudgets', { fiscalYear, records, token });
+export const getExpenses = (fiscalYear: number, token: string) =>
+  request<Expense[]>('getExpenses', { fiscalYear, token });
+export const addExpense = (record: Expense, token: string) =>
+  request<void>('addExpense', { record, token });
+export const setExpenseStatus = (id: string, status: RequestStatus, token: string) =>
+  request<void>('setExpenseStatus', { id, status, token });
+export const deleteExpense = (id: string, token: string) =>
+  request<void>('deleteExpense', { id, token });
+
+// === 会計管理（従業員） ===
+export const getExpenseContext = (fiscalYear: number, token: string) =>
+  request<ExpenseContext>('getExpenseContext', { fiscalYear, token });
+export const getMyExpenses = (token: string) =>
+  request<Expense[]>('getMyExpenses', { token });
+export const addMyExpense = (record: Partial<Expense>, token: string) =>
+  request<void>('addMyExpense', { record, token });
 
 // === 管理者：従業員パスワード発行・休暇承認 ===
 export const setStaffPassword = (staffId: string, password: string, token: string) =>

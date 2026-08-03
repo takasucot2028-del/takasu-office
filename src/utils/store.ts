@@ -3,8 +3,9 @@ import type {
   Staff, AttendanceRecord, LeaveRecord, WorkLocation,
   ShiftPattern, AvailabilityRecord, ConfirmedShift,
   OvertimeRecord, CompLeaveUse, DocumentItem,
+  ExpenseCategory, Budget, Expense, RequestStatus,
 } from '../types';
-import { ADMIN_EMAIL, ADMIN_PASSWORD, DEFAULT_SHIFT_PATTERNS } from './constants';
+import { ADMIN_EMAIL, ADMIN_PASSWORD, DEFAULT_SHIFT_PATTERNS, DEFAULT_EXPENSE_CATEGORIES } from './constants';
 
 const KEY_STAFF = 'tof_staff';
 const KEY_ATTENDANCE = 'tof_attendance';
@@ -15,6 +16,9 @@ const KEY_CONFIRMED = 'tof_confirmed';
 const KEY_OVERTIME = 'tof_overtime';
 const KEY_COMP_USE = 'tof_comp_use';
 const KEY_DOCUMENTS = 'tof_documents';
+const KEY_EXP_CATEGORIES = 'tof_exp_categories';
+const KEY_BUDGETS = 'tof_budgets';
+const KEY_EXPENSES = 'tof_expenses';
 const KEY_SEEDED = 'tof_seeded';
 
 function load<T>(key: string): T[] {
@@ -302,6 +306,50 @@ export function leaveBalance(staffId: string): { granted: number; used: number; 
   const granted = records.filter(r => r.kind === 'grant').reduce((s, r) => s + r.days, 0);
   const used = records.filter(r => r.kind === 'use').reduce((s, r) => s + r.days, 0);
   return { granted, used, balance: granted - used };
+}
+
+// ---- 会計：費目マスタ ----
+export function listExpenseCategories(): ExpenseCategory[] {
+  const saved = load<ExpenseCategory>(KEY_EXP_CATEGORIES);
+  return (saved.length ? saved : DEFAULT_EXPENSE_CATEGORIES).slice().sort((a, b) => a.order - b.order);
+}
+export function saveExpenseCategories(cats: ExpenseCategory[]) {
+  save(KEY_EXP_CATEGORIES, cats);
+}
+
+// ---- 会計：予算（年度×事業×費目） ----
+export function listBudgets(fiscalYear: number): Budget[] {
+  return load<Budget>(KEY_BUDGETS).filter(b => Number(b.fiscalYear) === fiscalYear);
+}
+/** 指定年度の予算を丸ごと置換 */
+export function saveBudgets(fiscalYear: number, records: Budget[]) {
+  const others = load<Budget>(KEY_BUDGETS).filter(b => Number(b.fiscalYear) !== fiscalYear);
+  save(KEY_BUDGETS, [...others, ...records]);
+}
+
+// ---- 会計：経費 ----
+export function listExpenses(fiscalYear: number): Expense[] {
+  return load<Expense>(KEY_EXPENSES)
+    .filter(e => Number(e.fiscalYear) === fiscalYear)
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+export function listMyExpenses(staffId: string): Expense[] {
+  return load<Expense>(KEY_EXPENSES)
+    .filter(e => e.staffId === staffId)
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+export function addExpense(record: Expense) {
+  const all = load<Expense>(KEY_EXPENSES);
+  all.push(record);
+  save(KEY_EXPENSES, all);
+}
+export function setExpenseStatus(id: string, status: RequestStatus) {
+  const all = load<Expense>(KEY_EXPENSES);
+  const r = all.find(x => x.id === id);
+  if (r) { r.status = status; save(KEY_EXPENSES, all); }
+}
+export function deleteExpense(id: string) {
+  save(KEY_EXPENSES, load<Expense>(KEY_EXPENSES).filter(e => e.id !== id));
 }
 
 // ---- デモデータ ----

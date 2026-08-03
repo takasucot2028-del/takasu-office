@@ -15,6 +15,7 @@ import OvertimePrint from './pages/labor/OvertimePrint';
 import Leave from './pages/labor/Leave';
 import LeavePrint from './pages/labor/LeavePrint';
 import Documents from './pages/labor/Documents';
+import Accounting from './pages/labor/Accounting';
 import Settings from './pages/Settings';
 
 import StaffHome from './pages/me/StaffHome';
@@ -22,6 +23,7 @@ import StaffShiftRequest from './pages/me/StaffShiftRequest';
 import StaffOvertimeRequest from './pages/me/StaffOvertimeRequest';
 import StaffLeaveRequest from './pages/me/StaffLeaveRequest';
 import StaffDocuments from './pages/me/StaffDocuments';
+import StaffExpense from './pages/me/StaffExpense';
 import StaffSettings from './pages/me/StaffSettings';
 
 // 管理者専用
@@ -59,6 +61,7 @@ function AppRoutes() {
         <Route path="/labor/leave" element={<AdminGuard><Leave /></AdminGuard>} />
         <Route path="/labor/leave/print" element={<AdminGuard><LeavePrint /></AdminGuard>} />
         <Route path="/labor/documents" element={<AdminGuard><Documents /></AdminGuard>} />
+        <Route path="/labor/accounting" element={<AdminGuard><Accounting /></AdminGuard>} />
         <Route path="/settings" element={<AdminGuard><Settings /></AdminGuard>} />
 
         {/* 従業員 */}
@@ -67,6 +70,7 @@ function AppRoutes() {
         <Route path="/me/overtime" element={<StaffGuard><StaffOvertimeRequest /></StaffGuard>} />
         <Route path="/me/leave" element={<StaffGuard><StaffLeaveRequest /></StaffGuard>} />
         <Route path="/me/documents" element={<StaffGuard><StaffDocuments /></StaffGuard>} />
+        <Route path="/me/expense" element={<StaffGuard><StaffExpense /></StaffGuard>} />
         <Route path="/me/settings" element={<StaffGuard><StaffSettings /></StaffGuard>} />
       </Routes>
     </div>

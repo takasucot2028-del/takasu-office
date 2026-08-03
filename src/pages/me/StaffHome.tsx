@@ -78,6 +78,7 @@ export default function StaffHome() {
         <MenuLink to="/me/shifts" label="シフト希望" desc="勤務できる日を申請" />
         <MenuLink to="/me/overtime" label="時間外申請" desc="残業・休日勤務を申請" />
         <MenuLink to="/me/leave" label="休暇申請" desc="有給の申請・残の確認" />
+        <MenuLink to="/me/expense" label="経費申請" desc="事業予算への経費申請" />
         <MenuLink to="/me/documents" label="文書・様式" desc="規則や様式を閲覧" />
         <MenuLink to="/me/settings" label="設定" desc="パスワード変更" />
       </div>

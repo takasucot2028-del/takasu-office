@@ -150,6 +150,15 @@ gas/
 - **帳簿PDF**: 「PDF帳簿」ボタン → LeavePrint（/labor/leave/print?staffId=）。有給休暇管理簿を印刷用に表示し、印刷ダイアログの「PDFに保存」でPDF化（A4縦。@pageをページ単位で上書き）。
 - GAS: 有給休暇シート末尾に「時間」列を追加。
 
+### 会計管理（Accounting.tsx / StaffExpense.tsx）
+- **予算**: 事業（project 文字列）× 費目（categoryId）× 会計年度（fiscalYear。4月始まりの西暦。fiscalYearOf/currentFiscalYear）で予算額を管理。保存は年度単位で置換。
+- **費目マスタ**: ExpenseCategory（事務局が編集。空なら DEFAULT_EXPENSE_CATEGORIES）。
+- **経費**: 従業員が事業/費目/金額/内容/日付を申請（status=requested）。事務局が承認（approved）/却下（rejected）。**承認済みのみ執行に計上**。事務局は直接登録（approved）も可。
+- **執行/残**: 執行＝(年度,事業,費目)の承認済み経費合計（data.usedOf）。残＝予算−執行。
+- **従業員の残額表示**: getExpenseContext(fy) が費目一覧＋予算行（予算/執行/残）を返す（個別経費は返さない）。従業員は事業→費目を選ぶと残額が出る。
+- 閲覧: 予算全体は事務局のみ。従業員は申請時に対象費目の残額のみ表示。
+- GAS: expense_categories / budgets / expenses シート。STAFF_ACTIONS に getExpenseContext/getMyExpenses/addMyExpense を追加。
+
 ## コーディング規約
 
 会員管理システム（../takasu-member/CLAUDE.md）と同じ。

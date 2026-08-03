@@ -145,3 +145,35 @@ export interface LeaveRecord {
   status: RequestStatus;      // 承認状態（付与・事務局登録=approved、従業員申請=requested）
   note: string;
 }
+
+// ==== 会計管理（事業予算・経費申請） ====
+
+/** 費目（科目）マスタ */
+export interface ExpenseCategory {
+  id: string;
+  name: string;               // 消耗品費・旅費交通費 など
+  order: number;
+}
+
+/** 予算（年度 × 事業 × 費目） */
+export interface Budget {
+  id: string;
+  fiscalYear: number;         // 会計年度（4月始まりの西暦。例: 2026年度=2026）
+  project: string;            // 事業名
+  categoryId: string;         // ExpenseCategory.id
+  amount: number;             // 予算額（円）
+}
+
+/** 経費（申請・実績） */
+export interface Expense {
+  id: string;
+  fiscalYear: number;
+  staffId: string;            // 申請者（事務局直接登録は空でも可）
+  date: string;               // 支出日 YYYY-MM-DD
+  project: string;            // 事業名
+  categoryId: string;         // 費目
+  amount: number;             // 金額（円）
+  description: string;        // 内容・摘要
+  status: RequestStatus;      // requested→approved/rejected（approved のみ執行に計上）
+  note: string;               // 事務局メモ
+}

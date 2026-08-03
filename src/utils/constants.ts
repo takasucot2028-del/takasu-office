@@ -1,4 +1,4 @@
-import type { EmploymentType, StaffStatus, AttendanceDayType, WorkLocation, ShiftPattern, Staff, DocType } from '../types';
+import type { EmploymentType, StaffStatus, AttendanceDayType, WorkLocation, ShiftPattern, Staff, DocType, ExpenseCategory } from '../types';
 
 // 事務局デモアカウント
 export const ADMIN_EMAIL = 'admin@takasu-sc.jp';
@@ -76,6 +76,34 @@ export const DAY_TYPE_LABELS: Record<AttendanceDayType, string> = {
 };
 
 export const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
+
+// ==== 会計管理 ====
+
+/** 会計年度（4月始まり）。date の年度＝4月以降はその年、1〜3月は前年 */
+export function fiscalYearOf(date: string): number {
+  const d = new Date(`${date}T00:00:00`);
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  return m >= 4 ? y : y - 1;
+}
+export function currentFiscalYear(): number {
+  const d = new Date();
+  return (d.getMonth() + 1) >= 4 ? d.getFullYear() : d.getFullYear() - 1;
+}
+export function fiscalYearLabel(fy: number): string {
+  return `${fy}年度（${fy}/4〜${fy + 1}/3）`;
+}
+
+/** 費目マスタの初期セット（会計管理が空のときのフォールバック。事務局が編集可能） */
+export const DEFAULT_EXPENSE_CATEGORIES: ExpenseCategory[] = [
+  { id: 'ec1', name: '消耗品費', order: 1 },
+  { id: 'ec2', name: '旅費交通費', order: 2 },
+  { id: 'ec3', name: '通信費', order: 3 },
+  { id: 'ec4', name: '謝金', order: 4 },
+  { id: 'ec5', name: '印刷製本費', order: 5 },
+  { id: 'ec6', name: '会議費', order: 6 },
+  { id: 'ec7', name: 'その他', order: 7 },
+];
 
 export const DOC_TYPE_LABELS: Record<DocType, string> = {
   form: '様式',

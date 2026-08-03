@@ -9,10 +9,12 @@ import type {
   Staff, AttendanceRecord, LeaveRecord,
   ShiftPattern, AvailabilityRecord, ConfirmedShift, WorkLocation,
   OvertimeRecord, CompLeaveUse, DocumentItem,
+  ExpenseCategory, Budget, Expense,
 } from '../types';
 import { DEFAULT_SHIFT_PATTERNS, LEAVE_HOURS_PER_DAY } from '../utils/constants';
 import * as local from '../utils/store';
 import * as gas from './client';
+import type { ExpenseContext } from './client';
 
 const USE_GAS = !!import.meta.env.VITE_GAS_URL;
 
@@ -187,6 +189,91 @@ export async function setLeaveStatus(id: string, status: LeaveRecord['status']):
   if (!USE_GAS) { local.setLeaveStatus(id, status); return; }
   const res = await gas.setLeaveStatus(id, status, token());
   if (!res.success) throw new Error(res.error || '状態の更新に失敗しました');
+}
+
+// === 会計管理 ===
+export type { ExpenseContext } from './client';
+
+/** 承認済み経費の (事業+費目) 合計を引く */
+export function usedOf(expenses: Expense[], project: string, categoryId: string): number {
+  return expenses
+    .filter(e => e.status === 'approved' && e.project === project && e.categoryId === categoryId)
+    .reduce((s, e) => s + (Number(e.amount) || 0), 0);
+}
+
+export async function listExpenseCategories(): Promise<ExpenseCategory[]> {
+  if (!USE_GAS) return local.listExpenseCategories();
+  const res = await gas.getExpenseCategories(token());
+  // GAS が空なら フロントの既定費目にフォールバック
+  return res.success && res.data && res.data.length ? res.data : local.listExpenseCategories();
+}
+export async function saveExpenseCategories(categories: ExpenseCategory[]): Promise<void> {
+  if (!USE_GAS) { local.saveExpenseCategories(categories); return; }
+  const res = await gas.saveExpenseCategories(categories, token());
+  if (!res.success) throw new Error(res.error || '費目の保存に失敗しました');
+}
+
+export async function listBudgets(fiscalYear: number): Promise<Budget[]> {
+  if (!USE_GAS) return local.listBudgets(fiscalYear);
+  return unwrap(await gas.getBudgets(fiscalYear, token()), []);
+}
+export async function saveBudgets(fiscalYear: number, records: Budget[]): Promise<void> {
+  if (!USE_GAS) { local.saveBudgets(fiscalYear, records); return; }
+  const res = await gas.saveBudgets(fiscalYear, records, token());
+  if (!res.success) throw new Error(res.error || '予算の保存に失敗しました');
+}
+
+export async function listExpenses(fiscalYear: number): Promise<Expense[]> {
+  if (!USE_GAS) return local.listExpenses(fiscalYear);
+  return unwrap(await gas.getExpenses(fiscalYear, token()), []);
+}
+export async function addExpense(record: Expense): Promise<void> {
+  if (!USE_GAS) { local.addExpense(record); return; }
+  const res = await gas.addExpense(record, token());
+  if (!res.success) throw new Error(res.error || '経費の登録に失敗しました');
+}
+export async function setExpenseStatus(id: string, status: Expense['status']): Promise<void> {
+  if (!USE_GAS) { local.setExpenseStatus(id, status); return; }
+  const res = await gas.setExpenseStatus(id, status, token());
+  if (!res.success) throw new Error(res.error || '状態の更新に失敗しました');
+}
+export async function deleteExpense(id: string): Promise<void> {
+  if (!USE_GAS) { local.deleteExpense(id); return; }
+  const res = await gas.deleteExpense(id, token());
+  if (!res.success) throw new Error(res.error || '経費の削除に失敗しました');
+}
+
+// 従業員：経費申請フォーム用（年度の事業/費目と残額）
+export async function getExpenseContext(fiscalYear: number): Promise<ExpenseContext> {
+  if (!USE_GAS) {
+    const cats = local.listExpenseCategories();
+    const budgets = local.listBudgets(fiscalYear);
+    const expenses = local.listExpenses(fiscalYear);
+    const lines = budgets.map(b => {
+      const used = usedOf(expenses, b.project, b.categoryId);
+      return { project: b.project, categoryId: b.categoryId, budget: b.amount, used, remaining: b.amount - used };
+    });
+    return { categories: cats, lines };
+  }
+  const res = await gas.getExpenseContext(fiscalYear, token());
+  return res.success && res.data ? res.data : { categories: [], lines: [] };
+}
+export async function listMyExpenses(): Promise<Expense[]> {
+  if (!USE_GAS) return local.listMyExpenses(staffId());
+  return unwrap(await gas.getMyExpenses(token()), []);
+}
+export async function addMyExpense(record: Partial<Expense>): Promise<void> {
+  if (!USE_GAS) {
+    local.addExpense({
+      id: local.genId('ex'), fiscalYear: Number(record.fiscalYear) || 0, staffId: staffId(),
+      date: record.date || '', project: record.project || '', categoryId: record.categoryId || '',
+      amount: Number(record.amount) || 0, description: record.description || '',
+      status: 'requested', note: '',
+    });
+    return;
+  }
+  const res = await gas.addMyExpense(record, token());
+  if (!res.success) throw new Error(res.error || '経費申請に失敗しました');
 }
 
 // === 職員 ===

@@ -39,6 +39,16 @@ var SHEETS = {
   documents: { name: '文書', columns: [
     ['id', 'ID'], ['type', '種別'], ['title', 'タイトル'], ['url', '共有リンク'], ['createdAt', '作成日時'], ['updatedAt', '更新日時'],
   ] },
+  expense_categories: { name: '費目マスタ', columns: [
+    ['id', 'ID'], ['name', '費目名'], ['order', '並び順'],
+  ] },
+  budgets: { name: '予算', columns: [
+    ['id', 'ID'], ['fiscalYear', '年度'], ['project', '事業'], ['categoryId', '費目ID'], ['amount', '予算額'],
+  ] },
+  expenses: { name: '経費', columns: [
+    ['id', 'ID'], ['fiscalYear', '年度'], ['staffId', '申請者ID'], ['date', '日付'], ['project', '事業'],
+    ['categoryId', '費目ID'], ['amount', '金額'], ['description', '内容'], ['status', '状態'], ['note', '備考'],
+  ] },
   attendance: { name: '勤怠', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['dayType', '区分'],
     ['startTime', '出勤'], ['endTime', '退勤'], ['breakMinutes', '休憩(分)'], ['note', '備考'],
@@ -165,6 +175,7 @@ var STAFF_ACTIONS = {
   getMyAvailability: true, saveMyAvailability: true,
   getMyOvertime: true, addMyOvertime: true,
   getMyLeave: true, addMyLeaveRequest: true, staffChangePassword: true,
+  getExpenseContext: true, getMyExpenses: true, addMyExpense: true,
 };
 // 認証済みなら role を問わず許可（事務局・従業員の両方が閲覧するもの）
 var AUTHED_ACTIONS = { getDocuments: true };
@@ -238,6 +249,41 @@ function doPost(e) {
         break;
       case 'deleteDocument':
         result = handleDeleteDocument(body.id);
+        break;
+      // 会計管理（事務局）
+      case 'getExpenseCategories':
+        result = handleGetExpenseCategories();
+        break;
+      case 'saveExpenseCategories':
+        result = handleSaveExpenseCategories(body.categories);
+        break;
+      case 'getBudgets':
+        result = handleGetBudgets(body.fiscalYear);
+        break;
+      case 'saveBudgets':
+        result = handleSaveBudgets(body.fiscalYear, body.records);
+        break;
+      case 'getExpenses':
+        result = handleGetExpenses(body.fiscalYear);
+        break;
+      case 'addExpense':
+        result = handleAddExpense(body.record);
+        break;
+      case 'setExpenseStatus':
+        result = handleSetExpenseStatus(body.id, body.status);
+        break;
+      case 'deleteExpense':
+        result = handleDeleteExpense(body.id);
+        break;
+      // 会計管理（従業員）
+      case 'getExpenseContext':
+        result = handleGetExpenseContext(body.fiscalYear);
+        break;
+      case 'getMyExpenses':
+        result = handleGetMyExpenses(getSession(body.token));
+        break;
+      case 'addMyExpense':
+        result = handleAddMyExpense(getSession(body.token), body.record);
         break;
       // 管理者：従業員パスワード発行・休暇申請の承認
       case 'setStaffPassword':
@@ -695,6 +741,131 @@ function handleDeleteDocument(id) {
   const rowIndex = findRowIndex(sheet, 0, id);
   if (rowIndex < 0) return { success: false, error: '文書が見つかりません' };
   sheet.deleteRow(rowIndex);
+  return { success: true };
+}
+
+// ============================================================
+// 会計管理（事業予算・経費）
+// ============================================================
+function handleGetExpenseCategories() {
+  const list = sheetToObjects(getSheet('expense_categories'), 'expense_categories')
+    .filter(function (c) { return c.id; })
+    .map(function (c) { return { id: String(c.id), name: String(c.name), order: Number(c.order) || 0 }; });
+  return { success: true, data: list };
+}
+function handleSaveExpenseCategories(categories) {
+  const sheet = getSheet('expense_categories');
+  const labels = colLabels('expense_categories');
+  const ncol = labels.length;
+  sheet.clearContents();
+  sheet.getRange(1, 1, sheet.getMaxRows(), ncol).setNumberFormat('@');
+  sheet.getRange(1, 1, 1, ncol).setValues([labels]);
+  sheet.setFrozenRows(1);
+  const list = categories || [];
+  if (list.length) {
+    const rows = list.map(function (c) { return objectToRow('expense_categories', c); });
+    sheet.getRange(2, 1, rows.length, ncol).setValues(rows);
+  }
+  return { success: true, data: { saved: list.length } };
+}
+
+function handleGetBudgets(fiscalYear) {
+  const records = sheetToObjects(getSheet('budgets'), 'budgets').filter(function (b) {
+    return Number(b.fiscalYear) === Number(fiscalYear);
+  });
+  records.forEach(function (b) { b.fiscalYear = Number(b.fiscalYear) || 0; b.amount = Number(b.amount) || 0; });
+  return { success: true, data: records };
+}
+// 指定年度の予算を丸ごと置換
+function handleSaveBudgets(fiscalYear, records) {
+  const sheet = getSheet('budgets');
+  const ncol = colKeys('budgets').length;
+  const data = sheet.getDataRange().getValues();
+  const kept = [];
+  for (let i = 1; i < data.length; i++) {
+    if (Number(data[i][1]) === Number(fiscalYear)) continue;
+    kept.push(data[i].slice(0, ncol));
+  }
+  const newRows = (records || []).map(function (r) { return objectToRow('budgets', r); });
+  const out = [colLabels('budgets')].concat(kept).concat(newRows);
+  sheet.clearContents();
+  sheet.getRange(1, 1, sheet.getMaxRows(), ncol).setNumberFormat('@');
+  sheet.getRange(1, 1, out.length, ncol).setValues(out);
+  sheet.setFrozenRows(1);
+  return { success: true };
+}
+
+function normalizeExpense_(e) {
+  e.fiscalYear = Number(e.fiscalYear) || 0;
+  e.amount = Number(e.amount) || 0;
+  e.status = String(e.status || 'requested');
+  return e;
+}
+function handleGetExpenses(fiscalYear) {
+  const records = sheetToObjects(getSheet('expenses'), 'expenses')
+    .filter(function (e) { return Number(e.fiscalYear) === Number(fiscalYear); })
+    .map(normalizeExpense_);
+  records.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+  return { success: true, data: records };
+}
+function handleAddExpense(record) {
+  if (!record || !record.id) return { success: false, error: '経費データが不正です' };
+  if (!record.status) record.status = 'approved';
+  getSheet('expenses').appendRow(objectToRow('expenses', record));
+  return { success: true };
+}
+function handleSetExpenseStatus(id, status) {
+  const sheet = getSheet('expenses');
+  const rowIndex = findRowIndex(sheet, 0, id);
+  if (rowIndex < 0) return { success: false, error: '経費が見つかりません' };
+  sheet.getRange(rowIndex, colNum('expenses', 'status')).setValue(status);
+  return { success: true };
+}
+function handleDeleteExpense(id) {
+  const sheet = getSheet('expenses');
+  const rowIndex = findRowIndex(sheet, 0, id);
+  if (rowIndex < 0) return { success: false, error: '経費が見つかりません' };
+  sheet.deleteRow(rowIndex);
+  return { success: true };
+}
+
+// 従業員：申請フォーム用の年度コンテキスト（事業/費目と残額。個別経費は返さない）
+function handleGetExpenseContext(fiscalYear) {
+  const cats = handleGetExpenseCategories().data;
+  const budgets = handleGetBudgets(fiscalYear).data;
+  const expenses = sheetToObjects(getSheet('expenses'), 'expenses')
+    .filter(function (e) { return Number(e.fiscalYear) === Number(fiscalYear) && String(e.status) === 'approved'; })
+    .map(normalizeExpense_);
+  const usedOf = function (project, categoryId) {
+    return expenses.reduce(function (s, e) {
+      return (e.project === project && String(e.categoryId) === String(categoryId)) ? s + e.amount : s;
+    }, 0);
+  };
+  const lines = budgets.map(function (b) {
+    const used = usedOf(b.project, b.categoryId);
+    return { project: b.project, categoryId: String(b.categoryId), budget: b.amount, used: used, remaining: b.amount - used };
+  });
+  return { success: true, data: { categories: cats, lines: lines } };
+}
+function handleGetMyExpenses(session) {
+  const staff = staffOf_(session);
+  const records = sheetToObjects(getSheet('expenses'), 'expenses')
+    .filter(function (e) { return String(e.staffId) === staff.id; })
+    .map(normalizeExpense_);
+  records.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+  return { success: true, data: records };
+}
+// 従業員の経費申請（status=requested、申請者=セッションのstaffId）
+function handleAddMyExpense(session, record) {
+  const staff = staffOf_(session);
+  if (!record || !record.date) return { success: false, error: '申請内容が不正です' };
+  const rec = {
+    id: genId('ex'), fiscalYear: Number(record.fiscalYear) || 0, staffId: staff.id,
+    date: record.date, project: record.project || '', categoryId: record.categoryId || '',
+    amount: Number(record.amount) || 0, description: record.description || '',
+    status: 'requested', note: '',
+  };
+  getSheet('expenses').appendRow(objectToRow('expenses', rec));
   return { success: true };
 }
 
