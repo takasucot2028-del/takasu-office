@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageContainer, Card, Button, Alert } from '../../components/UI';
-import { getMyProfile, getMyAttendance, punch, listDocuments, todayStr } from '../../api/data';
+import { getMyProfile, punch, getStaffHomeData, todayStr } from '../../api/data';
 import { WEEKDAY_LABELS, DOC_TYPE_LABELS } from '../../utils/constants';
 import type { Staff, AttendanceRecord, DocumentItem } from '../../types';
 
@@ -30,10 +30,10 @@ export default function StaffHome() {
   const wd = WEEKDAY_LABELS[new Date(`${date}T00:00:00`).getDay()];
 
   const load = async () => {
-    const [p, att, docs] = await Promise.all([getMyProfile(), getMyAttendance(date.slice(0, 7)), listDocuments()]);
+    const [p, home] = await Promise.all([getMyProfile(), getStaffHomeData(date.slice(0, 7))]);
     setStaff(p);
-    setToday(att.find(r => r.date === date));
-    setRecentDocs(docs.slice(0, 4));
+    setToday(home.attendance.find(r => r.date === date));
+    setRecentDocs(home.documents.slice(0, 4));
     setLoading(false);
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);

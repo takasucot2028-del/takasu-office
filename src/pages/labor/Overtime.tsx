@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import {
-  listStaff, listShiftPatterns, listConfirmedByMonth, listAttendance,
-  listOvertimeByStaff, saveMonthOvertime, listCompUse, addCompUse, deleteCompUse,
+  listStaff, listShiftPatterns, getOvertimeMonthData,
+  saveMonthOvertime, addCompUse, deleteCompUse,
   genId, todayStr,
 } from '../../api/data';
 import { WEEKDAY_LABELS } from '../../utils/constants';
@@ -82,36 +82,20 @@ export default function Overtime() {
     return () => { alive = false; };
   }, []);
 
-  // 職員の全時間外・代休取得
+  // 職員×月のデータ（時間外・代休取得・勤怠・確定シフト）を1リクエストでまとめて取得
   useEffect(() => {
     if (!staffId) return;
     let alive = true;
-    (async () => {
-      const [ot, cu] = await Promise.all([listOvertimeByStaff(staffId), listCompUse(staffId)]);
-      if (!alive) return;
-      setAllOt(ot);
-      setCompUse(cu);
-    })();
-    return () => { alive = false; };
-  }, [staffId, reloadKey]);
-
-  // 当月の編集コピー（全時間外から当月を抽出）
-  useEffect(() => {
-    setRecords(allOt.filter(r => r.date.startsWith(month)).map(r => ({ ...r })));
     setMessage('');
-  }, [allOt, month]);
-
-  // 当月の勤怠（実働）とシフト予定
-  useEffect(() => {
-    if (!staffId) return;
-    let alive = true;
     (async () => {
-      const [att, conf] = await Promise.all([listAttendance(staffId, month), listConfirmedByMonth(month)]);
+      const d = await getOvertimeMonthData(staffId, month);
       if (!alive) return;
+      setAllOt(d.overtime);
+      setCompUse(d.compUse);
       const am: Record<string, number> = {};
-      for (const r of att) am[r.date] = workedHoursOf(r);
+      for (const r of d.attendance) am[r.date] = workedHoursOf(r);
       const sm: Record<string, number> = {};
-      for (const c of conf as ConfirmedShift[]) {
+      for (const c of d.confirmed as ConfirmedShift[]) {
         if (c.staffId !== staffId) continue;
         const p = patternMap.get(c.patternId);
         if (p) sm[c.date] = (sm[c.date] || 0) + patternHours(p);
@@ -120,7 +104,12 @@ export default function Overtime() {
       setShiftMap(sm);
     })();
     return () => { alive = false; };
-  }, [staffId, month, patternMap]);
+  }, [staffId, month, reloadKey, patternMap]);
+
+  // 当月の編集コピー（全時間外から当月を抽出）
+  useEffect(() => {
+    setRecords(allOt.filter(r => r.date.startsWith(month)).map(r => ({ ...r })));
+  }, [allOt, month]);
 
   // 1レコードの計算（実働・基準・実績・手当額）
   const calc = (r: OvertimeRecord) => {

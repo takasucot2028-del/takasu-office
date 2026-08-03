@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageContainer, Card, Badge } from '../components/UI';
-import { listStaff, listShiftPatterns, listConfirmedByDate, listAbsencesByDate, todayStr } from '../api/data';
+import { getDashboardData, todayStr } from '../api/data';
 import type { DayAbsences } from '../api/data';
 import { WORK_LOCATION_LABELS, WEEKDAY_LABELS } from '../utils/constants';
 import type { WorkLocation, Staff, ShiftPattern, ConfirmedShift } from '../types';
@@ -19,14 +19,12 @@ export default function Dashboard() {
   useEffect(() => {
     let alive = true;
     (async () => {
-      const [s, p, sh, ab] = await Promise.all([
-        listStaff(), listShiftPatterns(), listConfirmedByDate(today), listAbsencesByDate(today),
-      ]);
+      const d = await getDashboardData(today);
       if (!alive) return;
-      setStaff(s);
-      setPatterns(p);
-      setTodayShifts(sh);
-      setAbsences(ab);
+      setStaff(d.staff);
+      setPatterns(d.patterns);
+      setTodayShifts(d.confirmed);
+      setAbsences(d.absences);
       setLoading(false);
     })();
     return () => { alive = false; };

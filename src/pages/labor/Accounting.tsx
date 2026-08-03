@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import {
   listStaff, listExpenseCategories, saveExpenseCategories,
-  listBudgets, saveBudgets, listExpenses, addExpense, setExpenseStatus, deleteExpense,
-  usedOf, genId, todayStr,
+  saveBudgets, addExpense, setExpenseStatus, deleteExpense,
+  getAccountingData, usedOf, genId, todayStr,
 } from '../../api/data';
 import { currentFiscalYear, fiscalYearLabel } from '../../utils/constants';
 import type { Staff, ExpenseCategory, Budget, Expense } from '../../types';
@@ -37,7 +37,7 @@ export default function Accounting() {
     let alive = true;
     setLoading(true); setMessage('');
     (async () => {
-      const [b, e] = await Promise.all([listBudgets(fy), listExpenses(fy)]);
+      const { budgets: b, expenses: e } = await getAccountingData(fy);
       if (!alive) return;
       setBudgets(b); setExpenses(e); setLoading(false);
     })();

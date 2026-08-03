@@ -30,6 +30,20 @@ function staffId(): string {
   return sessionStorage.getItem('tof_staffId') || '';
 }
 
+// 基礎データ（あまり変わらないもの）の短期キャッシュ。画面遷移のたびの再取得を防ぐ。
+const _cache = new Map<string, { t: number; v: unknown }>();
+const CACHE_TTL = 60000; // 60秒
+async function memo<T>(key: string, loader: () => Promise<T>): Promise<T> {
+  const c = _cache.get(key);
+  if (c && Date.now() - c.t < CACHE_TTL) return c.v as T;
+  const v = await loader();
+  _cache.set(key, { t: Date.now(), v });
+  return v;
+}
+function invalidate(...keys: string[]) { keys.forEach(k => _cache.delete(k)); }
+/** キャッシュ全消去（ログイン/ログアウト時に呼ぶ） */
+export function clearDataCache() { _cache.clear(); }
+
 // ApiResponse から data を取り出す。失敗時は fallback を返す。
 function unwrap<T>(res: { success: boolean; data?: T; error?: string }, fallback: T): T {
   if (res.success && res.data !== undefined) return res.data;
@@ -97,9 +111,11 @@ export async function staffLogin(employeeNumber: string, password: string): Prom
 }
 
 export async function getMyProfile(): Promise<Staff | null> {
-  if (!USE_GAS) return local.getStaff(staffId());
-  const res = await gas.getMyProfile(token());
-  return res.success ? (res.data ?? null) : null;
+  return memo('myProfile', async () => {
+    if (!USE_GAS) return local.getStaff(staffId());
+    const res = await gas.getMyProfile(token());
+    return res.success ? (res.data ?? null) : null;
+  });
 }
 
 export async function getMyAttendance(month: string): Promise<AttendanceRecord[]> {
@@ -181,6 +197,7 @@ export async function deleteDocument(id: string): Promise<void> {
 
 // === 管理者：従業員パスワード発行・休暇承認 ===
 export async function setStaffPassword(sid: string, password: string): Promise<void> {
+  invalidate('staff'); // hasPassword が変わる
   if (!USE_GAS) { local.setStaffPassword(sid, password); return; }
   const res = await gas.setStaffPassword(sid, password, token());
   if (!res.success) throw new Error(res.error || 'パスワードの設定に失敗しました');
@@ -202,12 +219,15 @@ export function usedOf(expenses: Expense[], project: string, categoryId: string)
 }
 
 export async function listExpenseCategories(): Promise<ExpenseCategory[]> {
-  if (!USE_GAS) return local.listExpenseCategories();
-  const res = await gas.getExpenseCategories(token());
-  // GAS が空なら フロントの既定費目にフォールバック
-  return res.success && res.data && res.data.length ? res.data : local.listExpenseCategories();
+  return memo('categories', async () => {
+    if (!USE_GAS) return local.listExpenseCategories();
+    const res = await gas.getExpenseCategories(token());
+    // GAS が空なら フロントの既定費目にフォールバック
+    return res.success && res.data && res.data.length ? res.data : local.listExpenseCategories();
+  });
 }
 export async function saveExpenseCategories(categories: ExpenseCategory[]): Promise<void> {
+  invalidate('categories');
   if (!USE_GAS) { local.saveExpenseCategories(categories); return; }
   const res = await gas.saveExpenseCategories(categories, token());
   if (!res.success) throw new Error(res.error || '費目の保存に失敗しました');
@@ -281,9 +301,11 @@ export async function addMyExpense(record: Partial<Expense>): Promise<void> {
 
 // === 職員 ===
 export async function listStaff(): Promise<Staff[]> {
-  if (!USE_GAS) return local.listStaff();
-  const staff = unwrap(await gas.getStaff(token()), []);
-  return staff.slice().sort((a, b) => (a.lastKana || '').localeCompare(b.lastKana || '', 'ja'));
+  return memo('staff', async () => {
+    if (!USE_GAS) return local.listStaff();
+    const staff = unwrap(await gas.getStaff(token()), []);
+    return staff.slice().sort((a, b) => (a.lastKana || '').localeCompare(b.lastKana || '', 'ja'));
+  });
 }
 
 export async function getStaff(id: string): Promise<Staff | null> {
@@ -293,6 +315,7 @@ export async function getStaff(id: string): Promise<Staff | null> {
 }
 
 export async function upsertStaff(staff: Staff): Promise<Staff> {
+  invalidate('staff');
   if (!USE_GAS) return local.upsertStaff(staff);
   const res = await gas.upsertStaff(staff, token());
   if (!res.success) throw new Error(res.error || '職員情報の保存に失敗しました');
@@ -315,13 +338,16 @@ export async function saveMonthAttendance(
 
 // === シフト区分マスタ ===
 export async function listShiftPatterns(): Promise<ShiftPattern[]> {
-  if (!USE_GAS) return local.listShiftPatterns();
-  const list = unwrap(await gas.getShiftPatterns(token()), [] as ShiftPattern[]);
-  const use = list.length ? list : DEFAULT_SHIFT_PATTERNS;
-  return use.slice().sort((a, b) => a.order - b.order);
+  return memo('patterns', async () => {
+    if (!USE_GAS) return local.listShiftPatterns();
+    const list = unwrap(await gas.getShiftPatterns(token()), [] as ShiftPattern[]);
+    const use = list.length ? list : DEFAULT_SHIFT_PATTERNS;
+    return use.slice().sort((a, b) => a.order - b.order);
+  });
 }
 
 export async function saveShiftPatterns(patterns: ShiftPattern[]): Promise<void> {
+  invalidate('patterns');
   if (!USE_GAS) { local.saveShiftPatterns(patterns); return; }
   const res = await gas.saveShiftPatterns(patterns, token());
   if (!res.success) throw new Error(res.error || 'シフト区分の保存に失敗しました');
@@ -424,4 +450,89 @@ export async function deleteLeave(id: string): Promise<void> {
   if (!USE_GAS) { local.deleteLeave(id); return; }
   const res = await gas.deleteLeave(id, token());
   if (!res.success) throw new Error(res.error || '有給記録の削除に失敗しました');
+}
+
+// ============================================================
+// バッチ複合ローダー：画面ごとにGASへの往復を1回に集約する。
+// 基礎データ(staff/patterns/categories)はキャッシュを使い、
+// 画面固有のデータを1回のバッチでまとめて取得する。
+// ============================================================
+type SubRes<T> = { success: boolean; data?: T; error?: string };
+// バッチ実行。GASがバッチ未対応（旧デプロイ）や失敗時は null を返し、呼び出し側が個別取得にフォールバックする。
+async function batchCall(requests: Record<string, unknown>[]): Promise<SubRes<unknown>[] | null> {
+  const res = await gas.batch(requests, token());
+  return (res.success && Array.isArray(res.data)) ? (res.data as SubRes<unknown>[]) : null;
+}
+
+// --- ダッシュボード ---
+export interface DashboardData { staff: Staff[]; patterns: ShiftPattern[]; confirmed: ConfirmedShift[]; absences: DayAbsences }
+export async function getDashboardData(date: string): Promise<DashboardData> {
+  const [staff, patterns] = await Promise.all([listStaff(), listShiftPatterns()]);
+  if (!USE_GAS) {
+    return { staff, patterns, confirmed: local.listConfirmedByDate(date), absences: local.listAbsencesByDate(date) };
+  }
+  const r = await batchCall([{ action: 'getConfirmedMonth', month: date.slice(0, 7) }, { action: 'getAbsencesByDate', date }]);
+  if (r) {
+    const confirmed = unwrap(r[0] as SubRes<ConfirmedShift[]>, []).filter(x => x.date === date);
+    return { staff, patterns, confirmed, absences: unwrap(r[1] as SubRes<DayAbsences>, { leave: [], comp: [] }) };
+  }
+  const [conf, absences] = await Promise.all([listConfirmedByDate(date), listAbsencesByDate(date)]);
+  return { staff, patterns, confirmed: conf, absences };
+}
+
+// --- シフト表 ---
+export interface ShiftMonthData { availability: AvailabilityRecord[]; confirmed: ConfirmedShift[] }
+export async function getShiftMonthData(month: string): Promise<ShiftMonthData> {
+  if (!USE_GAS) return { availability: local.listAvailabilityByMonth(month), confirmed: local.listConfirmedByMonth(month) };
+  const r = await batchCall([{ action: 'getAvailabilityMonth', month }, { action: 'getConfirmedMonth', month }]);
+  if (r) return { availability: unwrap(r[0] as SubRes<AvailabilityRecord[]>, []), confirmed: unwrap(r[1] as SubRes<ConfirmedShift[]>, []) };
+  const [availability, confirmed] = await Promise.all([listAvailabilityByMonth(month), listConfirmedByMonth(month)]);
+  return { availability, confirmed };
+}
+
+// --- 時間外（職員×月） ---
+export interface OvertimeMonthData {
+  overtime: OvertimeRecord[]; compUse: CompLeaveUse[]; attendance: AttendanceRecord[]; confirmed: ConfirmedShift[];
+}
+export async function getOvertimeMonthData(sid: string, month: string): Promise<OvertimeMonthData> {
+  if (!USE_GAS) {
+    return {
+      overtime: local.listOvertimeByStaff(sid), compUse: local.listCompUse(sid),
+      attendance: local.listAttendance(sid, month), confirmed: local.listConfirmedByMonth(month),
+    };
+  }
+  const r = await batchCall([
+    { action: 'getOvertimeByStaff', staffId: sid }, { action: 'getCompUse', staffId: sid },
+    { action: 'getAttendance', staffId: sid, month }, { action: 'getConfirmedMonth', month },
+  ]);
+  if (r) {
+    return {
+      overtime: unwrap(r[0] as SubRes<OvertimeRecord[]>, []), compUse: unwrap(r[1] as SubRes<CompLeaveUse[]>, []),
+      attendance: unwrap(r[2] as SubRes<AttendanceRecord[]>, []), confirmed: unwrap(r[3] as SubRes<ConfirmedShift[]>, []),
+    };
+  }
+  const [overtime, compUse, attendance, confirmed] = await Promise.all([
+    listOvertimeByStaff(sid), listCompUse(sid), listAttendance(sid, month), listConfirmedByMonth(month),
+  ]);
+  return { overtime, compUse, attendance, confirmed };
+}
+
+// --- 会計（年度） ---
+export interface AccountingData { budgets: Budget[]; expenses: Expense[] }
+export async function getAccountingData(fiscalYear: number): Promise<AccountingData> {
+  if (!USE_GAS) return { budgets: local.listBudgets(fiscalYear), expenses: local.listExpenses(fiscalYear) };
+  const r = await batchCall([{ action: 'getBudgets', fiscalYear }, { action: 'getExpenses', fiscalYear }]);
+  if (r) return { budgets: unwrap(r[0] as SubRes<Budget[]>, []), expenses: unwrap(r[1] as SubRes<Expense[]>, []) };
+  const [budgets, expenses] = await Promise.all([listBudgets(fiscalYear), listExpenses(fiscalYear)]);
+  return { budgets, expenses };
+}
+
+// --- 従業員ホーム ---
+export interface StaffHomeData { attendance: AttendanceRecord[]; documents: DocumentItem[] }
+export async function getStaffHomeData(month: string): Promise<StaffHomeData> {
+  if (!USE_GAS) return { attendance: local.listAttendance(staffId(), month), documents: local.listDocuments() };
+  const r = await batchCall([{ action: 'getMyAttendance', month }, { action: 'getDocuments' }]);
+  if (r) return { attendance: unwrap(r[0] as SubRes<AttendanceRecord[]>, []), documents: unwrap(r[1] as SubRes<DocumentItem[]>, []) };
+  const [attendance, documents] = await Promise.all([getMyAttendance(month), listDocuments()]);
+  return { attendance, documents };
 }

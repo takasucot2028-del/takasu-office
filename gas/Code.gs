@@ -183,6 +183,7 @@ function enforceAuth(action, body) {
   if (PUBLIC_ACTIONS[action]) return;
   const session = getSession(body.token);
   if (!session) throw new Error('認証が必要です。再度ログインしてください');
+  if (action === 'batch') return; // 中の各サブアクションで個別に認可する
   if (AUTHED_ACTIONS[action]) return; // ログイン済みなら誰でも
   if (STAFF_ACTIONS[action]) {
     if (session.role !== 'staff') throw new Error('従業員のログインが必要です');
@@ -197,9 +198,34 @@ function doPost(e) {
     const body = JSON.parse(e.postData.contents);
     const action = body.action;
     enforceAuth(action, body);
-    let result;
+    const result = (action === 'batch') ? handleBatch(body.requests, body.token) : dispatch(action, body);
+    return ContentService.createTextOutput(JSON.stringify(result))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.message }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
 
-    switch (action) {
+// 1リクエストで複数処理をまとめて実行する（画面あたりのGAS往復を1回に減らす）。
+// 各サブアクションはこのトークンで個別に認可する。
+function handleBatch(requests, token) {
+  const out = (requests || []).map(function (req) {
+    try {
+      const b = Object.assign({}, req, { token: token });
+      enforceAuth(req.action, b);
+      return dispatch(req.action, b);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+  return { success: true, data: out };
+}
+
+// アクションを対応するハンドラーへ振り分ける（doPost と handleBatch が共用）
+function dispatch(action, body) {
+  let result;
+  switch (action) {
       case 'adminLogin':
         result = handleAdminLogin(body.email, body.password);
         break;
@@ -355,13 +381,7 @@ function doPost(e) {
       default:
         result = { success: false, error: '不明なアクション: ' + action };
     }
-
-    return ContentService.createTextOutput(JSON.stringify(result))
-      .setMimeType(ContentService.MimeType.JSON);
-  } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.message }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
+    return result;
 }
 
 function doGet() {

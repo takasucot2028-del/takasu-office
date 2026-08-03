@@ -4,8 +4,7 @@ import * as XLSX from 'xlsx';
 import { PageContainer, Card, Button, Alert } from '../../components/UI';
 import {
   listStaff, listShiftPatterns, todayStr,
-  listAvailabilityByMonth, saveMonthAvailability,
-  listConfirmedByMonth, saveMonthConfirmed, genId,
+  saveMonthAvailability, saveMonthConfirmed, getShiftMonthData, genId,
 } from '../../api/data';
 import { WORK_LOCATION_LABELS, WEEKDAY_LABELS, staffInLocation } from '../../utils/constants';
 import type { Staff, ShiftPattern, WorkLocation, AvailabilityRecord, ConfirmedShift } from '../../types';
@@ -86,7 +85,7 @@ export default function Shifts() {
     setMessage('');
     setMenu(null);
     (async () => {
-      const [avail, conf] = await Promise.all([listAvailabilityByMonth(month), listConfirmedByMonth(month)]);
+      const { availability: avail, confirmed: conf } = await getShiftMonthData(month);
       if (!alive) return;
       const rm: Record<string, string[]> = {};
       for (const r of avail) { const k = aKey(r.staffId, r.date); (rm[k] = rm[k] || []).push(r.patternId); }

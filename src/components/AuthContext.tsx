@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import type { Role } from '../types';
+import { clearDataCache } from '../api/data';
 
 interface AuthState {
   isLoggedIn: boolean;
@@ -19,6 +20,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [staffId, setStaffId] = useState<string | null>(() => sessionStorage.getItem('tof_staffId'));
 
   const login = (t: string, r: Role, sid?: string) => {
+    clearDataCache(); // 別ユーザーの残存キャッシュを持ち越さない
     setToken(t); setRole(r); setStaffId(sid ?? null);
     sessionStorage.setItem('tof_token', t);
     sessionStorage.setItem('tof_role', r);
@@ -27,6 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
+    clearDataCache();
     setToken(null); setRole(null); setStaffId(null);
     sessionStorage.removeItem('tof_token');
     sessionStorage.removeItem('tof_role');

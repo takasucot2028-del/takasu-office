@@ -159,6 +159,14 @@ gas/
 - 閲覧: 予算全体は事務局のみ。従業員は申請時に対象費目の残額のみ表示。
 - GAS: expense_categories / budgets / expenses シート。STAFF_ACTIONS に getExpenseContext/getMyExpenses/addMyExpense を追加。
 
+## パフォーマンス（GAS往復の削減）
+
+GASのWeb Appは1リクエスト3〜13秒かかり、同時リクエストも直列化される。そのため：
+- **バッチ**: `batch` アクション（Code.gs の handleBatch）で1リクエストに複数処理をまとめる。dispatch(action,body) を doPost と handleBatch が共用。各サブアクションはトークンで個別に認可。
+- **複合ローダー**: data.ts の getDashboardData / getShiftMonthData / getOvertimeMonthData / getAccountingData / getStaffHomeData が画面固有データを1バッチで取得。**GASがバッチ未対応なら個別取得へ自動フォールバック**（batchCall が null を返す）。
+- **キャッシュ**: 基礎データ（staff/patterns/categories/myProfile）は data.ts の memo（TTL60秒）でキャッシュ。書込時に invalidate、ログイン/ログアウトで clearDataCache。
+- **リトライ**: client.request() は読み取り系・login・batch で、非JSON応答/通信エラー時に最大3回リトライ（書込はしない）。
+
 ## コーディング規約
 
 会員管理システム（../takasu-member/CLAUDE.md）と同じ。

@@ -25,33 +25,46 @@ export interface ApiResponse<T = unknown> {
 // GAS Web App URL（デプロイ後に GitHub Actions の変数 VITE_GAS_URL で設定）
 const API_BASE = import.meta.env.VITE_GAS_URL || '';
 
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+// 読み取り系・ログイン・バッチは、非JSON応答/通信エラー時に安全に再試行できる（副作用がない）
+const isRetryable = (action: string) => /^get/.test(action) || action === 'batch' || /Login$/.test(action);
+
 async function request<T>(action: string, payload?: Record<string, unknown>): Promise<ApiResponse<T>> {
   if (!API_BASE) {
     console.warn('GAS URLが未設定です。デモモードで動作します。');
     return { success: false, error: 'API未設定' };
   }
-  try {
-    const res = await fetch(API_BASE, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' }, // プリフライト回避のため text/plain
-      body: JSON.stringify({ action, ...payload }),
-    });
-    const text = await res.text();
+  const attempts = isRetryable(action) ? 3 : 1; // 読み取り等は最大3回まで
+  let last: ApiResponse<T> = { success: false, error: '不明なエラー' };
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) await sleep(400 * i); // 400ms, 800ms のバックオフ
     try {
-      return JSON.parse(text);
-    } catch {
-      // GAS が JSON でない応答（HTMLエラー/ログイン画面など）を返した場合
-      console.error(`GAS応答がJSONではありません [${action}] status=${res.status}:`, text.slice(0, 500));
-      const snippet = text.replace(/\s+/g, ' ').trim().slice(0, 120);
-      const hint = res.status >= 400
-        ? `サーバーエラー(${res.status})`
-        : 'サーバーがHTMLを返しました（GASのデプロイURL／アクセス権／実行時間をご確認ください）';
-      return { success: false, error: `${hint}: ${snippet}` };
+      const res = await fetch(API_BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' }, // プリフライト回避のため text/plain
+        body: JSON.stringify({ action, ...payload }),
+      });
+      const text = await res.text();
+      try {
+        return JSON.parse(text); // 正常応答（成功/失敗どちらも即返す。業務エラーは再試行しない）
+      } catch {
+        console.error(`GAS応答がJSONではありません [${action}] status=${res.status} (試行${i + 1}/${attempts}):`, text.slice(0, 300));
+        const snippet = text.replace(/\s+/g, ' ').trim().slice(0, 120);
+        const hint = res.status >= 400
+          ? `サーバーエラー(${res.status})`
+          : 'サーバーがHTMLを返しました（時間をおいて再度お試しください）';
+        last = { success: false, error: `${hint}: ${snippet}` };
+      }
+    } catch (e) {
+      last = { success: false, error: `通信に失敗しました: ${String(e)}` };
     }
-  } catch (e) {
-    return { success: false, error: `通信に失敗しました: ${String(e)}` };
   }
+  return last;
 }
+
+// === バッチ（1リクエストで複数処理をまとめて実行） ===
+export const batch = (requests: Record<string, unknown>[], token: string) =>
+  request<ApiResponse[]>('batch', { requests, token });
 
 // === 認証 ===
 export const adminLogin = (email: string, password: string) =>
