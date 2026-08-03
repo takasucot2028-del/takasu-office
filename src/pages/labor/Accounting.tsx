@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import {
   listStaff, listExpenseCategories, saveExpenseCategories,
@@ -8,10 +9,14 @@ import {
 import { currentFiscalYear, fiscalYearLabel } from '../../utils/constants';
 import type { Staff, ExpenseCategory, Budget, Expense } from '../../types';
 
-type Tab = 'budget' | 'expense' | 'category';
+type Tab = 'budget' | 'expense' | 'summary' | 'category';
 const yen = (n: number) => `¥${Math.round(n).toLocaleString()}`;
+// 会計年度の月順（4月〜翌3月）
+const FY_MONTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
+const monthOf = (date: string) => Number(date.slice(5, 7));
 
 export default function Accounting() {
+  const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('budget');
   const [fy, setFy] = useState(currentFiscalYear());
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -105,6 +110,44 @@ export default function Accounting() {
     finally { setSaving(false); }
   };
 
+  // ===== 集計（承認済み経費の月次） =====
+  const approved = useMemo(() => expenses.filter(e => e.status === 'approved'), [expenses]);
+  const projects = useMemo(
+    () => Array.from(new Set([...budgets.map(b => b.project), ...approved.map(e => e.project)].filter(Boolean))),
+    [budgets, approved]
+  );
+  // 事業 × 月（会計年度順）の承認済み合計
+  const projectMonthly = useMemo(() => projects.map(p => {
+    const row = FY_MONTHS.map(m => approved.filter(e => e.project === p && monthOf(e.date) === m).reduce((s, e) => s + e.amount, 0));
+    return { project: p, months: row, total: row.reduce((s, n) => s + n, 0) };
+  }), [projects, approved]);
+  const monthTotals = FY_MONTHS.map((_, i) => projectMonthly.reduce((s, r) => s + r.months[i], 0));
+  const grandTotal = monthTotals.reduce((s, n) => s + n, 0);
+  // 費目別 年間合計
+  const categoryTotals = useMemo(() => categories.map(c => ({
+    name: c.name,
+    total: approved.filter(e => e.categoryId === c.id).reduce((s, e) => s + e.amount, 0),
+  })).filter(c => c.total > 0), [categories, approved]);
+
+  // CSV出力（当年度の全経費明細）
+  const exportCsv = () => {
+    const header = ['日付', '事業', '費目', '金額', '状態', '内容', '申請者'];
+    const statusJa: Record<string, string> = { approved: '承認済', requested: '申請中', rejected: '却下' };
+    const rows = expenses.map(e => [
+      e.date, e.project, catMap.get(e.categoryId) || e.categoryId, String(e.amount),
+      statusJa[e.status] || e.status, e.description,
+      e.staffId ? (staffMap.get(e.staffId) || '職員') : '事務局',
+    ]);
+    const esc = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
+    const csv = [header, ...rows].map(r => r.map(esc).join(',')).join('\r\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }); // BOM付きでExcelの文字化け防止
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `経費明細_${fy}年度.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
   return (
     <PageContainer title="会計管理">
       <Card className="mb-4">
@@ -115,7 +158,7 @@ export default function Accounting() {
             <Button variant="secondary" size="sm" onClick={() => setFy(y => y + 1)}>→</Button>
           </div>
           <div className="flex rounded-md overflow-hidden border border-gray-300 ml-auto">
-            {([['budget', '予算'], ['expense', '経費'], ['category', '費目マスタ']] as [Tab, string][]).map(([t, label]) => (
+            {([['budget', '予算'], ['expense', '経費'], ['summary', '集計'], ['category', '費目マスタ']] as [Tab, string][]).map(([t, label]) => (
               <button key={t} onClick={() => setTab(t)}
                 className={`px-3 py-1.5 text-sm ${tab === t ? 'bg-emerald-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>{label}</button>
             ))}
@@ -228,6 +271,64 @@ export default function Accounting() {
                   </tr>
                 ))}
                 {expenses.length === 0 && <tr><Td className="text-center text-gray-400 py-8" colSpan={7}>{loading ? '読み込み中…' : '経費はまだありません'}</Td></tr>}
+              </tbody>
+            </Table>
+          </Card>
+        </>
+      )}
+
+      {/* 集計タブ */}
+      {tab === 'summary' && (
+        <>
+          <div className="flex justify-end gap-2 mb-3">
+            <Button variant="secondary" size="sm" onClick={exportCsv}>CSV出力</Button>
+            <Button variant="secondary" size="sm" onClick={() => navigate(`/labor/accounting/print?fy=${fy}`)}>PDF出力</Button>
+          </div>
+
+          <h2 className="font-bold text-gray-800 mb-2">月次集計（事業別・承認済み）</h2>
+          <Card className="p-0 overflow-x-auto mb-6">
+            <table className="border-collapse text-sm w-full">
+              <thead>
+                <tr>
+                  <th className="sticky left-0 bg-gray-50 text-left px-3 py-2 text-gray-600 font-medium border-b border-r whitespace-nowrap">事業</th>
+                  {FY_MONTHS.map(m => <th key={m} className="px-2 py-2 text-xs text-gray-500 font-medium border-b border-r bg-gray-50 whitespace-nowrap text-right">{m}月</th>)}
+                  <th className="px-3 py-2 text-xs text-gray-600 font-medium border-b bg-gray-50 text-right">合計</th>
+                </tr>
+              </thead>
+              <tbody>
+                {projectMonthly.map(r => (
+                  <tr key={r.project}>
+                    <td className="sticky left-0 bg-white px-3 py-1.5 border-b border-r whitespace-nowrap font-medium">{r.project}</td>
+                    {r.months.map((n, i) => <td key={i} className="px-2 py-1.5 border-b border-r text-right text-gray-700">{n ? n.toLocaleString() : ''}</td>)}
+                    <td className="px-3 py-1.5 border-b text-right font-medium">{r.total.toLocaleString()}</td>
+                  </tr>
+                ))}
+                {projectMonthly.length === 0 && <tr><td className="text-center text-gray-400 py-8" colSpan={14}>承認済みの経費がありません</td></tr>}
+              </tbody>
+              {projectMonthly.length > 0 && (
+                <tfoot>
+                  <tr className="bg-gray-50">
+                    <td className="sticky left-0 bg-gray-50 px-3 py-1.5 border-t border-r font-medium">月計</td>
+                    {monthTotals.map((n, i) => <td key={i} className="px-2 py-1.5 border-t border-r text-right text-gray-700">{n ? n.toLocaleString() : ''}</td>)}
+                    <td className="px-3 py-1.5 border-t text-right font-bold text-emerald-700">{grandTotal.toLocaleString()}</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </Card>
+
+          <h2 className="font-bold text-gray-800 mb-2">費目別 年間合計（承認済み）</h2>
+          <Card className="p-0 overflow-hidden">
+            <Table>
+              <thead><tr><Th>費目</Th><Th>金額</Th></tr></thead>
+              <tbody>
+                {categoryTotals.map(c => (
+                  <tr key={c.name}><Td>{c.name}</Td><Td className="whitespace-nowrap">{yen(c.total)}</Td></tr>
+                ))}
+                {categoryTotals.length === 0 && <tr><Td className="text-center text-gray-400 py-6" colSpan={2}>承認済みの経費がありません</Td></tr>}
+                {categoryTotals.length > 0 && (
+                  <tr className="bg-gray-50"><Td className="font-medium">合計</Td><Td className="whitespace-nowrap font-bold text-emerald-700">{yen(grandTotal)}</Td></tr>
+                )}
               </tbody>
             </Table>
           </Card>

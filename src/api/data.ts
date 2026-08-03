@@ -256,7 +256,10 @@ export async function getExpenseContext(fiscalYear: number): Promise<ExpenseCont
     return { categories: cats, lines };
   }
   const res = await gas.getExpenseContext(fiscalYear, token());
-  return res.success && res.data ? res.data : { categories: [], lines: [] };
+  const data = res.success && res.data ? res.data : { categories: [], lines: [] };
+  // 費目マスタ未保存で空のときはフロントの既定費目名にフォールバック（IDのまま表示されるのを防ぐ）
+  if (!data.categories || data.categories.length === 0) data.categories = local.listExpenseCategories();
+  return data;
 }
 export async function listMyExpenses(): Promise<Expense[]> {
   if (!USE_GAS) return local.listMyExpenses(staffId());

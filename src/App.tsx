@@ -16,6 +16,7 @@ import Leave from './pages/labor/Leave';
 import LeavePrint from './pages/labor/LeavePrint';
 import Documents from './pages/labor/Documents';
 import Accounting from './pages/labor/Accounting';
+import AccountingPrint from './pages/labor/AccountingPrint';
 import Settings from './pages/Settings';
 
 import StaffHome from './pages/me/StaffHome';
@@ -62,6 +63,7 @@ function AppRoutes() {
         <Route path="/labor/leave/print" element={<AdminGuard><LeavePrint /></AdminGuard>} />
         <Route path="/labor/documents" element={<AdminGuard><Documents /></AdminGuard>} />
         <Route path="/labor/accounting" element={<AdminGuard><Accounting /></AdminGuard>} />
+        <Route path="/labor/accounting/print" element={<AdminGuard><AccountingPrint /></AdminGuard>} />
         <Route path="/settings" element={<AdminGuard><Settings /></AdminGuard>} />
 
         {/* 従業員 */}
