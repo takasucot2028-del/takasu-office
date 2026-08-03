@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { PageContainer, Card, Button, Alert } from '../../components/UI';
 import {
-  listStaff, listShiftPatterns, todayStr,
+  getReference, todayStr,
   saveMonthAvailability, saveMonthConfirmed, getShiftMonthData, genId,
 } from '../../api/data';
 import { WORK_LOCATION_LABELS, WEEKDAY_LABELS, staffInLocation } from '../../utils/constants';
@@ -69,7 +69,7 @@ export default function Shifts() {
   useEffect(() => {
     let alive = true;
     (async () => {
-      const [s, p] = await Promise.all([listStaff(), listShiftPatterns()]);
+      const { staff: s, patterns: p } = await getReference();
       if (!alive) return;
       setAllStaff(s);
       setPatterns(p);

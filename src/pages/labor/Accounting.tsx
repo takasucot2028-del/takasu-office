@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import {
-  listStaff, listExpenseCategories, saveExpenseCategories,
+  getReference, saveExpenseCategories,
   saveBudgets, addExpense, setExpenseStatus, deleteExpense,
   getAccountingData, usedOf, genId, todayStr,
 } from '../../api/data';
@@ -32,7 +32,7 @@ export default function Accounting() {
   const catMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
   const staffMap = useMemo(() => new Map(staff.map(s => [s.id, `${s.lastName} ${s.firstName}`])), [staff]);
 
-  useEffect(() => { listStaff().then(setStaff); listExpenseCategories().then(setCategories); }, []);
+  useEffect(() => { getReference().then(r => { setStaff(r.staff); setCategories(r.categories); }); }, []);
   useEffect(() => {
     let alive = true;
     setLoading(true); setMessage('');

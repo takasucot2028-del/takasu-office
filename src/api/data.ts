@@ -41,6 +41,8 @@ async function memo<T>(key: string, loader: () => Promise<T>): Promise<T> {
   return v;
 }
 function invalidate(...keys: string[]) { keys.forEach(k => _cache.delete(k)); }
+function cacheSet(key: string, v: unknown) { _cache.set(key, { t: Date.now(), v }); }
+function cacheFresh(key: string): boolean { const c = _cache.get(key); return !!c && Date.now() - c.t < CACHE_TTL; }
 /** キャッシュ全消去（ログイン/ログアウト時に呼ぶ） */
 export function clearDataCache() { _cache.clear(); }
 
@@ -464,10 +466,52 @@ async function batchCall(requests: Record<string, unknown>[]): Promise<SubRes<un
   return (res.success && Array.isArray(res.data)) ? (res.data as SubRes<unknown>[]) : null;
 }
 
+// --- 基礎データ（職員・区分・費目）を1リクエストで取得しキャッシュに載せる ---
+// 多くの管理画面が開いた直後に必要とするため、ログイン時に先読みしておく。
+export interface ReferenceData { staff: Staff[]; patterns: ShiftPattern[]; categories: ExpenseCategory[] }
+function refFromCache(): ReferenceData | null {
+  if (cacheFresh('staff') && cacheFresh('patterns') && cacheFresh('categories')) {
+    return {
+      staff: _cache.get('staff')!.v as Staff[],
+      patterns: _cache.get('patterns')!.v as ShiftPattern[],
+      categories: _cache.get('categories')!.v as ExpenseCategory[],
+    };
+  }
+  return null;
+}
+let _refInflight: Promise<ReferenceData> | null = null;
+export async function getReference(): Promise<ReferenceData> {
+  const cached = refFromCache();
+  if (cached) return cached;
+  if (_refInflight) return _refInflight;      // 同時呼び出しは1リクエストに集約
+  _refInflight = (async (): Promise<ReferenceData> => {
+    try {
+      if (!USE_GAS) {
+        return { staff: await listStaff(), patterns: await listShiftPatterns(), categories: await listExpenseCategories() };
+      }
+      const r = await batchCall([{ action: 'getStaff' }, { action: 'getShiftPatterns' }, { action: 'getExpenseCategories' }]);
+      if (r) {
+        const staff = unwrap(r[0] as SubRes<Staff[]>, [])
+          .slice().sort((a, b) => (a.lastKana || '').localeCompare(b.lastKana || '', 'ja'));
+        const patList = unwrap(r[1] as SubRes<ShiftPattern[]>, []);
+        const patterns = (patList.length ? patList : DEFAULT_SHIFT_PATTERNS).slice().sort((a, b) => a.order - b.order);
+        const catList = unwrap(r[2] as SubRes<ExpenseCategory[]>, []);
+        const categories = catList.length ? catList : local.listExpenseCategories();
+        cacheSet('staff', staff); cacheSet('patterns', patterns); cacheSet('categories', categories);
+        return { staff, patterns, categories };
+      }
+      // バッチ未対応時は個別取得（各memoが個別にキャッシュ）
+      const [staff, patterns, categories] = await Promise.all([listStaff(), listShiftPatterns(), listExpenseCategories()]);
+      return { staff, patterns, categories };
+    } finally { _refInflight = null; }
+  })();
+  return _refInflight;
+}
+
 // --- ダッシュボード ---
 export interface DashboardData { staff: Staff[]; patterns: ShiftPattern[]; confirmed: ConfirmedShift[]; absences: DayAbsences }
 export async function getDashboardData(date: string): Promise<DashboardData> {
-  const [staff, patterns] = await Promise.all([listStaff(), listShiftPatterns()]);
+  const { staff, patterns } = await getReference();
   if (!USE_GAS) {
     return { staff, patterns, confirmed: local.listConfirmedByDate(date), absences: local.listAbsencesByDate(date) };
   }

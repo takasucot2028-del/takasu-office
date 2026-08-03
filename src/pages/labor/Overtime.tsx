@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import {
-  listStaff, listShiftPatterns, getOvertimeMonthData,
+  getReference, getOvertimeMonthData,
   saveMonthOvertime, addCompUse, deleteCompUse,
   genId, todayStr,
 } from '../../api/data';
@@ -71,7 +71,7 @@ export default function Overtime() {
   useEffect(() => {
     let alive = true;
     (async () => {
-      const [s, p] = await Promise.all([listStaff(), listShiftPatterns()]);
+      const { staff: s, patterns: p } = await getReference();
       if (!alive) return;
       setAllStaff(s);
       setPatterns(p);
