@@ -43,7 +43,7 @@ var SHEETS = {
     ['id', 'ID'], ['name', '費目名'], ['order', '並び順'],
   ] },
   budgets: { name: '予算', columns: [
-    ['id', 'ID'], ['fiscalYear', '年度'], ['project', '事業'], ['categoryId', '費目ID'], ['amount', '予算額'],
+    ['id', 'ID'], ['fiscalYear', '年度'], ['project', '事業'], ['categoryId', '費目ID'], ['amount', '予算額'], ['note', '備考'],
   ] },
   expenses: { name: '経費', columns: [
     ['id', 'ID'], ['fiscalYear', '年度'], ['staffId', '申請者ID'], ['date', '日付'], ['project', '事業'],

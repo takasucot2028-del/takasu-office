@@ -48,13 +48,13 @@ export default function Accounting() {
   const setBudgetRow = (id: string, patch: Partial<Budget>) =>
     setBudgets(prev => prev.map(b => (b.id === id ? { ...b, ...patch } : b)));
   const addBudgetRow = () =>
-    setBudgets(prev => [...prev, { id: genId('bg'), fiscalYear: fy, project: '', categoryId: categories[0]?.id || '', amount: 0 }]);
+    setBudgets(prev => [...prev, { id: genId('bg'), fiscalYear: fy, project: '', categoryId: categories[0]?.id || '', amount: 0, note: '' }]);
   const removeBudgetRow = (id: string) => setBudgets(prev => prev.filter(b => b.id !== id));
 
   const saveBudgetLines = async () => {
     setSaving(true); setError(''); setMessage('');
     try {
-      const clean = budgets.filter(b => b.project.trim() && b.categoryId).map(b => ({ ...b, fiscalYear: fy, amount: Number(b.amount) || 0 }));
+      const clean = budgets.filter(b => b.project.trim() && b.categoryId).map(b => ({ ...b, fiscalYear: fy, amount: Number(b.amount) || 0, note: b.note || '' }));
       await saveBudgets(fy, clean);
       setMessage('予算を保存しました');
       setVersion(v => v + 1);
@@ -129,6 +129,24 @@ export default function Accounting() {
     total: approved.filter(e => e.categoryId === c.id).reduce((s, e) => s + e.amount, 0),
   })).filter(c => c.total > 0), [categories, approved]);
 
+  // 事業ごとの費目別（予算・執行・残・備考）
+  const projectGroups = useMemo(() => projects.map(p => {
+    const cats = Array.from(new Set([
+      ...budgets.filter(b => b.project === p).map(b => b.categoryId),
+      ...approved.filter(e => e.project === p).map(e => e.categoryId),
+    ]));
+    const lines = cats.map(cid => {
+      const bud = budgets.find(b => b.project === p && b.categoryId === cid);
+      const used = usedOf(expenses, p, cid);
+      return { categoryId: cid, name: catMap.get(cid) || cid, budget: bud?.amount || 0, used, note: bud?.note || '' };
+    });
+    return {
+      project: p, lines,
+      budgetSum: lines.reduce((s, l) => s + l.budget, 0),
+      usedSum: lines.reduce((s, l) => s + l.used, 0),
+    };
+  }), [projects, budgets, approved, expenses, catMap]);
+
   // CSV出力（当年度の全経費明細）
   const exportCsv = () => {
     const header = ['日付', '事業', '費目', '金額', '状態', '内容', '申請者'];
@@ -183,7 +201,7 @@ export default function Accounting() {
           </div>
           <Card className="p-0 overflow-x-auto">
             <Table>
-              <thead><tr><Th>事業</Th><Th>費目</Th><Th>予算</Th><Th>執行</Th><Th>残額</Th><Th className="w-12"></Th></tr></thead>
+              <thead><tr><Th>事業</Th><Th>費目</Th><Th>予算</Th><Th>執行</Th><Th>残額</Th><Th>備考</Th><Th className="w-12"></Th></tr></thead>
               <tbody>
                 {budgets.map(b => {
                   const used = usedOf(expenses, b.project, b.categoryId);
@@ -198,11 +216,12 @@ export default function Accounting() {
                       <Td className="min-w-28"><Input type="number" min={0} step={1000} value={b.amount || ''} onChange={e => setBudgetRow(b.id, { amount: Number(e.target.value) || 0 })} /></Td>
                       <Td className="whitespace-nowrap text-gray-600">{yen(used)}</Td>
                       <Td className={`whitespace-nowrap font-medium ${b.amount - used < 0 ? 'text-red-600' : 'text-gray-800'}`}>{yen(b.amount - used)}</Td>
+                      <Td className="min-w-32"><Input value={b.note || ''} onChange={e => setBudgetRow(b.id, { note: e.target.value })} placeholder="例: 指導者謝金" /></Td>
                       <Td><Button variant="ghost" size="sm" onClick={() => removeBudgetRow(b.id)}>削除</Button></Td>
                     </tr>
                   );
                 })}
-                {budgets.length === 0 && <tr><Td className="text-center text-gray-400 py-8" colSpan={6}>{loading ? '読み込み中…' : 'この年度の予算はまだありません。「行を追加」で登録してください。'}</Td></tr>}
+                {budgets.length === 0 && <tr><Td className="text-center text-gray-400 py-8" colSpan={7}>{loading ? '読み込み中…' : 'この年度の予算はまだありません。「行を追加」で登録してください。'}</Td></tr>}
               </tbody>
             </Table>
           </Card>
@@ -285,7 +304,36 @@ export default function Accounting() {
             <Button variant="secondary" size="sm" onClick={() => navigate(`/labor/accounting/print?fy=${fy}`)}>PDF出力</Button>
           </div>
 
-          <h2 className="font-bold text-gray-800 mb-2">月次集計（事業別・承認済み）</h2>
+          <h2 className="font-bold text-gray-800 mb-2">事業ごとの費目別 予算・執行</h2>
+          {projectGroups.length === 0 && <Card className="mb-6"><p className="text-sm text-gray-400">{loading ? '読み込み中…' : '事業予算がまだ登録されていません。'}</p></Card>}
+          {projectGroups.map(g => (
+            <Card key={g.project} className="p-0 overflow-hidden mb-4">
+              <div className="px-3 py-2 bg-gray-50 border-b font-bold text-gray-800">{g.project}</div>
+              <Table>
+                <thead><tr><Th>費目</Th><Th>予算額</Th><Th>執行額</Th><Th>残額</Th><Th>備考</Th></tr></thead>
+                <tbody>
+                  {g.lines.map(l => (
+                    <tr key={l.categoryId}>
+                      <Td>{l.name}</Td>
+                      <Td className="whitespace-nowrap text-right">{yen(l.budget)}</Td>
+                      <Td className="whitespace-nowrap text-right">{yen(l.used)}</Td>
+                      <Td className={`whitespace-nowrap text-right ${l.budget - l.used < 0 ? 'text-red-600' : ''}`}>{yen(l.budget - l.used)}</Td>
+                      <Td>{l.note}</Td>
+                    </tr>
+                  ))}
+                  <tr className="bg-gray-50 font-medium">
+                    <Td>合計</Td>
+                    <Td className="whitespace-nowrap text-right">{yen(g.budgetSum)}</Td>
+                    <Td className="whitespace-nowrap text-right">{yen(g.usedSum)}</Td>
+                    <Td className="whitespace-nowrap text-right">{yen(g.budgetSum - g.usedSum)}</Td>
+                    <Td>{''}</Td>
+                  </tr>
+                </tbody>
+              </Table>
+            </Card>
+          ))}
+
+          <h2 className="font-bold text-gray-800 mb-2 mt-6">月次集計（事業別・承認済み）</h2>
           <Card className="p-0 overflow-x-auto mb-6">
             <table className="border-collapse text-sm w-full">
               <thead>

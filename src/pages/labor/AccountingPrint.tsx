@@ -51,8 +51,18 @@ export default function AccountingPrint() {
   const monthTotals = FY_MONTHS.map((_, i) => rows.reduce((s, r) => s + r.months[i], 0));
   const grandTotal = monthTotals.reduce((s, n) => s + n, 0);
 
-  const budgetTotal = budgets.reduce((s, b) => s + b.amount, 0);
-  const usedTotal = approved.reduce((s, e) => s + e.amount, 0);
+  // 事業ごとの費目別（予算・執行・残・備考）
+  const groups = useMemo(() => projects.map(p => {
+    const cats = Array.from(new Set([
+      ...budgets.filter(b => b.project === p).map(b => b.categoryId),
+      ...approved.filter(e => e.project === p).map(e => e.categoryId),
+    ]));
+    const lines = cats.map(cid => {
+      const bud = budgets.find(b => b.project === p && b.categoryId === cid);
+      return { name: catMap.get(cid) || cid, budget: bud?.amount || 0, used: usedOf(p, cid), note: bud?.note || '' };
+    });
+    return { project: p, lines, budgetSum: lines.reduce((s, l) => s + l.budget, 0), usedSum: lines.reduce((s, l) => s + l.used, 0) };
+  }), [projects, budgets, approved, catMap]);
 
   return (
     <div className="acct-print max-w-full mx-auto px-4 py-5">
@@ -67,42 +77,44 @@ export default function AccountingPrint() {
 
       {loading ? <p className="text-sm text-gray-400">読み込み中…</p> : (
         <div style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
-          {/* 予算執行状況 */}
-          <h2 className="font-bold mb-1">予算執行状況（事業・費目別）</h2>
-          <table className="w-full text-xs border-collapse mb-5">
-            <thead>
-              <tr>
-                <th className="border border-gray-500 px-2 py-1 bg-gray-100 text-left">事業</th>
-                <th className="border border-gray-500 px-2 py-1 bg-gray-100 text-left">費目</th>
-                <th className="border border-gray-500 px-2 py-1 bg-gray-100 text-right w-28">予算</th>
-                <th className="border border-gray-500 px-2 py-1 bg-gray-100 text-right w-28">執行</th>
-                <th className="border border-gray-500 px-2 py-1 bg-gray-100 text-right w-28">残額</th>
-              </tr>
-            </thead>
-            <tbody>
-              {budgets.map(b => {
-                const used = usedOf(b.project, b.categoryId);
-                return (
-                  <tr key={b.id}>
-                    <td className="border border-gray-500 px-2 py-1">{b.project}</td>
-                    <td className="border border-gray-500 px-2 py-1">{catMap.get(b.categoryId) || b.categoryId}</td>
-                    <td className="border border-gray-500 px-2 py-1 text-right">{yen(b.amount)}</td>
-                    <td className="border border-gray-500 px-2 py-1 text-right">{yen(used)}</td>
-                    <td className="border border-gray-500 px-2 py-1 text-right">{yen(b.amount - used)}</td>
+          {/* 事業ごとの費目別 予算執行 */}
+          <h2 className="font-bold mb-1">事業ごとの費目別 予算・執行状況</h2>
+          {groups.length === 0 && <p className="text-sm text-gray-400 mb-4">予算が登録されていません</p>}
+          {groups.map(g => (
+            <div key={g.project} className="mb-4" style={{ breakInside: 'avoid' }}>
+              <div className="font-bold bg-gray-100 border border-gray-500 border-b-0 px-2 py-1">{g.project}</div>
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr>
+                    <th className="border border-gray-500 px-2 py-1 bg-gray-100 text-left">費目</th>
+                    <th className="border border-gray-500 px-2 py-1 bg-gray-100 text-right w-28">予算額</th>
+                    <th className="border border-gray-500 px-2 py-1 bg-gray-100 text-right w-28">執行額</th>
+                    <th className="border border-gray-500 px-2 py-1 bg-gray-100 text-right w-28">残額</th>
+                    <th className="border border-gray-500 px-2 py-1 bg-gray-100 text-left">備考</th>
                   </tr>
-                );
-              })}
-              {budgets.length === 0 && <tr><td className="border border-gray-500 px-2 py-2 text-center text-gray-400" colSpan={5}>予算が登録されていません</td></tr>}
-              {budgets.length > 0 && (
-                <tr className="bg-gray-50">
-                  <td className="border border-gray-500 px-2 py-1 font-bold" colSpan={2}>合計</td>
-                  <td className="border border-gray-500 px-2 py-1 text-right font-bold">{yen(budgetTotal)}</td>
-                  <td className="border border-gray-500 px-2 py-1 text-right font-bold">{yen(usedTotal)}</td>
-                  <td className="border border-gray-500 px-2 py-1 text-right font-bold">{yen(budgetTotal - usedTotal)}</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {g.lines.map((l, i) => (
+                    <tr key={i}>
+                      <td className="border border-gray-500 px-2 py-1">{l.name}</td>
+                      <td className="border border-gray-500 px-2 py-1 text-right">{yen(l.budget)}</td>
+                      <td className="border border-gray-500 px-2 py-1 text-right">{yen(l.used)}</td>
+                      <td className="border border-gray-500 px-2 py-1 text-right">{yen(l.budget - l.used)}</td>
+                      <td className="border border-gray-500 px-2 py-1">{l.note}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-gray-50">
+                    <td className="border border-gray-500 px-2 py-1 font-bold">合計</td>
+                    <td className="border border-gray-500 px-2 py-1 text-right font-bold">{yen(g.budgetSum)}</td>
+                    <td className="border border-gray-500 px-2 py-1 text-right font-bold">{yen(g.usedSum)}</td>
+                    <td className="border border-gray-500 px-2 py-1 text-right font-bold">{yen(g.budgetSum - g.usedSum)}</td>
+                    <td className="border border-gray-500 px-2 py-1"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ))}
+          <div className="mb-5" />
 
           {/* 月次集計 */}
           <h2 className="font-bold mb-1">月次集計（事業別・承認済み）</h2>

@@ -162,6 +162,7 @@ export interface Budget {
   project: string;            // 事業名
   categoryId: string;         // ExpenseCategory.id
   amount: number;             // 予算額（円）
+  note: string;               // 備考（費目の内訳説明など）
 }
 
 /** 経費（申請・実績） */
