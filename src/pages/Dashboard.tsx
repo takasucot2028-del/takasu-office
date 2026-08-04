@@ -49,7 +49,16 @@ export default function Dashboard() {
         ) : (
           <div className="grid sm:grid-cols-2 gap-4">
             {(Object.keys(WORK_LOCATION_LABELS) as WorkLocation[]).map(loc => {
-              const shifts = todayShifts.filter(sh => sh.location === loc);
+              // 区分の時間順（①→②→③）に並べ、同じ区分内は職員のかな順
+              const shifts = todayShifts
+                .filter(sh => sh.location === loc)
+                .slice()
+                .sort((a, b) => {
+                  const oa = patternMap.get(a.patternId)?.order ?? 99;
+                  const ob = patternMap.get(b.patternId)?.order ?? 99;
+                  if (oa !== ob) return oa - ob;
+                  return (staffMap.get(a.staffId)?.lastKana || '').localeCompare(staffMap.get(b.staffId)?.lastKana || '', 'ja');
+                });
               return (
                 <div key={loc}>
                   <div className="mb-2">
