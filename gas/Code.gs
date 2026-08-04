@@ -52,6 +52,7 @@ var SHEETS = {
   attendance: { name: '勤怠', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['dayType', '区分'],
     ['startTime', '出勤'], ['endTime', '退勤'], ['breakMinutes', '休憩(分)'], ['note', '備考'],
+    ['breakStart', '休憩開始'], ['breakEnd', '休憩終了'],
   ] },
   leave: { name: '有給休暇', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['kind', '種別'], ['date', '日付'], ['days', '日数'], ['note', '備考'], ['hours', '時間'], ['status', '状態'],
@@ -246,7 +247,7 @@ function dispatch(action, body) {
         result = handlePunch(getSession(body.token), body.punchType);
         break;
       case 'setMyBreak':
-        result = handleSetMyBreak(getSession(body.token), body.minutes);
+        result = handleSetMyBreak(getSession(body.token), body.breakStart, body.breakEnd);
         break;
       case 'getMyAvailability':
         result = handleGetMyAvailability(getSession(body.token), body.month);
@@ -973,6 +974,7 @@ function handlePunch(session, punchType) {
     id: staff.id + '_' + today, staffId: staff.id, date: today, dayType: 'work',
     startTime: firstOf('startTime'), endTime: firstOf('endTime'),
     breakMinutes: Number(firstOf('breakMinutes')) || 0, note: firstOf('note'),
+    breakStart: firstOf('breakStart'), breakEnd: firstOf('breakEnd'),
   };
   if (punchType === 'in') rec.startTime = now; else rec.endTime = now;
 
@@ -985,8 +987,9 @@ function handlePunch(session, punchType) {
   return { success: true, data: { date: today, time: now, punchType: punchType } };
 }
 
-// 従業員が当日の休憩時間（分）を保存する。当日レコードの休憩のみ更新（出退勤・区分は保持）。
-function handleSetMyBreak(session, minutes) {
+// 従業員が当日の休憩を時刻（開始〜終了）で保存する。休憩分＝終了−開始 を計算。
+// 当日レコードの休憩のみ更新（出退勤・区分は保持）。
+function handleSetMyBreak(session, breakStart, breakEnd) {
   const staff = staffOf_(session);
   const tz = Session.getScriptTimeZone();
   const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
@@ -1006,19 +1009,31 @@ function handleSetMyBreak(session, minutes) {
     return String(r.staffId) === staff.id && String(r.date) === today;
   });
   const firstOf = function (key) { for (let j = 0; j < objs.length; j++) { if (objs[j][key]) return objs[j][key]; } return ''; };
-  const mins = Math.max(0, Math.round(Number(minutes) || 0));
+  const bs = String(breakStart || '').trim();
+  const be = String(breakEnd || '').trim();
+  const mins = breakMinutesBetween_(bs, be);
   const rec = {
     id: staff.id + '_' + today, staffId: staff.id, date: today,
     dayType: firstOf('dayType') || 'work',
     startTime: firstOf('startTime'), endTime: firstOf('endTime'),
     breakMinutes: mins, note: firstOf('note'),
+    breakStart: bs, breakEnd: be,
   };
   const target = rows.length ? rows[0] : sheet.getLastRow() + 1;
   sheet.getRange(target, 1, 1, ncol).setNumberFormat('@');
   sheet.getRange(target, 1, 1, ncol).setValues([objectToRow('attendance', rec)]);
   for (let k = rows.length - 1; k >= 1; k--) sheet.deleteRow(rows[k]);
 
-  return { success: true, data: { date: today, breakMinutes: mins } };
+  return { success: true, data: { date: today, breakMinutes: mins, breakStart: bs, breakEnd: be } };
+}
+
+// 休憩の時刻範囲（HH:mm〜HH:mm）から休憩分数を求める。両方揃っていないときは 0。
+function breakMinutesBetween_(start, end) {
+  const re = /^(\d{1,2}):(\d{2})$/;
+  const s = re.exec(String(start || '')), e = re.exec(String(end || ''));
+  if (!s || !e) return 0;
+  const min = (Number(e[1]) * 60 + Number(e[2])) - (Number(s[1]) * 60 + Number(s[2]));
+  return min > 0 ? min : 0;
 }
 
 function handleGetMyAvailability(session, month) {

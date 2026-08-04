@@ -81,8 +81,9 @@ export const getMyAttendance = (month: string, token: string) =>
   request<AttendanceRecord[]>('getMyAttendance', { month, token });
 export const punch = (punchType: 'in' | 'out', token: string) =>
   request<{ date: string; time: string; punchType: string }>('punch', { punchType, token });
-export const setMyBreak = (minutes: number, token: string) =>
-  request<{ date: string; breakMinutes: number }>('setMyBreak', { minutes, token });
+export const setMyBreak = (breakStart: string, breakEnd: string, token: string) =>
+  request<{ date: string; breakMinutes: number; breakStart: string; breakEnd: string }>(
+    'setMyBreak', { breakStart, breakEnd, token });
 export const getMyAvailability = (month: string, token: string) =>
   request<AvailabilityRecord[]>('getMyAvailability', { month, token });
 export const saveMyAvailability = (month: string, records: AvailabilityRecord[], token: string) =>

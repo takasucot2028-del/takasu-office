@@ -251,8 +251,11 @@ export default function Attendance() {
                           step={5}
                           value={rec?.breakMinutes || ''}
                           disabled={!isWork}
-                          onChange={e => setRec(date, { breakMinutes: Number(e.target.value) || 0 })}
+                          onChange={e => setRec(date, { breakMinutes: Number(e.target.value) || 0, breakStart: '', breakEnd: '' })}
                         />
+                        {rec?.breakStart && rec?.breakEnd && (
+                          <div className="text-[10px] text-gray-400 mt-0.5 whitespace-nowrap">{rec.breakStart}〜{rec.breakEnd}</div>
+                        )}
                       </Td>
                       <Td className="whitespace-nowrap text-gray-600">
                         {rec && isWork ? formatMinutes(workMinutes(rec)) : ''}

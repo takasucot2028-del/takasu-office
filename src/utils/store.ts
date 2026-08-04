@@ -5,7 +5,7 @@ import type {
   OvertimeRecord, CompLeaveUse, DocumentItem,
   ExpenseCategory, Budget, Expense, RequestStatus,
 } from '../types';
-import { ADMIN_EMAIL, ADMIN_PASSWORD, DEFAULT_SHIFT_PATTERNS, DEFAULT_EXPENSE_CATEGORIES } from './constants';
+import { ADMIN_EMAIL, ADMIN_PASSWORD, DEFAULT_SHIFT_PATTERNS, DEFAULT_EXPENSE_CATEGORIES, breakMinutesBetween } from './constants';
 
 const KEY_STAFF = 'tof_staff';
 const KEY_ATTENDANCE = 'tof_attendance';
@@ -203,20 +203,20 @@ export function punchLocal(staffId: string, type: 'in' | 'out'): { date: string;
   return { date, time, punchType: type };
 }
 
-// 従業員が当日の休憩時間（分）を入力・保存する
-export function setMyBreakLocal(staffId: string, minutes: number): { date: string; breakMinutes: number } {
+// 従業員が当日の休憩を時刻（開始〜終了）で入力・保存する
+export function setMyBreakLocal(staffId: string, breakStart: string, breakEnd: string): { date: string; breakMinutes: number; breakStart: string; breakEnd: string } {
   const date = todayStr();
-  const mins = Math.max(0, Math.round(Number(minutes) || 0));
+  const mins = breakMinutesBetween(breakStart, breakEnd);
   const all = load<AttendanceRecord>(KEY_ATTENDANCE);
   let rec = all.find(r => r.staffId === staffId && r.date === date);
   if (!rec) {
-    rec = { id: `${staffId}_${date}`, staffId, date, dayType: 'work', startTime: '', endTime: '', breakMinutes: mins, note: '' };
+    rec = { id: `${staffId}_${date}`, staffId, date, dayType: 'work', startTime: '', endTime: '', breakMinutes: mins, breakStart, breakEnd, note: '' };
     all.push(rec);
   } else {
-    rec.breakMinutes = mins;
+    rec.breakMinutes = mins; rec.breakStart = breakStart; rec.breakEnd = breakEnd;
   }
   save(KEY_ATTENDANCE, all);
-  return { date, breakMinutes: mins };
+  return { date, breakMinutes: mins, breakStart, breakEnd };
 }
 
 // ---- 時間外・休日勤務 ----

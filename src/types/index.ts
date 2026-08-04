@@ -46,7 +46,9 @@ export interface AttendanceRecord {
   dayType: AttendanceDayType;
   startTime: string;          // HH:MM（未入力は空）
   endTime: string;            // HH:MM（未入力は空）
-  breakMinutes: number;
+  breakMinutes: number;       // 休憩合計（分）。breakStart/breakEnd があればそこから計算した値
+  breakStart?: string;        // 休憩開始 HH:MM（任意。時刻で入力した場合に保持）
+  breakEnd?: string;          // 休憩終了 HH:MM（任意）
   note: string;
 }
 

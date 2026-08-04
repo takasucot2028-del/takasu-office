@@ -77,6 +77,15 @@ export const DAY_TYPE_LABELS: Record<AttendanceDayType, string> = {
 
 export const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
+/** 休憩の時刻範囲（HH:MM〜HH:MM）から休憩分数を求める。両方揃っていないときは 0 */
+export function breakMinutesBetween(start?: string, end?: string): number {
+  const re = /^(\d{1,2}):(\d{2})$/;
+  const s = re.exec(start || ''), e = re.exec(end || '');
+  if (!s || !e) return 0;
+  const min = (Number(e[1]) * 60 + Number(e[2])) - (Number(s[1]) * 60 + Number(s[2]));
+  return min > 0 ? min : 0;
+}
+
 // ==== 会計管理 ====
 
 /** 会計年度（4月始まり）。date の年度＝4月以降はその年、1〜3月は前年 */
