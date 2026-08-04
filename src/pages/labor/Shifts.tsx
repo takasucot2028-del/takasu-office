@@ -11,6 +11,7 @@ import { isClosedDay, isNationalHoliday } from '../../utils/holidays';
 import type { Staff, ShiftPattern, WorkLocation, AvailabilityRecord, ConfirmedShift } from '../../types';
 
 interface ShiftProblem { loc: WorkLocation; date: string; missing: ShiftPattern[] }
+interface ShiftConflict { staffId: string; name: string; date: string; patterns: ShiftPattern[] }
 
 type Mode = 'request' | 'confirm';
 
@@ -72,7 +73,7 @@ export default function Shifts() {
     () => patterns.filter(p => p.location === '').slice().sort((a, b) => a.order - b.order).slice(0, 3),
     [patterns]
   );
-  const [checkResult, setCheckResult] = useState<{ problems: ShiftProblem[]; warn?: string } | null>(null);
+  const [checkResult, setCheckResult] = useState<{ problems: ShiftProblem[]; conflicts: ShiftConflict[]; warn?: string } | null>(null);
 
   // 初回：職員・区分を読み込む
   useEffect(() => {
@@ -127,6 +128,22 @@ export default function Shifts() {
       });
     } else {
       const k = cKey(staffId, date, location);
+      const adding = !(confMap[k] || []).includes(patternId);
+      // 両方(both)勤務の職員は、同じ日・同じ時間帯に総体とB&Gの両方へ入れない
+      if (adding) {
+        const st = allStaff.find(s => s.id === staffId);
+        if (st?.workLocation === 'both') {
+          const other: WorkLocation = location === 'sotai' ? 'kaiyo' : 'sotai';
+          const otherIds = confMap[cKey(staffId, date, other)] || [];
+          if (otherIds.includes(patternId)) {
+            const pname = patternMap.get(patternId)?.name ?? '';
+            setMessage('');
+            setError(`${st.lastName} ${st.firstName}さんは同じ時間帯（${pname}）で${WORK_LOCATION_LABELS[other]}に割り当て済みです。同一時間帯に両方の勤務場所へは登録できません。`);
+            return;
+          }
+        }
+      }
+      setError('');
       setConfMap(prev => {
         const cur = prev[k] || [];
         const arr = cur.includes(patternId) ? cur.filter(id => id !== patternId) : [...cur, patternId];
@@ -213,7 +230,7 @@ export default function Shifts() {
   const runCheck = () => {
     setMenu(null);
     if (slotPatterns.length < 3) {
-      setCheckResult({ problems: [], warn: '区分①②③（全場所共通）が揃っていないためチェックできません。区分マスタをご確認ください。' });
+      setCheckResult({ problems: [], conflicts: [], warn: '区分①②③（全場所共通）が揃っていないためチェックできません。区分マスタをご確認ください。' });
       return;
     }
     const [p1, p2, p3] = slotPatterns;
@@ -232,7 +249,20 @@ export default function Shifts() {
         if (missing.length) problems.push({ loc, date, missing });
       }
     }
-    setCheckResult({ problems });
+    // 両方(both)勤務職員が同じ日・同じ時間帯に総体とB&Gの両方へ入っている重複を検出
+    const conflicts: ShiftConflict[] = [];
+    const bothStaff = allStaff.filter(s => s.status === 'active' && s.workLocation === 'both');
+    for (const s of bothStaff) {
+      for (const date of days) {
+        const sotai = new Set(confMap[cKey(s.id, date, 'sotai')] || []);
+        const dup = (confMap[cKey(s.id, date, 'kaiyo')] || []).filter(id => sotai.has(id));
+        if (dup.length) {
+          const pats = slotPatterns.filter(p => dup.includes(p.id));
+          conflicts.push({ staffId: s.id, name: `${s.lastName} ${s.firstName}`, date, patterns: pats });
+        }
+      }
+    }
+    setCheckResult({ problems, conflicts });
   };
 
   const exportExcel = () => {
@@ -317,10 +347,33 @@ export default function Shifts() {
           </div>
           {checkResult.warn ? (
             <Alert type="warning">{checkResult.warn}</Alert>
-          ) : checkResult.problems.length === 0 ? (
-            <Alert type="success">総体・B&G（海洋センター）ともに、必要な区分がすべて入力されています。</Alert>
+          ) : checkResult.problems.length === 0 && checkResult.conflicts.length === 0 ? (
+            <Alert type="success">総体・B&G（海洋センター）ともに、必要な区分がすべて入力されています。時間帯の重複もありません。</Alert>
           ) : (
             <>
+              {checkResult.conflicts.length > 0 && (
+                <div className="mb-4">
+                  <div className="text-sm font-medium text-red-700 mb-1">
+                    時間帯の重複（同一日に総体とB&Gの両方へ割り当て）
+                    <span className="ml-2 text-xs text-gray-400">{checkResult.conflicts.length}件</span>
+                  </div>
+                  <ul className="text-sm divide-y divide-gray-100 border border-red-100 rounded-md bg-red-50/40">
+                    {checkResult.conflicts.map(c => {
+                      const wd = new Date(`${c.date}T00:00:00`).getDay();
+                      return (
+                        <li key={`${c.staffId}_${c.date}`} className="flex items-center justify-between px-3 py-1.5">
+                          <span className="text-gray-700">
+                            {c.name}
+                            <span className="ml-2 text-gray-500">{Number(c.date.slice(5, 7))}/{Number(c.date.slice(8))}（{WEEKDAY_LABELS[wd]}）</span>
+                          </span>
+                          <span className="text-red-600 font-medium">{c.patterns.map(p => p.name).join('')} が重複</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+              {checkResult.problems.length > 0 && (<>
               <p className="text-sm text-gray-600 mb-3">
                 未入力の箇所が <span className="font-bold text-red-600">{checkResult.problems.length}</span> 件あります。
                 （総体の平日は③のみ、総体の休日・祝日とB&Gの全日は①②③が必要です）
@@ -358,6 +411,7 @@ export default function Shifts() {
                   );
                 })}
               </div>
+              </>)}
             </>
           )}
         </Card>
