@@ -132,6 +132,14 @@ export async function punch(punchType: 'in' | 'out'): Promise<{ date: string; ti
   return res.data;
 }
 
+// 従業員が当日の休憩時間（分）を保存する。実働＝退勤−出勤−休憩 に反映される。
+export async function setMyBreak(minutes: number): Promise<{ date: string; breakMinutes: number }> {
+  if (!USE_GAS) return local.setMyBreakLocal(staffId(), minutes);
+  const res = await gas.setMyBreak(minutes, token());
+  if (!res.success || !res.data) throw new Error(res.error || '休憩時間の保存に失敗しました');
+  return res.data;
+}
+
 export async function getMyAvailability(month: string): Promise<AvailabilityRecord[]> {
   if (!USE_GAS) return local.listAvailabilityByMonth(month).filter(r => r.staffId === staffId());
   return unwrap(await gas.getMyAvailability(month, token()), []);

@@ -203,6 +203,22 @@ export function punchLocal(staffId: string, type: 'in' | 'out'): { date: string;
   return { date, time, punchType: type };
 }
 
+// 従業員が当日の休憩時間（分）を入力・保存する
+export function setMyBreakLocal(staffId: string, minutes: number): { date: string; breakMinutes: number } {
+  const date = todayStr();
+  const mins = Math.max(0, Math.round(Number(minutes) || 0));
+  const all = load<AttendanceRecord>(KEY_ATTENDANCE);
+  let rec = all.find(r => r.staffId === staffId && r.date === date);
+  if (!rec) {
+    rec = { id: `${staffId}_${date}`, staffId, date, dayType: 'work', startTime: '', endTime: '', breakMinutes: mins, note: '' };
+    all.push(rec);
+  } else {
+    rec.breakMinutes = mins;
+  }
+  save(KEY_ATTENDANCE, all);
+  return { date, breakMinutes: mins };
+}
+
 // ---- 時間外・休日勤務 ----
 
 /** 1件追加（従業員の時間外申請用） */

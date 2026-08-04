@@ -171,7 +171,7 @@ function getSession(token) {
 // 認可: 公開＝ログイン系。従業員アクションは role=staff（自分のデータのみ）。それ以外は管理者専用。
 var PUBLIC_ACTIONS = { adminLogin: true, staffLogin: true };
 var STAFF_ACTIONS = {
-  getMyProfile: true, getMyAttendance: true, punch: true,
+  getMyProfile: true, getMyAttendance: true, punch: true, setMyBreak: true,
   getMyAvailability: true, saveMyAvailability: true,
   getMyOvertime: true, addMyOvertime: true,
   getMyLeave: true, addMyLeaveRequest: true, staffChangePassword: true,
@@ -244,6 +244,9 @@ function dispatch(action, body) {
         break;
       case 'punch':
         result = handlePunch(getSession(body.token), body.punchType);
+        break;
+      case 'setMyBreak':
+        result = handleSetMyBreak(getSession(body.token), body.minutes);
         break;
       case 'getMyAvailability':
         result = handleGetMyAvailability(getSession(body.token), body.month);
@@ -980,6 +983,42 @@ function handlePunch(session, punchType) {
   for (let k = rows.length - 1; k >= 1; k--) sheet.deleteRow(rows[k]);
 
   return { success: true, data: { date: today, time: now, punchType: punchType } };
+}
+
+// 従業員が当日の休憩時間（分）を保存する。当日レコードの休憩のみ更新（出退勤・区分は保持）。
+function handleSetMyBreak(session, minutes) {
+  const staff = staffOf_(session);
+  const tz = Session.getScriptTimeZone();
+  const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  const sheet = getSheet('attendance');
+  const ncol = colKeys('attendance').length;
+
+  const data = sheet.getDataRange().getValues();
+  const ymd = function (v) {
+    return (Object.prototype.toString.call(v) === '[object Date]')
+      ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : String(v == null ? '' : v).trim();
+  };
+  const rows = [];
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][1]) === staff.id && ymd(data[i][2]) === today) rows.push(i + 1);
+  }
+  const objs = sheetToObjects(sheet, 'attendance').filter(function (r) {
+    return String(r.staffId) === staff.id && String(r.date) === today;
+  });
+  const firstOf = function (key) { for (let j = 0; j < objs.length; j++) { if (objs[j][key]) return objs[j][key]; } return ''; };
+  const mins = Math.max(0, Math.round(Number(minutes) || 0));
+  const rec = {
+    id: staff.id + '_' + today, staffId: staff.id, date: today,
+    dayType: firstOf('dayType') || 'work',
+    startTime: firstOf('startTime'), endTime: firstOf('endTime'),
+    breakMinutes: mins, note: firstOf('note'),
+  };
+  const target = rows.length ? rows[0] : sheet.getLastRow() + 1;
+  sheet.getRange(target, 1, 1, ncol).setNumberFormat('@');
+  sheet.getRange(target, 1, 1, ncol).setValues([objectToRow('attendance', rec)]);
+  for (let k = rows.length - 1; k >= 1; k--) sheet.deleteRow(rows[k]);
+
+  return { success: true, data: { date: today, breakMinutes: mins } };
 }
 
 function handleGetMyAvailability(session, month) {
