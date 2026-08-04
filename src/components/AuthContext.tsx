@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, type ReactNode } from 'react';
 import type { Role } from '../types';
-import { clearDataCache, getReference } from '../api/data';
+import { clearDataCache } from '../api/data';
 
 interface AuthState {
   isLoggedIn: boolean;
@@ -26,8 +26,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionStorage.setItem('tof_role', r);
     if (sid) sessionStorage.setItem('tof_staffId', sid);
     else sessionStorage.removeItem('tof_staffId');
-    // 事務局は各画面が基礎データ（職員・区分・費目）を必要とするので先読みしておく
-    if (r === 'admin') getReference().catch(() => {});
+    // 先読みはしない：着地するダッシュボードが職員・区分・費目・確定・休暇を
+    // 1バッチでまとめて取得し、そこで基礎データのキャッシュも温めるため。
   };
 
   const logout = () => {

@@ -511,15 +511,40 @@ export async function getReference(): Promise<ReferenceData> {
 // --- ダッシュボード ---
 export interface DashboardData { staff: Staff[]; patterns: ShiftPattern[]; confirmed: ConfirmedShift[]; absences: DayAbsences }
 export async function getDashboardData(date: string): Promise<DashboardData> {
-  const { staff, patterns } = await getReference();
+  const month = date.slice(0, 7);
   if (!USE_GAS) {
+    const [staff, patterns] = await Promise.all([listStaff(), listShiftPatterns()]);
     return { staff, patterns, confirmed: local.listConfirmedByDate(date), absences: local.listAbsencesByDate(date) };
   }
-  const r = await batchCall([{ action: 'getConfirmedMonth', month: date.slice(0, 7) }, { action: 'getAbsencesByDate', date }]);
+  // 基礎データ（職員・区分・費目）が未キャッシュなら確定・休暇と一緒に1バッチで取得し、
+  // キャッシュも温める。キャッシュ済みなら確定・休暇だけを1バッチで取得する。
+  const cached = refFromCache();
+  const reqs: Record<string, unknown>[] = cached
+    ? [{ action: 'getConfirmedMonth', month }, { action: 'getAbsencesByDate', date }]
+    : [
+        { action: 'getStaff' }, { action: 'getShiftPatterns' }, { action: 'getExpenseCategories' },
+        { action: 'getConfirmedMonth', month }, { action: 'getAbsencesByDate', date },
+      ];
+  const r = await batchCall(reqs);
   if (r) {
-    const confirmed = unwrap(r[0] as SubRes<ConfirmedShift[]>, []).filter(x => x.date === date);
-    return { staff, patterns, confirmed, absences: unwrap(r[1] as SubRes<DayAbsences>, { leave: [], comp: [] }) };
+    let staff: Staff[], patterns: ShiftPattern[], base: number;
+    if (cached) {
+      staff = cached.staff; patterns = cached.patterns; base = 0;
+    } else {
+      staff = unwrap(r[0] as SubRes<Staff[]>, []).slice().sort((a, b) => (a.lastKana || '').localeCompare(b.lastKana || '', 'ja'));
+      const patList = unwrap(r[1] as SubRes<ShiftPattern[]>, []);
+      patterns = (patList.length ? patList : DEFAULT_SHIFT_PATTERNS).slice().sort((a, b) => a.order - b.order);
+      const catList = unwrap(r[2] as SubRes<ExpenseCategory[]>, []);
+      cacheSet('staff', staff); cacheSet('patterns', patterns);
+      cacheSet('categories', catList.length ? catList : local.listExpenseCategories());
+      base = 3;
+    }
+    const confirmed = unwrap(r[base] as SubRes<ConfirmedShift[]>, []).filter(x => x.date === date);
+    const absences = unwrap(r[base + 1] as SubRes<DayAbsences>, { leave: [], comp: [] });
+    return { staff, patterns, confirmed, absences };
   }
+  // フォールバック（旧GAS: バッチ未対応）
+  const [staff, patterns] = await Promise.all([listStaff(), listShiftPatterns()]);
   const [conf, absences] = await Promise.all([listConfirmedByDate(date), listAbsencesByDate(date)]);
   return { staff, patterns, confirmed: conf, absences };
 }
