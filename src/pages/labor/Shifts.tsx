@@ -464,7 +464,11 @@ export default function Shifts() {
                       );
                     })}
                     {mode === 'confirm' && t && <td className="border-b px-2 text-center text-gray-600">{t.daysCount}</td>}
-                    {mode === 'confirm' && t && <td className="border-b px-2 text-center text-gray-600">{t.hours}h</td>}
+                    {mode === 'confirm' && t && (
+                      s.employmentType === 'fulltime'
+                        ? <td className="border-b px-2 text-center text-gray-300" title="常勤は月給制のため、シフト予定の実働時間は給与・時間外には反映されません（予定値）">{t.hours}h</td>
+                        : <td className="border-b px-2 text-center text-gray-600">{t.hours}h</td>
+                    )}
                   </tr>
                 );
               })}
