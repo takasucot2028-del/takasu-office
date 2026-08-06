@@ -32,19 +32,51 @@ function staffId(): string {
 
 // 基礎データ（あまり変わらないもの）の短期キャッシュ。画面遷移のたびの再取得を防ぐ。
 const _cache = new Map<string, { t: number; v: unknown }>();
-const CACHE_TTL = 60000; // 60秒
+const CACHE_TTL = 60000; // 60秒（メモリ内の再取得抑制）
+// 端末(localStorage)にも保存して、再読込・再訪問時に「前回値を即表示→裏で最新化」する対象キー
+const PERSIST_KEYS = new Set(['staff', 'patterns', 'categories']);
+const PERSIST_PREFIX = 'tof_cache_';
+function persistRead(key: string): { t: number; v: unknown } | null {
+  try {
+    const raw = localStorage.getItem(PERSIST_PREFIX + key);
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    return o && typeof o.t === 'number' ? o : null;
+  } catch { return null; }
+}
+function persistWrite(key: string, entry: { t: number; v: unknown }) {
+  try { localStorage.setItem(PERSIST_PREFIX + key, JSON.stringify(entry)); } catch { /* 容量超過等は無視 */ }
+}
+function persistClear() {
+  try { PERSIST_KEYS.forEach(k => localStorage.removeItem(PERSIST_PREFIX + k)); } catch { /* noop */ }
+}
+
+// stale-while-revalidate な memo。永続キーは保存値があれば即返し、裏で最新化する。
 async function memo<T>(key: string, loader: () => Promise<T>): Promise<T> {
   const c = _cache.get(key);
   if (c && Date.now() - c.t < CACHE_TTL) return c.v as T;
+  if (PERSIST_KEYS.has(key)) {
+    const p = persistRead(key);
+    if (p) { void loader().then(v => cacheSet(key, v)).catch(() => {}); return p.v as T; }
+  }
   const v = await loader();
-  _cache.set(key, { t: Date.now(), v });
+  cacheSet(key, v);
   return v;
 }
-function invalidate(...keys: string[]) { keys.forEach(k => _cache.delete(k)); }
-function cacheSet(key: string, v: unknown) { _cache.set(key, { t: Date.now(), v }); }
+function invalidate(...keys: string[]) {
+  keys.forEach(k => {
+    _cache.delete(k);
+    if (PERSIST_KEYS.has(k)) { try { localStorage.removeItem(PERSIST_PREFIX + k); } catch { /* noop */ } }
+  });
+}
+function cacheSet(key: string, v: unknown) {
+  const entry = { t: Date.now(), v };
+  _cache.set(key, entry);
+  if (PERSIST_KEYS.has(key)) persistWrite(key, entry);
+}
 function cacheFresh(key: string): boolean { const c = _cache.get(key); return !!c && Date.now() - c.t < CACHE_TTL; }
-/** キャッシュ全消去（ログイン/ログアウト時に呼ぶ） */
-export function clearDataCache() { _cache.clear(); }
+/** キャッシュ全消去（ログイン/ログアウト時に呼ぶ。端末保存分も消す） */
+export function clearDataCache() { _cache.clear(); persistClear(); }
 
 // ApiResponse から data を取り出す。失敗時は fallback を返す。
 function unwrap<T>(res: { success: boolean; data?: T; error?: string }, fallback: T): T {
@@ -487,10 +519,14 @@ function refFromCache(): ReferenceData | null {
   }
   return null;
 }
+// 端末保存（多少古くてもよい）から基礎データを復元。再読込直後の即表示に使う。
+function refFromPersist(): ReferenceData | null {
+  const s = persistRead('staff'), p = persistRead('patterns'), c = persistRead('categories');
+  if (s && p && c) return { staff: s.v as Staff[], patterns: p.v as ShiftPattern[], categories: c.v as ExpenseCategory[] };
+  return null;
+}
 let _refInflight: Promise<ReferenceData> | null = null;
-export async function getReference(): Promise<ReferenceData> {
-  const cached = refFromCache();
-  if (cached) return cached;
+function loadReference(): Promise<ReferenceData> {
   if (_refInflight) return _refInflight;      // 同時呼び出しは1リクエストに集約
   _refInflight = (async (): Promise<ReferenceData> => {
     try {
@@ -514,6 +550,16 @@ export async function getReference(): Promise<ReferenceData> {
     } finally { _refInflight = null; }
   })();
   return _refInflight;
+}
+export async function getReference(): Promise<ReferenceData> {
+  const cached = refFromCache();
+  if (cached) return cached;                  // メモリ内が新しければ即返す
+  const persisted = refFromPersist();
+  if (persisted) {                            // 端末保存があれば即表示し、裏で最新化
+    void loadReference().catch(() => {});
+    return persisted;
+  }
+  return loadReference();                     // 初回のみ取得を待つ
 }
 
 // --- ダッシュボード ---
