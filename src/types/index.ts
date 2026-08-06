@@ -96,8 +96,10 @@ export interface OvertimeRecord {
   id: string;
   staffId: string;
   date: string;               // YYYY-MM-DD
-  kind: OvertimeKind;         // 追加時に自動判定（常勤の土日=holiday）
-  appliedHours: number;       // 申請（予定）時間
+  kind: OvertimeKind;         // 追加時に自動判定（常勤の土日祝=holiday）
+  appliedHours: number;       // 申請（予定）時間。startTime/endTime から算出した値
+  startTime?: string;         // 申請の開始 HH:MM（任意。時刻で申請した場合に保持）
+  endTime?: string;           // 申請の終了 HH:MM（任意）
   reason: string;             // 事由
   status: OvertimeStatus;     // applied→approved
   disposition: OvertimeDisposition;
@@ -143,7 +145,9 @@ export interface LeaveRecord {
   kind: LeaveKind;
   date: string;               // 付与日または取得日 YYYY-MM-DD
   days: number;               // 日単位の量（0.5日単位可）。時間単位の記録では0
-  hours: number;              // 時間単位の量（1時間単位）。日単位の記録では0
+  hours: number;              // 時間単位の量。日単位の記録では0。startTime/endTime から算出可
+  startTime?: string;         // 時間単位取得の開始 HH:MM（任意）
+  endTime?: string;           // 時間単位取得の終了 HH:MM（任意）
   status: RequestStatus;      // 承認状態（付与・事務局登録=approved、従業員申請=requested）
   note: string;
 }

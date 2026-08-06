@@ -32,6 +32,7 @@ var SHEETS = {
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['kind', '種別'],
     ['appliedHours', '申請時間'], ['reason', '事由'], ['status', '状態'],
     ['disposition', '処理区分'], ['resultHours', '実績時間'], ['note', '備考'],
+    ['startTime', '開始'], ['endTime', '終了'],
   ] },
   comp_leave_use: { name: '代休取得', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['hours', '時間'], ['note', '備考'],
@@ -56,6 +57,7 @@ var SHEETS = {
   ] },
   leave: { name: '有給休暇', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['kind', '種別'], ['date', '日付'], ['days', '日数'], ['note', '備考'], ['hours', '時間'], ['status', '状態'],
+    ['startTime', '開始'], ['endTime', '終了'],
   ] },
   shift_patterns: { name: 'シフト区分', columns: [
     ['id', 'ID'], ['name', '区分名'], ['startTime', '開始'], ['endTime', '終了'], ['order', '並び順'], ['location', '対象'],
@@ -1083,6 +1085,7 @@ function handleAddMyOvertime(session, record) {
     kind: record.kind || 'overtime',
     appliedHours: Number(record.appliedHours) || 0, reason: record.reason || '',
     status: 'applied', disposition: '', resultHours: 0, note: '',
+    startTime: String(record.startTime || ''), endTime: String(record.endTime || ''),
   };
   getSheet('overtime').appendRow(objectToRow('overtime', rec));
   return { success: true };
@@ -1104,6 +1107,7 @@ function handleAddMyLeaveRequest(session, record) {
     id: genId('lv'), staffId: staff.id, kind: 'use', date: record.date,
     days: Number(record.days) || 0, hours: Number(record.hours) || 0,
     status: 'requested', note: record.note || '',
+    startTime: String(record.startTime || ''), endTime: String(record.endTime || ''),
   };
   getSheet('leave').appendRow(objectToRow('leave', rec));
   return { success: true };

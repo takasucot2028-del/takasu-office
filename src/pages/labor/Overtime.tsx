@@ -304,7 +304,9 @@ export default function Overtime() {
                       </Td>
                       <Td><Badge color={c.kind === 'holiday' ? 'red' : 'yellow'}>{OVERTIME_KIND_LABELS[c.kind]}</Badge></Td>
                       <Td className="min-w-28"><Input value={r.reason} onChange={e => setRec(r.id, { reason: e.target.value })} /></Td>
-                      <Td className="whitespace-nowrap text-gray-500">{r.appliedHours}h</Td>
+                      <Td className="whitespace-nowrap text-gray-500">
+                        {r.startTime && r.endTime ? <span>{r.startTime}〜{r.endTime}<span className="text-gray-400 ml-1">({r.appliedHours}h)</span></span> : `${r.appliedHours}h`}
+                      </Td>
                       <Td>
                         {r.status === 'approved'
                           ? <button onClick={() => setRec(r.id, { status: 'applied' })}><Badge color="green">{OVERTIME_STATUS_LABELS.approved}</Badge></button>

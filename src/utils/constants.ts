@@ -86,6 +86,11 @@ export function breakMinutesBetween(start?: string, end?: string): number {
   return min > 0 ? min : 0;
 }
 
+/** 時刻範囲（HH:MM〜HH:MM）から時間数を求める（分/60、小数第2位で丸め。両方揃わなければ0） */
+export function hoursBetween(start?: string, end?: string): number {
+  return Math.round(breakMinutesBetween(start, end) / 60 * 100) / 100;
+}
+
 // ==== 会計管理 ====
 
 /** 会計年度（4月始まり）。date の年度＝4月以降はその年、1〜3月は前年 */

@@ -191,6 +191,7 @@ export async function addMyOvertime(record: Partial<OvertimeRecord>): Promise<vo
     local.addOvertime({
       id: local.genId('ot'), staffId: staffId(), date: record.date || '', kind: record.kind || 'overtime',
       appliedHours: record.appliedHours || 0, reason: record.reason || '',
+      startTime: record.startTime || '', endTime: record.endTime || '',
       status: 'applied', disposition: '', resultHours: 0, note: '',
     });
     return;
@@ -208,6 +209,7 @@ export async function addMyLeaveRequest(record: Partial<LeaveRecord>): Promise<v
     local.addLeave({
       id: local.genId('lv'), staffId: staffId(), kind: 'use', date: record.date || '',
       days: record.days || 0, hours: record.hours || 0, status: 'requested', note: record.note || '',
+      startTime: record.startTime || '', endTime: record.endTime || '',
     });
     return;
   }

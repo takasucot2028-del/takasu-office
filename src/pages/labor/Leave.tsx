@@ -165,7 +165,7 @@ export default function Leave() {
                 {pending.map(r => (
                   <div key={r.id} className="flex items-center gap-3 flex-wrap text-sm">
                     <span className="font-medium">{r.date}</span>
-                    <span>{r.hours > 0 ? `${r.hours}時間` : `${r.days}日`}</span>
+                    <span>{r.hours > 0 ? (r.startTime && r.endTime ? `${r.startTime}〜${r.endTime}（${r.hours}時間）` : `${r.hours}時間`) : `${r.days}日`}</span>
                     {r.note && <span className="text-xs text-gray-500">{r.note}</span>}
                     <div className="flex-1" />
                     <Button size="sm" onClick={() => changeStatus(r.id, 'approved')}>承認</Button>
@@ -258,7 +258,7 @@ export default function Leave() {
                         {r.kind === 'grant' ? '付与' : '取得'}
                       </Badge>
                     </Td>
-                    <Td>{r.hours > 0 ? `${r.hours}時間` : `${r.days}日`}</Td>
+                    <Td className="whitespace-nowrap">{r.hours > 0 ? (r.startTime && r.endTime ? `${r.startTime}〜${r.endTime}（${r.hours}時間）` : `${r.hours}時間`) : `${r.days}日`}</Td>
                     <Td>
                       <Badge color={st === 'approved' ? 'green' : st === 'requested' ? 'yellow' : 'red'}>
                         {st === 'approved' ? '承認済' : st === 'requested' ? '申請中' : '却下'}

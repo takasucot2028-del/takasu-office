@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import { getMyLeave, addMyLeaveRequest, computeLeaveBalance, todayStr } from '../../api/data';
-import { LEAVE_HOURS_PER_DAY } from '../../utils/constants';
+import { LEAVE_HOURS_PER_DAY, hoursBetween } from '../../utils/constants';
 import type { LeaveRecord, RequestStatus } from '../../types';
 
 type LeaveUnit = 'day' | 'hour';
@@ -18,8 +18,11 @@ export default function StaffLeaveRequest() {
 
   const [unit, setUnit] = useState<LeaveUnit>('day');
   const [date, setDate] = useState(todayStr());
-  const [amount, setAmount] = useState('1');
+  const [amount, setAmount] = useState('1');       // 日単位の日数
+  const [start, setStart] = useState('08:30');     // 時間単位の開始
+  const [end, setEnd] = useState('12:00');         // 時間単位の終了
   const [note, setNote] = useState('');
+  const hourAmt = hoursBetween(start, end);        // 時間単位の取得時間
 
   const summary = useMemo(() => computeLeaveBalance(records), [records]);
   const pending = records.filter(r => r.status === 'requested');
@@ -33,8 +36,11 @@ export default function StaffLeaveRequest() {
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
-    const v = Number(amount);
-    if (!v || v <= 0) { setError('日数・時間を入力してください'); return; }
+    const v = unit === 'hour' ? hourAmt : Number(amount);
+    if (!v || v <= 0) {
+      setError(unit === 'hour' ? '終了は開始より後の時刻にしてください' : '日数を入力してください');
+      return;
+    }
     const useHours = unit === 'hour' ? v : v * LEAVE_HOURS_PER_DAY;
     if (useHours > summary.balanceHours) {
       setError(`残（${summary.balanceDays}日 / ${summary.balanceHours}h）を超えています`);
@@ -42,7 +48,10 @@ export default function StaffLeaveRequest() {
     }
     setSaving(true); setError(''); setMessage('');
     try {
-      await addMyLeaveRequest({ date, days: unit === 'day' ? v : 0, hours: unit === 'hour' ? v : 0, note });
+      await addMyLeaveRequest({
+        date, days: unit === 'day' ? v : 0, hours: unit === 'hour' ? v : 0, note,
+        startTime: unit === 'hour' ? start : '', endTime: unit === 'hour' ? end : '',
+      });
       setMessage('休暇を申請しました。事務局の承認をお待ちください。');
       setNote(''); setAmount('1');
       setVersion(x => x + 1);
@@ -65,7 +74,7 @@ export default function StaffLeaveRequest() {
 
       <Card className="mb-4">
         <h2 className="font-bold text-gray-800 mb-3">申請する</h2>
-        <form onSubmit={add} className="grid sm:grid-cols-5 gap-3 items-end">
+        <form onSubmit={add} className="grid sm:grid-cols-6 gap-3 items-end">
           <Field label="取得日"><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></Field>
           <Field label="単位">
             <Select value={unit} onChange={e => setUnit(e.target.value as LeaveUnit)}>
@@ -73,13 +82,22 @@ export default function StaffLeaveRequest() {
               <option value="hour">時間</option>
             </Select>
           </Field>
-          <Field label={unit === 'hour' ? '時間' : '日数'}>
-            <Input type="number" min={unit === 'hour' ? 1 : 0.5} step={unit === 'hour' ? 1 : 0.5} value={amount} onChange={e => setAmount(e.target.value)} required />
-          </Field>
+          {unit === 'hour' ? (
+            <>
+              <Field label="開始"><Input type="time" value={start} onChange={e => setStart(e.target.value)} required /></Field>
+              <Field label="終了"><Input type="time" value={end} onChange={e => setEnd(e.target.value)} required /></Field>
+            </>
+          ) : (
+            <Field label="日数">
+              <Input type="number" min={0.5} step={0.5} value={amount} onChange={e => setAmount(e.target.value)} required />
+            </Field>
+          )}
           <Field label="備考"><Input value={note} onChange={e => setNote(e.target.value)} placeholder="例: 午後半休" /></Field>
           <div className="mb-4"><Button type="submit" className="w-full" disabled={saving}>{saving ? '申請中…' : '申請する'}</Button></div>
         </form>
-        <p className="text-xs text-gray-400">1日＝{LEAVE_HOURS_PER_DAY}時間。時間単位は1時間から。申請は事務局の承認後に残へ反映されます。</p>
+        <p className="text-xs text-gray-400">
+          1日＝{LEAVE_HOURS_PER_DAY}時間。時間単位は開始〜終了で申請（現在: <span className="font-medium text-gray-600">{unit === 'hour' ? (hourAmt > 0 ? `${hourAmt}h` : '—') : `${amount || 0}日`}</span>）。申請は事務局の承認後に残へ反映されます。
+        </p>
       </Card>
 
       {pending.length > 0 && (
@@ -94,7 +112,11 @@ export default function StaffLeaveRequest() {
               <tr key={r.id}>
                 <Td>{r.date}</Td>
                 <Td>{r.kind === 'grant' ? <Badge color="blue">付与</Badge> : <Badge color="gray">取得</Badge>}</Td>
-                <Td>{r.hours > 0 ? `${r.hours}時間` : `${r.days}日`}</Td>
+                <Td className="whitespace-nowrap">
+                  {r.hours > 0
+                    ? (r.startTime && r.endTime ? <span>{r.startTime}〜{r.endTime}<span className="text-gray-400 ml-1">({r.hours}時間)</span></span> : `${r.hours}時間`)
+                    : `${r.days}日`}
+                </Td>
                 <Td><Badge color={STATUS_COLOR[r.status || 'approved']}>{STATUS_LABEL[r.status || 'approved']}</Badge></Td>
                 <Td>{r.note}</Td>
               </tr>
