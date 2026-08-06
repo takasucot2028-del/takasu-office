@@ -229,7 +229,7 @@ export default function Overtime() {
           <Button size="sm" onClick={handleSave} disabled={saving || !staff}>{saving ? '保存中…' : '保存する'}</Button>
         </div>
         <p className="mt-2 text-xs text-gray-500">
-          実働は「勤怠管理」の出退勤から自動集計。実績時間＝実働−基準（常勤=8時間／パート=シフト予定、常勤の土日は休日勤務で実働全部）。手当＝時給×割増（時間外×1.25／休日×1.5）。
+          実働は「勤怠管理」の出退勤から自動集計。実績時間＝実働−基準（常勤=7.5時間／パート=シフト予定、常勤の土日祝は休日勤務で実働全部）。手当＝時給×割増（時間外×1.25／休日×1.5）。
         </p>
       </Card>
 

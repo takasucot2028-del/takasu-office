@@ -1,10 +1,10 @@
 // 時間外・休日勤務の計算ロジック（画面から共通利用）
 import type { Staff, ShiftPattern, OvertimeKind, OvertimeStatus, OvertimeDisposition } from '../types';
+import { isClosedDay } from './holidays';
 
-export const FULLTIME_STANDARD_HOURS = 8;   // 常勤の1日の所定（これを超えた分が時間外）
+export const FULLTIME_STANDARD_HOURS = 7.5; // 常勤の1日の所定（これを超えた分が時間外）
 export const OVERTIME_RATE = 1.25;          // 時間外の割増（×1.25）
 export const HOLIDAY_RATE = 1.5;            // 休日勤務の割増（×1.5）
-export const HOLIDAY_WEEKDAYS = [0, 6];     // 休日にあたる曜日（0=日, 6=土）
 
 export const OVERTIME_STATUS_LABELS: Record<OvertimeStatus, string> = {
   applied: '申請中',
@@ -25,10 +25,9 @@ export function isOvertimeTarget(staff: Staff): boolean {
   return staff.employmentType === 'fulltime' || staff.employmentType === 'parttime';
 }
 
-/** 常勤の土日勤務は休日勤務。それ以外（パート、常勤の平日）は時間外 */
+/** 常勤の土日・祝日勤務は休日勤務。それ以外（パート、常勤の平日）は時間外 */
 export function overtimeKindOf(staff: Staff, date: string): OvertimeKind {
-  const wd = new Date(`${date}T00:00:00`).getDay();
-  if (staff.employmentType === 'fulltime' && HOLIDAY_WEEKDAYS.includes(wd)) return 'holiday';
+  if (staff.employmentType === 'fulltime' && isClosedDay(date)) return 'holiday';
   return 'overtime';
 }
 
@@ -47,8 +46,8 @@ export function patternHours(p: ShiftPattern): number {
 
 /**
  * その日の「基準時間」（これを超えた分が実績時間外）。
- * - 常勤・平日: 8時間
- * - 常勤・土日（休日勤務）: 0（実働全部が休日勤務）
+ * - 常勤・平日: 7.5時間
+ * - 常勤・土日祝（休日勤務）: 0（実働全部が休日勤務）
  * - パート: その日の確定シフトの合計時間（shiftHours）
  */
 export function standardHoursOf(staff: Staff, date: string, shiftHours: number): number {
