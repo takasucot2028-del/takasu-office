@@ -239,10 +239,12 @@ export async function deleteDocument(id: string): Promise<void> {
 
 // === 管理者：従業員パスワード発行・休暇承認 ===
 export async function setStaffPassword(sid: string, password: string): Promise<void> {
-  invalidate('staff'); // hasPassword が変わる
-  if (!USE_GAS) { local.setStaffPassword(sid, password); return; }
+  if (!USE_GAS) { local.setStaffPassword(sid, password); invalidate('staff'); return; }
   const res = await gas.setStaffPassword(sid, password, token());
   if (!res.success) throw new Error(res.error || 'パスワードの設定に失敗しました');
+  // hasPassword フラグだけキャッシュ上で更新（名簿の再取得は不要）
+  const cur = readStaffCache();
+  if (cur) writeStaffCache(cur.map(s => s.id === sid ? { ...s, hasPassword: true } : s));
 }
 export async function setLeaveStatus(id: string, status: LeaveRecord['status']): Promise<void> {
   if (!USE_GAS) { local.setLeaveStatus(id, status); return; }
@@ -356,12 +358,32 @@ export async function getStaff(id: string): Promise<Staff | null> {
   return staff.find(s => s.id === id) ?? null;
 }
 
+// 職員キャッシュの読み書き（メモリ→端末保存の順に参照）。編集後に丸ごと再取得せず即時反映するため。
+function readStaffCache(): Staff[] | null {
+  return (_cache.get('staff')?.v as Staff[] | undefined)
+    ?? (persistRead('staff')?.v as Staff[] | undefined)
+    ?? null;
+}
+function writeStaffCache(list: Staff[]) {
+  const sorted = list.slice().sort((a, b) => (a.lastKana || '').localeCompare(b.lastKana || '', 'ja'));
+  cacheSet('staff', sorted); // メモリ＋端末保存を更新
+}
+
 export async function upsertStaff(staff: Staff): Promise<Staff> {
-  invalidate('staff');
-  if (!USE_GAS) return local.upsertStaff(staff);
+  if (!USE_GAS) { const r = local.upsertStaff(staff); invalidate('staff'); return r; }
   const res = await gas.upsertStaff(staff, token());
   if (!res.success) throw new Error(res.error || '職員情報の保存に失敗しました');
-  return res.data ?? staff;
+  const saved = res.data ?? staff;
+  // 保存内容でキャッシュを更新（次の職員名簿表示をGAS応答待ちなしで即時・正確に）
+  const cur = readStaffCache();
+  if (cur) {
+    const prev = cur.find(s => s.id === saved.id);
+    const merged: Staff = prev ? { ...prev, ...saved } : saved; // hasPassword 等は既存を保持
+    writeStaffCache([...cur.filter(s => s.id !== saved.id), merged]);
+  } else {
+    invalidate('staff');
+  }
+  return saved;
 }
 
 // === 勤怠 ===
