@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { PageContainer, Card, Button, Alert } from '../../components/UI';
+import { PageContainer, Card, Button, Alert, Badge } from '../../components/UI';
 import { getMyProfile, punch, setMyBreak, getStaffHomeData, todayStr } from '../../api/data';
-import { WEEKDAY_LABELS, DOC_TYPE_LABELS, breakMinutesBetween } from '../../utils/constants';
-import type { Staff, AttendanceRecord, DocumentItem } from '../../types';
+import type { TodayWork } from '../../api/data';
+import { WEEKDAY_LABELS, DOC_TYPE_LABELS, WORK_LOCATION_LABELS, breakMinutesBetween } from '../../utils/constants';
+import type { Staff, AttendanceRecord, DocumentItem, WorkLocation } from '../../types';
 
 function parseHM(hm: string): number | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(hm || '');
@@ -22,6 +23,7 @@ function workedText(rec?: AttendanceRecord, breakOverride?: number): string {
 export default function StaffHome() {
   const [staff, setStaff] = useState<Staff | null>(null);
   const [today, setToday] = useState<AttendanceRecord | undefined>();
+  const [todayWork, setTodayWork] = useState<TodayWork>({ shifts: [], leave: [], comp: [] });
   const [recentDocs, setRecentDocs] = useState<DocumentItem[]>([]);
   const [breakStartInput, setBreakStartInput] = useState('');
   const [breakEndInput, setBreakEndInput] = useState('');
@@ -41,6 +43,7 @@ export default function StaffHome() {
     setToday(rec);
     setBreakStartInput(rec?.breakStart || '');
     setBreakEndInput(rec?.breakEnd || '');
+    setTodayWork(home.today);
     setRecentDocs(home.documents.slice(0, 4));
     setLoading(false);
   };
@@ -120,6 +123,61 @@ export default function StaffHome() {
         </div>
 
         <p className="text-xs text-gray-400 mt-3">打刻の時刻はサーバー基準で記録されます。修正が必要な場合は事務局へご連絡ください。</p>
+      </Card>
+
+      {/* 本日の勤務・休暇（全員分） */}
+      <Card className="mb-4">
+        <h2 className="font-bold text-gray-800 mb-3">本日の勤務・休暇 <span className="text-sm font-normal text-gray-500">{date}（{wd}）</span></h2>
+        {loading ? (
+          <p className="text-sm text-gray-400">読み込み中…</p>
+        ) : (
+          <>
+            <div className="grid sm:grid-cols-2 gap-4">
+              {(Object.keys(WORK_LOCATION_LABELS) as WorkLocation[]).map(loc => {
+                const list = todayWork.shifts.filter(s => s.location === loc).slice()
+                  .sort((a, b) => a.order - b.order || a.staffName.localeCompare(b.staffName, 'ja'));
+                return (
+                  <div key={loc}>
+                    <div className="mb-2"><Badge color={loc === 'sotai' ? 'blue' : 'green'}>{WORK_LOCATION_LABELS[loc]}</Badge></div>
+                    {list.length === 0 ? (
+                      <p className="text-xs text-gray-400">勤務者なし</p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {list.map((s, i) => (
+                          <li key={i} className="text-sm text-gray-700 flex flex-wrap items-baseline gap-x-2">
+                            <span className="font-medium">{s.staffName}</span>
+                            <span className="text-gray-500 text-xs">{s.patternName} {s.startTime}〜{s.endTime}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-4 pt-3 border-t border-gray-100">
+              <div className="mb-2"><Badge color="yellow">休暇</Badge></div>
+              {todayWork.leave.length === 0 && todayWork.comp.length === 0 ? (
+                <p className="text-xs text-gray-400">本日の休暇取得者はいません</p>
+              ) : (
+                <ul className="space-y-1">
+                  {todayWork.leave.map((r, i) => (
+                    <li key={`l${i}`} className="text-sm text-gray-700 flex flex-wrap items-baseline gap-x-2">
+                      <span className="font-medium">{r.staffName}</span>
+                      <span className="text-yellow-700 text-xs">有給 {r.hours > 0 ? `${r.hours}時間` : `${r.days}日`}</span>
+                    </li>
+                  ))}
+                  {todayWork.comp.map((r, i) => (
+                    <li key={`c${i}`} className="text-sm text-gray-700 flex flex-wrap items-baseline gap-x-2">
+                      <span className="font-medium">{r.staffName}</span>
+                      <span className="text-blue-700 text-xs">代休 {r.hours}時間</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
+        )}
       </Card>
 
       {/* メニュー */}

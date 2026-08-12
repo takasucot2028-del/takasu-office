@@ -181,7 +181,7 @@ var STAFF_ACTIONS = {
   getExpenseContext: true, getMyExpenses: true, addMyExpense: true,
 };
 // 認証済みなら role を問わず許可（事務局・従業員の両方が閲覧するもの）
-var AUTHED_ACTIONS = { getDocuments: true };
+var AUTHED_ACTIONS = { getDocuments: true, getTodayWork: true };
 function enforceAuth(action, body) {
   if (PUBLIC_ACTIONS[action]) return;
   const session = getSession(body.token);
@@ -374,6 +374,9 @@ function dispatch(action, body) {
         break;
       case 'getAbsencesByDate':
         result = handleGetAbsencesByDate(body.date);
+        break;
+      case 'getTodayWork':
+        result = handleGetTodayWork(body.date);
         break;
       case 'getLeave':
         result = handleGetLeave(body.staffId);
@@ -712,6 +715,34 @@ function handleGetAbsencesByDate(date) {
   });
   comp.forEach(function (r) { r.hours = Number(r.hours) || 0; });
   return { success: true, data: { leave: leave, comp: comp } };
+}
+
+// 従業員も閲覧できる「本日の勤務・休暇」。氏名・シフト時間・休暇のみ返す（個人情報は含めない）。
+function handleGetTodayWork(date) {
+  var d = String(date);
+  var nameOf = {};
+  sheetToObjects(getSheet('staff'), 'staff').forEach(function (s) {
+    nameOf[s.id] = ((s.lastName || '') + ' ' + (s.firstName || '')).trim();
+  });
+  var patMap = {};
+  sheetToObjects(getSheet('shift_patterns'), 'shift_patterns').forEach(function (p) { patMap[p.id] = p; });
+  var shifts = sheetToObjects(getSheet('shifts_confirmed'), 'shifts_confirmed')
+    .filter(function (r) { return String(r.date) === d; })
+    .map(function (r) {
+      var p = patMap[r.patternId] || {};
+      return {
+        location: r.location, staffName: nameOf[r.staffId] || '(不明)',
+        patternName: p.name || '', startTime: p.startTime || '', endTime: p.endTime || '',
+        order: Number(p.order) || 99,
+      };
+    });
+  var leave = sheetToObjects(getSheet('leave'), 'leave')
+    .filter(function (r) { return String(r.date) === d && r.kind === 'use' && String(r.status || 'approved') === 'approved'; })
+    .map(function (r) { return { staffName: nameOf[r.staffId] || '(不明)', days: Number(r.days) || 0, hours: Number(r.hours) || 0, note: r.note || '' }; });
+  var comp = sheetToObjects(getSheet('comp_leave_use'), 'comp_leave_use')
+    .filter(function (r) { return String(r.date) === d; })
+    .map(function (r) { return { staffName: nameOf[r.staffId] || '(不明)', hours: Number(r.hours) || 0, note: r.note || '' }; });
+  return { success: true, data: { shifts: shifts, leave: leave, comp: comp } };
 }
 
 // --- ハンドラー：有給休暇 ---

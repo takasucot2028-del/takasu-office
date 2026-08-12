@@ -9,6 +9,13 @@ import type {
   ExpenseCategory, Budget, Expense,
 } from '../types';
 
+/** 本日の勤務・休暇（従業員も閲覧可。氏名・時間のみ、個人情報は含まない） */
+export interface TodayWorkShift {
+  location: WorkLocation; staffName: string; patternName: string; startTime: string; endTime: string; order: number;
+}
+export interface TodayWorkAbsence { staffName: string; days?: number; hours: number; note: string }
+export interface TodayWork { shifts: TodayWorkShift[]; leave: TodayWorkAbsence[]; comp: TodayWorkAbsence[] }
+
 /** 従業員の経費申請フォーム用コンテキスト（年度の予算行＋残額） */
 export interface ExpenseContext {
   categories: ExpenseCategory[];
@@ -88,6 +95,8 @@ export const punch = (punchType: 'in' | 'out', token: string) =>
 export const setMyBreak = (breakStart: string, breakEnd: string, token: string) =>
   request<{ date: string; breakMinutes: number; breakStart: string; breakEnd: string }>(
     'setMyBreak', { breakStart, breakEnd, token });
+export const getTodayWork = (date: string, token: string) =>
+  request<TodayWork>('getTodayWork', { date, token });
 export const getMyAvailability = (month: string, token: string) =>
   request<AvailabilityRecord[]>('getMyAvailability', { month, token });
 export const saveMyAvailability = (month: string, records: AvailabilityRecord[], token: string) =>

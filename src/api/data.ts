@@ -14,7 +14,8 @@ import type {
 import { DEFAULT_SHIFT_PATTERNS, LEAVE_HOURS_PER_DAY } from '../utils/constants';
 import * as local from '../utils/store';
 import * as gas from './client';
-import type { ExpenseContext } from './client';
+import type { ExpenseContext, TodayWork } from './client';
+export type { TodayWork } from './client';
 
 const USE_GAS = !!import.meta.env.VITE_GAS_URL;
 
@@ -674,12 +675,40 @@ export async function getAccountingData(fiscalYear: number): Promise<AccountingD
   return { budgets, expenses };
 }
 
+// --- 本日の勤務・休暇（従業員も閲覧可。氏名・時間のみ、個人情報は含まない） ---
+const EMPTY_TODAY: TodayWork = { shifts: [], leave: [], comp: [] };
+export async function getTodayWork(date: string): Promise<TodayWork> {
+  if (!USE_GAS) {
+    const nameOf = new Map(local.listStaff().map(s => [s.id, `${s.lastName} ${s.firstName}`]));
+    const patMap = new Map(local.listShiftPatterns().map(p => [p.id, p]));
+    const shifts = local.listConfirmedByDate(date).map(r => {
+      const p = patMap.get(r.patternId);
+      return {
+        location: r.location, staffName: nameOf.get(r.staffId) || '(不明)',
+        patternName: p?.name || '', startTime: p?.startTime || '', endTime: p?.endTime || '', order: p?.order ?? 99,
+      };
+    });
+    const abs = local.listAbsencesByDate(date);
+    const leave = abs.leave.map(r => ({ staffName: nameOf.get(r.staffId) || '(不明)', days: r.days, hours: r.hours, note: r.note }));
+    const comp = abs.comp.map(r => ({ staffName: nameOf.get(r.staffId) || '(不明)', hours: r.hours, note: r.note }));
+    return { shifts, leave, comp };
+  }
+  return unwrap(await gas.getTodayWork(date, token()), EMPTY_TODAY);
+}
+
 // --- 従業員ホーム ---
-export interface StaffHomeData { attendance: AttendanceRecord[]; documents: DocumentItem[] }
+export interface StaffHomeData { attendance: AttendanceRecord[]; documents: DocumentItem[]; today: TodayWork }
 export async function getStaffHomeData(month: string): Promise<StaffHomeData> {
-  if (!USE_GAS) return { attendance: local.listAttendance(staffId(), month), documents: local.listDocuments() };
-  const r = await batchCall([{ action: 'getMyAttendance', month }, { action: 'getDocuments' }]);
-  if (r) return { attendance: unwrap(r[0] as SubRes<AttendanceRecord[]>, []), documents: unwrap(r[1] as SubRes<DocumentItem[]>, []) };
-  const [attendance, documents] = await Promise.all([getMyAttendance(month), listDocuments()]);
-  return { attendance, documents };
+  const date = todayStr();
+  if (!USE_GAS) {
+    return { attendance: local.listAttendance(staffId(), month), documents: local.listDocuments(), today: await getTodayWork(date) };
+  }
+  const r = await batchCall([{ action: 'getMyAttendance', month }, { action: 'getDocuments' }, { action: 'getTodayWork', date }]);
+  if (r) return {
+    attendance: unwrap(r[0] as SubRes<AttendanceRecord[]>, []),
+    documents: unwrap(r[1] as SubRes<DocumentItem[]>, []),
+    today: unwrap(r[2] as SubRes<TodayWork>, EMPTY_TODAY),
+  };
+  const [attendance, documents, today] = await Promise.all([getMyAttendance(month), listDocuments(), getTodayWork(date)]);
+  return { attendance, documents, today };
 }
