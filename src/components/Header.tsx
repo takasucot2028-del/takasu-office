@@ -61,7 +61,7 @@ export default function Header() {
 
       {/* モバイルナビ */}
       {items.length > 0 && (
-        <nav className="sm:hidden flex overflow-x-auto border-t border-gray-100 px-4 gap-1 text-xs">
+        <nav className="sm:hidden flex flex-wrap border-t border-gray-100 px-2 py-1 gap-1 text-xs">
           {items.map(item => (
             <NavLink key={item.to} to={item.to} current={location.pathname}>{item.short}</NavLink>
           ))}

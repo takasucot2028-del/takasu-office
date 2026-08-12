@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* スマホ(iOS Safari)で入力欄タップ時の自動ズームを防ぐ（フォントを16px以上に） */
+@media (max-width: 640px) {
+  input, select, textarea { font-size: 16px; }
+}
+
 /* 印刷用（シフト表の印刷ページ） */
 @media print {
   header { display: none !important; }
