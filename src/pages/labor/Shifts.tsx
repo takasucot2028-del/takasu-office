@@ -291,6 +291,11 @@ export default function Shifts() {
   const cellBase = 'min-w-9 text-center text-xs border-b border-r border-gray-100 cursor-pointer select-none p-0 h-9';
   const menuStaff = menu ? allStaff.find(s => s.id === menu.staffId) : null;
   const menuReqNames = menu ? names(reqIds(menu.staffId, menu.date)) : '';
+  // ポップアップを常に画面内に収める（下端は overflow-y-auto で内部スクロール）
+  const menuPos = menu ? {
+    left: Math.max(8, Math.min(menu.x, window.innerWidth - 184)),
+    top: Math.max(8, Math.min(menu.y, window.innerHeight - 140)),
+  } : null;
 
   return (
     <PageContainer title="シフト表">
@@ -457,7 +462,7 @@ export default function Shifts() {
                       const bg = mode === 'confirm' && hasReq ? 'bg-amber-50' : weekend;
                       return (
                         <td key={date}
-                          onClick={e => setMenu({ staffId: s.id, date, x: Math.min(e.clientX, window.innerWidth - 190), y: Math.min(e.clientY, window.innerHeight - 260) })}
+                          onClick={e => setMenu({ staffId: s.id, date, x: e.clientX, y: e.clientY })}
                           className={`${cellBase} ${bg}`}>
                           <span className="font-medium text-gray-800 leading-tight px-0.5">{names(ids)}</span>
                         </td>
@@ -494,7 +499,8 @@ export default function Shifts() {
       {menu && menuStaff && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-          <div className="fixed z-50 bg-white border border-gray-200 rounded-md shadow-xl p-2 w-44" style={{ left: menu.x, top: menu.y }}>
+          <div className="fixed z-50 bg-white border border-gray-200 rounded-md shadow-xl p-2 w-44 overflow-y-auto"
+            style={{ left: menuPos!.left, top: menuPos!.top, maxHeight: `${window.innerHeight - menuPos!.top - 8}px` }}>
             <div className="text-xs text-gray-500 mb-1 px-1">
               {menuStaff.lastName} {menuStaff.firstName}・{Number(menu.date.slice(5, 7))}/{Number(menu.date.slice(8))}
             </div>
