@@ -922,12 +922,12 @@ function handleAddMyExpense(session, record) {
   const staff = staffOf_(session);
   if (!record || !record.date) return { success: false, error: '申請内容が不正です' };
   const rec = {
-    id: genId('ex'), fiscalYear: Number(record.fiscalYear) || 0, staffId: staff.id,
+    id: record.id || genId('ex'), fiscalYear: Number(record.fiscalYear) || 0, staffId: staff.id,
     date: record.date, project: record.project || '', categoryId: record.categoryId || '',
     amount: Number(record.amount) || 0, description: record.description || '',
     status: 'requested', note: '',
   };
-  getSheet('expenses').appendRow(objectToRow('expenses', rec));
+  appendUnique_('expenses', rec);
   return { success: true };
 }
 
@@ -1117,13 +1117,13 @@ function handleAddMyOvertime(session, record) {
   const staff = staffOf_(session);
   if (!record || !record.date) return { success: false, error: '申請内容が不正です' };
   const rec = {
-    id: genId('ot'), staffId: staff.id, date: record.date,
+    id: record.id || genId('ot'), staffId: staff.id, date: record.date,
     kind: record.kind || 'overtime',
     appliedHours: Number(record.appliedHours) || 0, reason: record.reason || '',
     status: 'applied', disposition: '', resultHours: 0, note: '',
     startTime: String(record.startTime || ''), endTime: String(record.endTime || ''),
   };
-  getSheet('overtime').appendRow(objectToRow('overtime', rec));
+  appendUnique_('overtime', rec);
   return { success: true };
 }
 
@@ -1140,12 +1140,12 @@ function handleAddMyLeaveRequest(session, record) {
   const staff = staffOf_(session);
   if (!record || !record.date) return { success: false, error: '申請内容が不正です' };
   const rec = {
-    id: genId('lv'), staffId: staff.id, kind: 'use', date: record.date,
+    id: record.id || genId('lv'), staffId: staff.id, kind: 'use', date: record.date,
     days: Number(record.days) || 0, hours: Number(record.hours) || 0,
     status: 'requested', note: record.note || '',
     startTime: String(record.startTime || ''), endTime: String(record.endTime || ''),
   };
-  getSheet('leave').appendRow(objectToRow('leave', rec));
+  appendUnique_('leave', rec);
   return { success: true };
 }
 

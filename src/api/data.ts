@@ -191,16 +191,17 @@ export async function getMyOvertime(): Promise<OvertimeRecord[]> {
   return unwrap(await gas.getMyOvertime(token()), []);
 }
 export async function addMyOvertime(record: Partial<OvertimeRecord>): Promise<void> {
+  const rec: Partial<OvertimeRecord> = { id: local.genId('ot'), ...record }; // クライアント採番（リトライ冪等化）
   if (!USE_GAS) {
     local.addOvertime({
-      id: local.genId('ot'), staffId: staffId(), date: record.date || '', kind: record.kind || 'overtime',
-      appliedHours: record.appliedHours || 0, reason: record.reason || '',
-      startTime: record.startTime || '', endTime: record.endTime || '',
+      id: rec.id!, staffId: staffId(), date: rec.date || '', kind: rec.kind || 'overtime',
+      appliedHours: rec.appliedHours || 0, reason: rec.reason || '',
+      startTime: rec.startTime || '', endTime: rec.endTime || '',
       status: 'applied', disposition: '', resultHours: 0, note: '',
     });
     return;
   }
-  const res = await gas.addMyOvertime(record, token());
+  const res = await gas.addMyOvertime(rec, token());
   if (!res.success) throw new Error(res.error || '時間外申請に失敗しました');
 }
 
@@ -209,15 +210,16 @@ export async function getMyLeave(): Promise<LeaveRecord[]> {
   return unwrap(await gas.getMyLeave(token()), []);
 }
 export async function addMyLeaveRequest(record: Partial<LeaveRecord>): Promise<void> {
+  const rec: Partial<LeaveRecord> = { id: local.genId('lv'), ...record }; // クライアント採番（リトライ冪等化）
   if (!USE_GAS) {
     local.addLeave({
-      id: local.genId('lv'), staffId: staffId(), kind: 'use', date: record.date || '',
-      days: record.days || 0, hours: record.hours || 0, status: 'requested', note: record.note || '',
-      startTime: record.startTime || '', endTime: record.endTime || '',
+      id: rec.id!, staffId: staffId(), kind: 'use', date: rec.date || '',
+      days: rec.days || 0, hours: rec.hours || 0, status: 'requested', note: rec.note || '',
+      startTime: rec.startTime || '', endTime: rec.endTime || '',
     });
     return;
   }
-  const res = await gas.addMyLeaveRequest(record, token());
+  const res = await gas.addMyLeaveRequest(rec, token());
   if (!res.success) throw new Error(res.error || '休暇申請に失敗しました');
 }
 
@@ -336,16 +338,17 @@ export async function listMyExpenses(): Promise<Expense[]> {
   return unwrap(await gas.getMyExpenses(token()), []);
 }
 export async function addMyExpense(record: Partial<Expense>): Promise<void> {
+  const rec: Partial<Expense> = { id: local.genId('ex'), ...record }; // クライアント採番（リトライ冪等化）
   if (!USE_GAS) {
     local.addExpense({
-      id: local.genId('ex'), fiscalYear: Number(record.fiscalYear) || 0, staffId: staffId(),
-      date: record.date || '', project: record.project || '', categoryId: record.categoryId || '',
-      amount: Number(record.amount) || 0, description: record.description || '',
+      id: rec.id!, fiscalYear: Number(rec.fiscalYear) || 0, staffId: staffId(),
+      date: rec.date || '', project: rec.project || '', categoryId: rec.categoryId || '',
+      amount: Number(rec.amount) || 0, description: rec.description || '',
       status: 'requested', note: '',
     });
     return;
   }
-  const res = await gas.addMyExpense(record, token());
+  const res = await gas.addMyExpense(rec, token());
   if (!res.success) throw new Error(res.error || '経費申請に失敗しました');
 }
 

@@ -38,7 +38,10 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 //  - save/upsert/set/delete … キー単位で置換/更新する冪等な書き込み（再試行しても結果は同じ）
 //  - IDで冪等化した追加（GAS側が同一IDを二重登録しない）… 経費・代休・有給の登録
 // 上記以外の追加系(add*)・打刻(punch)はサーバー側で重複しうるため再試行しない（業務エラーは元々再試行しない）。
-const IDEMPOTENT_ADDS = new Set(['addExpense', 'addCompUse', 'addLeave']);
+const IDEMPOTENT_ADDS = new Set([
+  'addExpense', 'addCompUse', 'addLeave',
+  'addMyExpense', 'addMyOvertime', 'addMyLeaveRequest', // 従業員申請もクライアント採番＋GAS側冪等化済み
+]);
 const isRetryable = (action: string) =>
   /^(get|save|upsert|set|delete)/.test(action) || IDEMPOTENT_ADDS.has(action) || action === 'batch' || /Login$/.test(action);
 
