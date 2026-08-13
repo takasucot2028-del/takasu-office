@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageContainer, Card, Badge } from '../components/UI';
-import { getDashboardData, todayStr } from '../api/data';
+import { getDashboardData, getDashboardCached, todayStr } from '../api/data';
 import type { DayAbsences } from '../api/data';
 import { WORK_LOCATION_LABELS, WEEKDAY_LABELS } from '../utils/constants';
 import type { WorkLocation, Staff, ShiftPattern, ConfirmedShift } from '../types';
@@ -18,14 +18,15 @@ export default function Dashboard() {
 
   useEffect(() => {
     let alive = true;
-    (async () => {
-      const d = await getDashboardData(today);
-      if (!alive) return;
-      setStaff(d.staff);
-      setPatterns(d.patterns);
-      setTodayShifts(d.confirmed);
-      setAbsences(d.absences);
+    const apply = (d: { staff: Staff[]; patterns: ShiftPattern[]; confirmed: ConfirmedShift[]; absences: DayAbsences }) => {
+      setStaff(d.staff); setPatterns(d.patterns); setTodayShifts(d.confirmed); setAbsences(d.absences);
       setLoading(false);
+    };
+    const cached = getDashboardCached(today); // 当日の保存があればまず即表示
+    if (cached) apply(cached);
+    (async () => {
+      const d = await getDashboardData(today); // 最新を取得して更新
+      if (alive) apply(d);
     })();
     return () => { alive = false; };
   }, [today]);

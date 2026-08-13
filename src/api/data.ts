@@ -49,7 +49,10 @@ function persistWrite(key: string, entry: { t: number; v: unknown }) {
   try { localStorage.setItem(PERSIST_PREFIX + key, JSON.stringify(entry)); } catch { /* 容量超過等は無視 */ }
 }
 function persistClear() {
-  try { PERSIST_KEYS.forEach(k => localStorage.removeItem(PERSIST_PREFIX + k)); } catch { /* noop */ }
+  try {
+    PERSIST_KEYS.forEach(k => localStorage.removeItem(PERSIST_PREFIX + k));
+    Object.keys(localStorage).filter(k => k.startsWith('tof_dash_')).forEach(k => localStorage.removeItem(k));
+  } catch { /* noop */ }
 }
 
 // stale-while-revalidate な memo。永続キーは保存値があれば即返し、裏で最新化する。
@@ -589,6 +592,18 @@ export async function getReference(): Promise<ReferenceData> {
 
 // --- ダッシュボード ---
 export interface DashboardData { staff: Staff[]; patterns: ShiftPattern[]; confirmed: ConfirmedShift[]; absences: DayAbsences }
+// 当日分のダッシュボードを端末保存し、再訪問時にまず即表示（stale-while-revalidate）する。
+// 日付をキーにするので「別の日の内容」が出ることはない。
+function dashKey(date: string): string { return `tof_dash_${date}`; }
+export function getDashboardCached(date: string): DashboardData | null {
+  try { const raw = localStorage.getItem(dashKey(date)); return raw ? JSON.parse(raw) as DashboardData : null; } catch { return null; }
+}
+function persistDash(date: string, data: DashboardData) {
+  try {
+    Object.keys(localStorage).filter(k => k.startsWith('tof_dash_') && k !== dashKey(date)).forEach(k => localStorage.removeItem(k));
+    localStorage.setItem(dashKey(date), JSON.stringify(data));
+  } catch { /* 容量超過等は無視 */ }
+}
 export async function getDashboardData(date: string): Promise<DashboardData> {
   const month = date.slice(0, 7);
   if (!USE_GAS) {
@@ -596,8 +611,10 @@ export async function getDashboardData(date: string): Promise<DashboardData> {
     return { staff, patterns, confirmed: local.listConfirmedByDate(date), absences: local.listAbsencesByDate(date) };
   }
   // 基礎データ（職員・区分・費目）が未キャッシュなら確定・休暇と一緒に1バッチで取得し、
-  // キャッシュも温める。キャッシュ済みなら確定・休暇だけを1バッチで取得する。
-  const cached = refFromCache();
+  // キャッシュも温める。メモリ／端末保存にあれば確定・休暇だけを1バッチで取得する。
+  const memCached = refFromCache();
+  const cached = memCached || refFromPersist();
+  if (cached && !memCached) void loadReference().catch(() => {}); // 保存値を使うので裏で最新化
   const reqs: Record<string, unknown>[] = cached
     ? [{ action: 'getConfirmedMonth', month }, { action: 'getAbsencesByDate', date }]
     : [
@@ -620,7 +637,9 @@ export async function getDashboardData(date: string): Promise<DashboardData> {
     }
     const confirmed = unwrap(r[base] as SubRes<ConfirmedShift[]>, []).filter(x => x.date === date);
     const absences = unwrap(r[base + 1] as SubRes<DayAbsences>, { leave: [], comp: [] });
-    return { staff, patterns, confirmed, absences };
+    const result = { staff, patterns, confirmed, absences };
+    persistDash(date, result);
+    return result;
   }
   // フォールバック（旧GAS: バッチ未対応）
   const [staff, patterns] = await Promise.all([listStaff(), listShiftPatterns()]);
