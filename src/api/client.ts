@@ -36,9 +36,11 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 // 非JSON応答（GASが稀に返す404/HTML等）や通信エラー時に安全に再試行できるアクション。
 //  - 読み取り(get*)・ログイン・バッチ … 副作用なし
 //  - save/upsert/set/delete … キー単位で置換/更新する冪等な書き込み（再試行しても結果は同じ）
-// 追加系(add*)・打刻(punch)はサーバー側で重複しうるため再試行しない（業務エラーは元々再試行しない）。
+//  - IDで冪等化した追加（GAS側が同一IDを二重登録しない）… 経費・代休・有給の登録
+// 上記以外の追加系(add*)・打刻(punch)はサーバー側で重複しうるため再試行しない（業務エラーは元々再試行しない）。
+const IDEMPOTENT_ADDS = new Set(['addExpense', 'addCompUse', 'addLeave']);
 const isRetryable = (action: string) =>
-  /^(get|save|upsert|set|delete)/.test(action) || action === 'batch' || /Login$/.test(action);
+  /^(get|save|upsert|set|delete)/.test(action) || IDEMPOTENT_ADDS.has(action) || action === 'batch' || /Login$/.test(action);
 
 async function request<T>(action: string, payload?: Record<string, unknown>): Promise<ApiResponse<T>> {
   if (!API_BASE) {

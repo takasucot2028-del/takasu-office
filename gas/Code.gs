@@ -435,6 +435,13 @@ function findRowIndex(sheet, colIndex, value) {
   return -1;
 }
 
+// 同じIDが無ければ追加する（冪等）。リトライで二重登録されないようにする。
+function appendUnique_(sheetKey, record) {
+  const sheet = getSheet(sheetKey);
+  if (findRowIndex(sheet, 0, record.id) >= 0) return; // 既に登録済み（リトライ）→追加しない
+  sheet.appendRow(objectToRow(sheetKey, record));
+}
+
 // オブジェクトを列順の行配列へ変換
 function objectToRow(key, obj) {
   return colKeys(key).map(function (k) {
@@ -691,8 +698,7 @@ function handleGetCompUse(staffId) {
 
 function handleAddCompUse(record) {
   if (!record || !record.id) return { success: false, error: '代休取得の記録が不正です' };
-  const sheet = getSheet('comp_leave_use');
-  sheet.appendRow(objectToRow('comp_leave_use', record));
+  appendUnique_('comp_leave_use', record);
   return { success: true };
 }
 
@@ -757,8 +763,7 @@ function handleGetLeave(staffId) {
 function handleAddLeave(record) {
   if (!record || !record.id) return { success: false, error: '有給記録が不正です' };
   if (!record.status) record.status = 'approved';
-  const sheet = getSheet('leave');
-  sheet.appendRow(objectToRow('leave', record));
+  appendUnique_('leave', record);
   return { success: true };
 }
 
@@ -868,7 +873,7 @@ function handleGetExpenses(fiscalYear) {
 function handleAddExpense(record) {
   if (!record || !record.id) return { success: false, error: '経費データが不正です' };
   if (!record.status) record.status = 'approved';
-  getSheet('expenses').appendRow(objectToRow('expenses', record));
+  appendUnique_('expenses', record);
   return { success: true };
 }
 function handleSetExpenseStatus(id, status) {

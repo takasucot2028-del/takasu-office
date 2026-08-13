@@ -103,10 +103,13 @@ export default function Accounting() {
     const amt = Number(exAmount);
     if (!amt || amt <= 0) { setError('金額を入力してください'); return; }
     setError('');
+    const rec: Expense = { id: genId('ex'), fiscalYear: fy, staffId: '', date: exDate, project: exProject, categoryId: exCat, amount: amt, description: exDesc, status: 'approved', note: '事務局登録' };
     try {
-      await addExpense({ id: genId('ex'), fiscalYear: fy, staffId: '', date: exDate, project: exProject, categoryId: exCat, amount: amt, description: exDesc, status: 'approved', note: '事務局登録' });
+      await addExpense(rec);
+      // 全体を取り直さず、登録した経費を画面に直接反映（往復を1回に）
+      setExpenses(prev => [rec, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
       setExAmount(''); setExDesc('');
-      skipCacheRef.current = true; setVersion(v => v + 1);
+      setMessage('経費を登録しました');
     } catch (err) { setError(err instanceof Error ? err.message : '登録に失敗しました'); }
   };
 
