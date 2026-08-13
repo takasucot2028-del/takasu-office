@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import {
   getReference, saveExpenseCategories,
   saveBudgets, addExpense, setExpenseStatus, deleteExpense,
-  getAccountingData, usedOf, genId, todayStr,
+  getAccountingData, getAccountingCached, usedOf, genId, todayStr,
 } from '../../api/data';
 import { currentFiscalYear, fiscalYearLabel } from '../../utils/constants';
 import type { Staff, ExpenseCategory, Budget, Expense } from '../../types';
@@ -32,14 +32,28 @@ export default function Accounting() {
   const catMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
   const staffMap = useMemo(() => new Map(staff.map(s => [s.id, `${s.lastName} ${s.firstName}`])), [staff]);
 
+  // 保存直後（version変更）の再読込ではキャッシュ即表示をスキップし、最新のみ反映する。
+  const skipCacheRef = useRef(false);
+
   useEffect(() => { getReference().then(r => { setStaff(r.staff); setCategories(r.categories); }); }, []);
   useEffect(() => {
     let alive = true;
-    setLoading(true); setMessage('');
+    setMessage('');
+    const cached = skipCacheRef.current ? null : getAccountingCached(fy); // 当該年度の保存があればまず即表示
+    skipCacheRef.current = false;
+    if (cached) {
+      setBudgets(cached.budgets); setExpenses(cached.expenses); setLoading(false);
+    } else {
+      setLoading(true);
+    }
     (async () => {
-      const { budgets: b, expenses: e } = await getAccountingData(fy);
+      const { budgets: b, expenses: e } = await getAccountingData(fy); // 最新を取得
       if (!alive) return;
-      setBudgets(b); setExpenses(e); setLoading(false);
+      setExpenses(e); // 経費は読み取りのみ→常に最新
+      // 予算はキャッシュ即表示から編集されていなければ最新に更新（編集中は保持）。updaterは副作用なしの純関数。
+      const baseline = cached ? cached.budgets : null;
+      setBudgets(prev => (baseline && JSON.stringify(prev) !== JSON.stringify(baseline)) ? prev : b);
+      setLoading(false);
     })();
     return () => { alive = false; };
   }, [fy, version]);
@@ -57,7 +71,7 @@ export default function Accounting() {
       const clean = budgets.filter(b => b.project.trim() && b.categoryId).map(b => ({ ...b, fiscalYear: fy, amount: Number(b.amount) || 0, note: b.note || '' }));
       await saveBudgets(fy, clean);
       setMessage('予算を保存しました');
-      setVersion(v => v + 1);
+      skipCacheRef.current = true; setVersion(v => v + 1);
     } catch (err) { setError(err instanceof Error ? err.message : '保存に失敗しました'); }
     finally { setSaving(false); }
   };
@@ -68,12 +82,12 @@ export default function Accounting() {
   // ===== 経費 =====
   const pending = expenses.filter(e => e.status === 'requested');
   const changeExpense = async (id: string, status: Expense['status']) => {
-    try { await setExpenseStatus(id, status); setVersion(v => v + 1); }
+    try { await setExpenseStatus(id, status); skipCacheRef.current = true; setVersion(v => v + 1); }
     catch (err) { setError(err instanceof Error ? err.message : '更新に失敗しました'); }
   };
   const removeExpense = async (id: string) => {
     if (!confirm('この経費を削除しますか？')) return;
-    try { await deleteExpense(id); setVersion(v => v + 1); }
+    try { await deleteExpense(id); skipCacheRef.current = true; setVersion(v => v + 1); }
     catch (err) { setError(err instanceof Error ? err.message : '削除に失敗しました'); }
   };
 
@@ -92,7 +106,7 @@ export default function Accounting() {
     try {
       await addExpense({ id: genId('ex'), fiscalYear: fy, staffId: '', date: exDate, project: exProject, categoryId: exCat, amount: amt, description: exDesc, status: 'approved', note: '事務局登録' });
       setExAmount(''); setExDesc('');
-      setVersion(v => v + 1);
+      skipCacheRef.current = true; setVersion(v => v + 1);
     } catch (err) { setError(err instanceof Error ? err.message : '登録に失敗しました'); }
   };
 

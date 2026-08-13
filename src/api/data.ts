@@ -51,7 +51,7 @@ function persistWrite(key: string, entry: { t: number; v: unknown }) {
 function persistClear() {
   try {
     PERSIST_KEYS.forEach(k => localStorage.removeItem(PERSIST_PREFIX + k));
-    Object.keys(localStorage).filter(k => k.startsWith('tof_dash_')).forEach(k => localStorage.removeItem(k));
+    Object.keys(localStorage).filter(k => k.startsWith('tof_dash_') || k.startsWith('tof_acct_')).forEach(k => localStorage.removeItem(k));
   } catch { /* noop */ }
 }
 
@@ -686,10 +686,25 @@ export async function getOvertimeMonthData(sid: string, month: string): Promise<
 
 // --- 会計（年度） ---
 export interface AccountingData { budgets: Budget[]; expenses: Expense[] }
+// 年度ごとに端末保存し、再訪問時にまず即表示（stale-while-revalidate）する。
+function acctKey(fy: number): string { return `tof_acct_${fy}`; }
+export function getAccountingCached(fiscalYear: number): AccountingData | null {
+  try { const raw = localStorage.getItem(acctKey(fiscalYear)); return raw ? JSON.parse(raw) as AccountingData : null; } catch { return null; }
+}
+function persistAcct(fy: number, data: AccountingData) {
+  try {
+    Object.keys(localStorage).filter(k => k.startsWith('tof_acct_') && k !== acctKey(fy)).forEach(k => localStorage.removeItem(k));
+    localStorage.setItem(acctKey(fy), JSON.stringify(data));
+  } catch { /* 容量超過等は無視 */ }
+}
 export async function getAccountingData(fiscalYear: number): Promise<AccountingData> {
   if (!USE_GAS) return { budgets: local.listBudgets(fiscalYear), expenses: local.listExpenses(fiscalYear) };
   const r = await batchCall([{ action: 'getBudgets', fiscalYear }, { action: 'getExpenses', fiscalYear }]);
-  if (r) return { budgets: unwrap(r[0] as SubRes<Budget[]>, []), expenses: unwrap(r[1] as SubRes<Expense[]>, []) };
+  if (r) {
+    const result = { budgets: unwrap(r[0] as SubRes<Budget[]>, []), expenses: unwrap(r[1] as SubRes<Expense[]>, []) };
+    persistAcct(fiscalYear, result);
+    return result;
+  }
   const [budgets, expenses] = await Promise.all([listBudgets(fiscalYear), listExpenses(fiscalYear)]);
   return { budgets, expenses };
 }
