@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageContainer, Card, Button, Alert, Badge } from '../../components/UI';
-import { getMyProfile, punch, setMyBreak, getStaffHomeData, todayStr } from '../../api/data';
+import { punch, setMyBreak, getStaffHomeData, todayStr } from '../../api/data';
 import type { TodayWork } from '../../api/data';
 import { WEEKDAY_LABELS, DOC_TYPE_LABELS, WORK_LOCATION_LABELS, breakMinutesBetween } from '../../utils/constants';
 import type { Staff, AttendanceRecord, DocumentItem, WorkLocation } from '../../types';
@@ -37,8 +37,8 @@ export default function StaffHome() {
   const breakNum = breakMinutesBetween(breakStartInput, breakEndInput);
 
   const load = async () => {
-    const [p, home] = await Promise.all([getMyProfile(), getStaffHomeData(date.slice(0, 7))]);
-    setStaff(p);
+    const home = await getStaffHomeData(date.slice(0, 7));
+    setStaff(home.staff);
     const rec = home.attendance.find(r => r.date === date);
     setToday(rec);
     setBreakStartInput(rec?.breakStart || '');

@@ -697,18 +697,29 @@ export async function getTodayWork(date: string): Promise<TodayWork> {
 }
 
 // --- 従業員ホーム ---
-export interface StaffHomeData { attendance: AttendanceRecord[]; documents: DocumentItem[]; today: TodayWork }
+// プロフィール・勤怠・文書・本日の勤務を1リクエスト(バッチ)でまとめて取得する。
+export interface StaffHomeData { staff: Staff | null; attendance: AttendanceRecord[]; documents: DocumentItem[]; today: TodayWork }
 export async function getStaffHomeData(month: string): Promise<StaffHomeData> {
   const date = todayStr();
   if (!USE_GAS) {
-    return { attendance: local.listAttendance(staffId(), month), documents: local.listDocuments(), today: await getTodayWork(date) };
+    return {
+      staff: local.getStaff(staffId()), attendance: local.listAttendance(staffId(), month),
+      documents: local.listDocuments(), today: await getTodayWork(date),
+    };
   }
-  const r = await batchCall([{ action: 'getMyAttendance', month }, { action: 'getDocuments' }, { action: 'getTodayWork', date }]);
-  if (r) return {
-    attendance: unwrap(r[0] as SubRes<AttendanceRecord[]>, []),
-    documents: unwrap(r[1] as SubRes<DocumentItem[]>, []),
-    today: unwrap(r[2] as SubRes<TodayWork>, EMPTY_TODAY),
-  };
-  const [attendance, documents, today] = await Promise.all([getMyAttendance(month), listDocuments(), getTodayWork(date)]);
-  return { attendance, documents, today };
+  const r = await batchCall([
+    { action: 'getMyProfile' }, { action: 'getMyAttendance', month }, { action: 'getDocuments' }, { action: 'getTodayWork', date },
+  ]);
+  if (r) {
+    const staff = unwrap(r[0] as SubRes<Staff | null>, null);
+    if (staff) cacheSet('myProfile', staff); // 他画面の getMyProfile もキャッシュから即返せるようにする
+    return {
+      staff,
+      attendance: unwrap(r[1] as SubRes<AttendanceRecord[]>, []),
+      documents: unwrap(r[2] as SubRes<DocumentItem[]>, []),
+      today: unwrap(r[3] as SubRes<TodayWork>, EMPTY_TODAY),
+    };
+  }
+  const [staff, attendance, documents, today] = await Promise.all([getMyProfile(), getMyAttendance(month), listDocuments(), getTodayWork(date)]);
+  return { staff, attendance, documents, today };
 }
