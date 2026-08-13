@@ -337,19 +337,18 @@ export async function listMyExpenses(): Promise<Expense[]> {
   if (!USE_GAS) return local.listMyExpenses(staffId());
   return unwrap(await gas.getMyExpenses(token()), []);
 }
-export async function addMyExpense(record: Partial<Expense>): Promise<void> {
+export async function addMyExpense(record: Partial<Expense>): Promise<Expense> {
   const rec: Partial<Expense> = { id: local.genId('ex'), ...record }; // クライアント採番（リトライ冪等化）
-  if (!USE_GAS) {
-    local.addExpense({
-      id: rec.id!, fiscalYear: Number(rec.fiscalYear) || 0, staffId: staffId(),
-      date: rec.date || '', project: rec.project || '', categoryId: rec.categoryId || '',
-      amount: Number(rec.amount) || 0, description: rec.description || '',
-      status: 'requested', note: '',
-    });
-    return;
-  }
+  const full: Expense = {
+    id: rec.id!, fiscalYear: Number(rec.fiscalYear) || 0, staffId: staffId(),
+    date: rec.date || '', project: rec.project || '', categoryId: rec.categoryId || '',
+    amount: Number(rec.amount) || 0, description: rec.description || '',
+    status: 'requested', note: '',
+  };
+  if (!USE_GAS) { local.addExpense(full); return full; }
   const res = await gas.addMyExpense(rec, token());
   if (!res.success) throw new Error(res.error || '経費申請に失敗しました');
+  return full;
 }
 
 // === 職員 ===

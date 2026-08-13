@@ -15,7 +15,6 @@ export default function StaffExpense() {
   const [mine, setMine] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [version, setVersion] = useState(0);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -39,7 +38,7 @@ export default function StaffExpense() {
       setCtx(c); setMine(m); setLoading(false);
     })();
     return () => { alive = false; };
-  }, [fy, version]);
+  }, [fy]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,10 +47,11 @@ export default function StaffExpense() {
     if (!amt || amt <= 0) { setError('金額を入力してください'); return; }
     setSaving(true); setError(''); setMessage('');
     try {
-      await addMyExpense({ fiscalYear: fy, date, project, categoryId, amount: amt, description });
+      const created = await addMyExpense({ fiscalYear: fy, date, project, categoryId, amount: amt, description });
+      // 再取得せず、申請内容を一覧へ直接追加（残額は承認済ベースのため申請中では変わらない）
+      setMine(prev => [created, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
       setMessage('経費を申請しました。事務局の承認をお待ちください。');
       setAmount(''); setDescription('');
-      setVersion(v => v + 1);
     } catch (err) { setError(err instanceof Error ? err.message : '申請に失敗しました'); }
     finally { setSaving(false); }
   };
