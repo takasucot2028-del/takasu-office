@@ -705,7 +705,7 @@ function handleAddCompUse(record) {
 function handleDeleteCompUse(id) {
   const sheet = getSheet('comp_leave_use');
   const rowIndex = findRowIndex(sheet, 0, id);
-  if (rowIndex < 0) return { success: false, error: '代休取得が見つかりません' };
+  if (rowIndex < 0) return { success: true }; // 既に削除済み（リトライ）→成功扱い（冪等）
   sheet.deleteRow(rowIndex);
   return { success: true };
 }
@@ -770,7 +770,7 @@ function handleAddLeave(record) {
 function handleDeleteLeave(id) {
   const sheet = getSheet('leave');
   const rowIndex = findRowIndex(sheet, 0, id);
-  if (rowIndex < 0) return { success: false, error: '有給記録が見つかりません' };
+  if (rowIndex < 0) return { success: true }; // 既に削除済み（リトライ）→成功扱い（冪等）
   sheet.deleteRow(rowIndex);
   return { success: true };
 }
@@ -801,7 +801,7 @@ function handleSaveDocument(doc) {
 function handleDeleteDocument(id) {
   const sheet = getSheet('documents');
   const rowIndex = findRowIndex(sheet, 0, id);
-  if (rowIndex < 0) return { success: false, error: '文書が見つかりません' };
+  if (rowIndex < 0) return { success: true }; // 既に削除済み（リトライ）→成功扱い（冪等）
   sheet.deleteRow(rowIndex);
   return { success: true };
 }
@@ -886,7 +886,7 @@ function handleSetExpenseStatus(id, status) {
 function handleDeleteExpense(id) {
   const sheet = getSheet('expenses');
   const rowIndex = findRowIndex(sheet, 0, id);
-  if (rowIndex < 0) return { success: false, error: '経費が見つかりません' };
+  if (rowIndex < 0) return { success: true }; // 既に削除済み（リトライ）→成功扱い（冪等）
   sheet.deleteRow(rowIndex);
   return { success: true };
 }

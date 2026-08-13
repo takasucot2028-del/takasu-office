@@ -82,13 +82,19 @@ export default function Accounting() {
   // ===== 経費 =====
   const pending = expenses.filter(e => e.status === 'requested');
   const changeExpense = async (id: string, status: Expense['status']) => {
-    try { await setExpenseStatus(id, status); skipCacheRef.current = true; setVersion(v => v + 1); }
-    catch (err) { setError(err instanceof Error ? err.message : '更新に失敗しました'); }
+    const prev = expenses;
+    setExpenses(list => list.map(e => (e.id === id ? { ...e, status } : e))); // 楽観的に即反映
+    setError('');
+    try { await setExpenseStatus(id, status); }
+    catch (err) { setExpenses(prev); setError(err instanceof Error ? err.message : '更新に失敗しました'); }
   };
   const removeExpense = async (id: string) => {
     if (!confirm('この経費を削除しますか？')) return;
-    try { await deleteExpense(id); skipCacheRef.current = true; setVersion(v => v + 1); }
-    catch (err) { setError(err instanceof Error ? err.message : '削除に失敗しました'); }
+    const prev = expenses;
+    setExpenses(list => list.filter(e => e.id !== id)); // 楽観的に即削除（再取得せず）
+    setError('');
+    try { await deleteExpense(id); }
+    catch (err) { setExpenses(prev); setError(err instanceof Error ? err.message : '削除に失敗しました'); }
   };
 
   // 事務局の直接登録フォーム
