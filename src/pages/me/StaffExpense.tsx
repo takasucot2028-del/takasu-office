@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
-import { getExpenseContext, listMyExpenses, addMyExpense, todayStr } from '../../api/data';
+import { getExpenseContext, listMyExpenses, addMyExpense, genId, todayStr } from '../../api/data';
 import type { ExpenseContext } from '../../api/data';
 import { currentFiscalYear, fiscalYearLabel } from '../../utils/constants';
 import type { Expense, RequestStatus } from '../../types';
@@ -45,15 +45,20 @@ export default function StaffExpense() {
     if (!project || !categoryId) { setError('事業と費目を選んでください'); return; }
     const amt = Number(amount);
     if (!amt || amt <= 0) { setError('金額を入力してください'); return; }
-    setSaving(true); setError(''); setMessage('');
+    setError(''); setMessage('');
+    // 楽観的更新：先に一覧へ即追加し、GASへの書き込みは裏で実行（残額は承認済ベースのため申請中では変わらない）
+    const rec: Expense = { id: genId('ex'), fiscalYear: fy, staffId: '', date, project, categoryId, amount: amt, description, status: 'requested', note: '' };
+    setMine(prev => [rec, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
+    setMessage('経費を申請しました。事務局の承認をお待ちください。');
+    setAmount(''); setDescription('');
+    setSaving(true);
     try {
-      const created = await addMyExpense({ fiscalYear: fy, date, project, categoryId, amount: amt, description });
-      // 再取得せず、申請内容を一覧へ直接追加（残額は承認済ベースのため申請中では変わらない）
-      setMine(prev => [created, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
-      setMessage('経費を申請しました。事務局の承認をお待ちください。');
-      setAmount(''); setDescription('');
-    } catch (err) { setError(err instanceof Error ? err.message : '申請に失敗しました'); }
-    finally { setSaving(false); }
+      await addMyExpense(rec);
+    } catch (err) {
+      setMine(prev => prev.filter(e => e.id !== rec.id)); // 失敗→取り消し
+      setMessage('');
+      setError(err instanceof Error ? err.message : '申請に失敗しました');
+    } finally { setSaving(false); }
   };
 
   return (

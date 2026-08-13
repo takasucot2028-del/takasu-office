@@ -110,13 +110,17 @@ export default function Accounting() {
     if (!amt || amt <= 0) { setError('金額を入力してください'); return; }
     setError('');
     const rec: Expense = { id: genId('ex'), fiscalYear: fy, staffId: '', date: exDate, project: exProject, categoryId: exCat, amount: amt, description: exDesc, status: 'approved', note: '事務局登録' };
+    // 楽観的更新：先に画面へ即表示し、GASへの書き込みは裏で実行（失敗時のみ取り消す）
+    setExpenses(prev => [rec, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
+    setExAmount(''); setExDesc('');
+    setMessage('経費を登録しました');
     try {
       await addExpense(rec);
-      // 全体を取り直さず、登録した経費を画面に直接反映（往復を1回に）
-      setExpenses(prev => [rec, ...prev].sort((a, b) => b.date.localeCompare(a.date)));
-      setExAmount(''); setExDesc('');
-      setMessage('経費を登録しました');
-    } catch (err) { setError(err instanceof Error ? err.message : '登録に失敗しました'); }
+    } catch (err) {
+      setExpenses(prev => prev.filter(e => e.id !== rec.id)); // 失敗→取り消し
+      setMessage('');
+      setError(err instanceof Error ? err.message : '登録に失敗しました');
+    }
   };
 
   // ===== 費目マスタ =====
