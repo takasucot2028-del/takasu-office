@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { PageContainer, Card, Select, Input, Button, Table, Th, Td, Alert } from '../../components/UI';
 import { listStaff, listAttendance, saveMonthAttendance } from '../../api/data';
-import { DAY_TYPE_LABELS, WEEKDAY_LABELS } from '../../utils/constants';
+import { DAY_TYPE_LABELS, WEEKDAY_LABELS, breakMinutesBetween } from '../../utils/constants';
 import type { AttendanceRecord, AttendanceDayType, Staff } from '../../types';
 
 function currentMonth(): string {
@@ -95,6 +95,11 @@ export default function Attendance() {
     setRecords(prev => ({ ...prev, [date]: { ...getRec(date), ...patch } }));
   };
 
+  /** 休憩の開始・終了（時刻）から休憩分を計算して保存する */
+  const setBreakTime = (date: string, breakStart: string, breakEnd: string) => {
+    setRec(date, { breakStart, breakEnd, breakMinutes: breakMinutesBetween(breakStart, breakEnd) });
+  };
+
   const clearRec = (date: string) => {
     setRecords(prev => {
       const next = { ...prev };
@@ -129,17 +134,18 @@ export default function Attendance() {
       [`出勤簿 ${month}`, '', '', '', '', '', ''],
       [`氏名: ${selectedStaff.lastName} ${selectedStaff.firstName}`, '', '', '', '', '', ''],
       [],
-      ['日付', '曜日', '区分', '出勤', '退勤', '休憩(分)', '実働', '備考'],
+      ['日付', '曜日', '区分', '出勤', '退勤', '休憩', '休憩(分)', '実働', '備考'],
       ...days.map(date => {
         const rec = records[date];
         const wd = WEEKDAY_LABELS[new Date(`${date}T00:00:00`).getDay()];
-        if (!rec) return [date, wd, '', '', '', '', '', ''];
+        if (!rec) return [date, wd, '', '', '', '', '', '', ''];
         return [
           date,
           wd,
           DAY_TYPE_LABELS[rec.dayType],
           rec.startTime,
           rec.endTime,
+          rec.breakStart && rec.breakEnd ? `${rec.breakStart}〜${rec.breakEnd}` : '',
           rec.breakMinutes || '',
           rec.dayType === 'work' ? formatMinutes(workMinutes(rec)) : '',
           rec.note,
@@ -149,7 +155,7 @@ export default function Attendance() {
       ['出勤日数', workDays, '有給日数', paidDays, '欠勤日数', absentDays, '総実働', formatMinutes(totalMinutes)],
     ];
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{ wch: 12 }, { wch: 5 }, { wch: 6 }, { wch: 7 }, { wch: 7 }, { wch: 9 }, { wch: 7 }, { wch: 20 }];
+    ws['!cols'] = [{ wch: 12 }, { wch: 5 }, { wch: 6 }, { wch: 7 }, { wch: 7 }, { wch: 13 }, { wch: 9 }, { wch: 7 }, { wch: 20 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '出勤簿');
     XLSX.writeFile(wb, `出勤簿_${selectedStaff.lastName}${selectedStaff.firstName}_${month}.xlsx`);
@@ -198,7 +204,7 @@ export default function Attendance() {
                   <Th>区分</Th>
                   <Th>出勤</Th>
                   <Th>退勤</Th>
-                  <Th>休憩(分)</Th>
+                  <Th>休憩</Th>
                   <Th>実働</Th>
                   <Th>備考</Th>
                 </tr>
@@ -247,17 +253,25 @@ export default function Attendance() {
                           onChange={e => setRec(date, { endTime: e.target.value })}
                         />
                       </Td>
-                      <Td className="min-w-20">
-                        <Input
-                          type="number"
-                          min={0}
-                          step={5}
-                          value={rec?.breakMinutes || ''}
-                          disabled={!isWork}
-                          onChange={e => setRec(date, { breakMinutes: Number(e.target.value) || 0, breakStart: '', breakEnd: '' })}
-                        />
-                        {rec?.breakStart && rec?.breakEnd && (
-                          <div className="text-[10px] text-gray-400 mt-0.5 whitespace-nowrap">{rec.breakStart}〜{rec.breakEnd}</div>
+                      <Td className="min-w-44">
+                        {/* 休憩は時刻（開始〜終了）で入力し、分は自動計算する */}
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="time"
+                            value={rec?.breakStart ?? ''}
+                            disabled={!isWork}
+                            onChange={e => setBreakTime(date, e.target.value, rec?.breakEnd ?? '')}
+                          />
+                          <span className="text-gray-400 text-xs">〜</span>
+                          <Input
+                            type="time"
+                            value={rec?.breakEnd ?? ''}
+                            disabled={!isWork}
+                            onChange={e => setBreakTime(date, rec?.breakStart ?? '', e.target.value)}
+                          />
+                        </div>
+                        {isWork && (rec?.breakMinutes || 0) > 0 && (
+                          <div className="text-[10px] text-gray-400 mt-0.5 whitespace-nowrap">{rec?.breakMinutes}分</div>
                         )}
                       </Td>
                       <Td className="whitespace-nowrap text-gray-600">
