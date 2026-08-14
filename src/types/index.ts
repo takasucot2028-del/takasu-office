@@ -165,10 +165,17 @@ export interface ExpenseCategory {
 export interface Budget {
   id: string;
   fiscalYear: number;         // 会計年度（4月始まりの西暦。例: 2026年度=2026）
+  division: string;           // 事業区分ID（ProjectDivision.id。空＝未分類）
   project: string;            // 事業名
   categoryId: string;         // ExpenseCategory.id
   amount: number;             // 予算額（円）
   note: string;               // 備考（費目の内訳説明など）
+}
+
+/** 事業区分（区分 → 事業 → 費目 の最上位） */
+export interface ProjectDivision {
+  id: string;
+  name: string;
 }
 
 /** 経費（申請・実績） */

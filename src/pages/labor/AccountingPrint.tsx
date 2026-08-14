@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { listExpenseCategories, listBudgets, listExpenses } from '../../api/data';
-import { currentFiscalYear, fiscalYearLabel } from '../../utils/constants';
+import { currentFiscalYear, fiscalYearLabel, PROJECT_DIVISIONS, divisionLabel } from '../../utils/constants';
 import type { ExpenseCategory, Budget, Expense } from '../../types';
 
 const FY_MONTHS = [4, 5, 6, 7, 8, 9, 10, 11, 12, 1, 2, 3];
@@ -12,6 +12,7 @@ export default function AccountingPrint() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const fy = Number(params.get('fy')) || currentFiscalYear();
+  const division = params.get('division') ?? 'all'; // 'all'＝全区分、''＝未分類
 
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -64,6 +65,27 @@ export default function AccountingPrint() {
     return { project: p, lines, budgetSum: lines.reduce((s, l) => s + l.budget, 0), usedSum: lines.reduce((s, l) => s + l.used, 0) };
   }), [projects, budgets, approved, catMap]);
 
+  // 事業→区分（予算行の区分）。区分 → 事業 → 費目 の順に集計する
+  const divisionOf = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const b of budgets) if (b.project && !m.has(b.project)) m.set(b.project, b.division || '');
+    return (project: string) => m.get(project) ?? '';
+  }, [budgets]);
+  const divisionGroups = useMemo(() => {
+    const order = [...PROJECT_DIVISIONS.map(d => d.id), ''];
+    return order
+      .map(id => {
+        const items = groups.filter(g => divisionOf(g.project) === id);
+        return {
+          id, name: divisionLabel(id), projects: items,
+          budgetSum: items.reduce((s, g) => s + g.budgetSum, 0),
+          usedSum: items.reduce((s, g) => s + g.usedSum, 0),
+        };
+      })
+      .filter(d => d.projects.length > 0)
+      .filter(d => division === 'all' || d.id === division); // 指定区分のみ出力
+  }, [groups, divisionOf, division]);
+
   return (
     <div className="acct-print max-w-full mx-auto px-4 py-5">
       <div className="no-print flex items-center gap-2 mb-4">
@@ -73,14 +95,24 @@ export default function AccountingPrint() {
       </div>
 
       <h1 className="text-lg font-bold text-center mb-1">会計報告（予算執行状況）</h1>
-      <p className="text-sm text-center mb-4">{fiscalYearLabel(fy)}</p>
+      <p className="text-sm text-center mb-4">
+        {fiscalYearLabel(fy)}{division !== 'all' && `　【${divisionLabel(division)}】`}
+      </p>
 
       {loading ? <p className="text-sm text-gray-400">読み込み中…</p> : (
         <div style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
           {/* 事業ごとの費目別 予算執行 */}
-          <h2 className="font-bold mb-1">事業ごとの費目別 予算・執行状況</h2>
-          {groups.length === 0 && <p className="text-sm text-gray-400 mb-4">予算が登録されていません</p>}
-          {groups.map(g => (
+          <h2 className="font-bold mb-1">区分・事業ごとの費目別 予算・執行状況</h2>
+          {divisionGroups.length === 0 && <p className="text-sm text-gray-400 mb-4">該当する予算が登録されていません</p>}
+          {divisionGroups.map(d => (
+            <div key={d.id || 'none'} className="mb-5">
+              <div className="flex items-baseline justify-between border-b-2 border-gray-700 mb-2 pb-0.5">
+                <span className="font-bold">【{d.name}】</span>
+                <span className="text-xs">
+                  予算 {yen(d.budgetSum)}／執行 {yen(d.usedSum)}／残 {yen(d.budgetSum - d.usedSum)}
+                </span>
+              </div>
+              {d.projects.map(g => (
             <div key={g.project} className="mb-4" style={{ breakInside: 'avoid' }}>
               <div className="font-bold bg-gray-100 border border-gray-500 border-b-0 px-2 py-1">{g.project}</div>
               <table className="w-full text-xs border-collapse">
@@ -112,6 +144,8 @@ export default function AccountingPrint() {
                   </tr>
                 </tbody>
               </table>
+            </div>
+              ))}
             </div>
           ))}
           <div className="mb-5" />

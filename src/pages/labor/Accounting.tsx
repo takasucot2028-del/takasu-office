@@ -6,7 +6,7 @@ import {
   saveBudgets, addExpense, setExpenseStatus, deleteExpense,
   getAccountingData, getAccountingCached, usedOf, genId, todayStr,
 } from '../../api/data';
-import { currentFiscalYear, fiscalYearLabel } from '../../utils/constants';
+import { currentFiscalYear, fiscalYearLabel, PROJECT_DIVISIONS, divisionLabel } from '../../utils/constants';
 import type { Staff, ExpenseCategory, Budget, Expense } from '../../types';
 
 type Tab = 'budget' | 'expense' | 'summary' | 'category';
@@ -62,13 +62,13 @@ export default function Accounting() {
   const setBudgetRow = (id: string, patch: Partial<Budget>) =>
     setBudgets(prev => prev.map(b => (b.id === id ? { ...b, ...patch } : b)));
   const addBudgetRow = () =>
-    setBudgets(prev => [...prev, { id: genId('bg'), fiscalYear: fy, project: '', categoryId: categories[0]?.id || '', amount: 0, note: '' }]);
+    setBudgets(prev => [...prev, { id: genId('bg'), fiscalYear: fy, division: PROJECT_DIVISIONS[0]?.id || '', project: '', categoryId: categories[0]?.id || '', amount: 0, note: '' }]);
   const removeBudgetRow = (id: string) => setBudgets(prev => prev.filter(b => b.id !== id));
 
   const saveBudgetLines = async () => {
     setSaving(true); setError(''); setMessage('');
     try {
-      const clean = budgets.filter(b => b.project.trim() && b.categoryId).map(b => ({ ...b, fiscalYear: fy, amount: Number(b.amount) || 0, note: b.note || '' }));
+      const clean = budgets.filter(b => b.project.trim() && b.categoryId).map(b => ({ ...b, fiscalYear: fy, division: b.division || '', amount: Number(b.amount) || 0, note: b.note || '' }));
       await saveBudgets(fy, clean);
       setMessage('予算を保存しました');
       skipCacheRef.current = true; setVersion(v => v + 1);
@@ -156,6 +156,13 @@ export default function Accounting() {
     total: approved.filter(e => e.categoryId === c.id).reduce((s, e) => s + e.amount, 0),
   })).filter(c => c.total > 0), [categories, approved]);
 
+  // 事業→区分の対応（予算行の区分を採用。未設定は「未分類」）
+  const divisionOf = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const b of budgets) if (b.project && !m.has(b.project)) m.set(b.project, b.division || '');
+    return (project: string) => m.get(project) ?? '';
+  }, [budgets]);
+
   // 事業ごとの費目別（予算・執行・残・備考）
   const projectGroups = useMemo(() => projects.map(p => {
     const cats = Array.from(new Set([
@@ -174,12 +181,36 @@ export default function Accounting() {
     };
   }), [projects, budgets, approved, expenses, catMap]);
 
+  // 区分 → 事業 → 費目 の階層で集計する。区分の並びはマスタ順、未分類は最後。
+  const divisionGroups = useMemo(() => {
+    const order = [...PROJECT_DIVISIONS.map(d => d.id), ''];
+    return order
+      .map(id => {
+        const items = projectGroups.filter(g => divisionOf(g.project) === id);
+        return {
+          id, name: divisionLabel(id), projects: items,
+          budgetSum: items.reduce((s, g) => s + g.budgetSum, 0),
+          usedSum: items.reduce((s, g) => s + g.usedSum, 0),
+        };
+      })
+      .filter(d => d.projects.length > 0);
+  }, [projectGroups, divisionOf]);
+
+  // 集計タブの表示対象区分（'all' は全区分）
+  const [sumDivision, setSumDivision] = useState<string>('all');
+  const shownDivisions = useMemo(
+    () => (sumDivision === 'all' ? divisionGroups : divisionGroups.filter(d => d.id === sumDivision)),
+    [divisionGroups, sumDivision]
+  );
+
   // CSV出力（当年度の全経費明細）
   const exportCsv = () => {
-    const header = ['日付', '事業', '費目', '金額', '状態', '内容', '申請者'];
+    const header = ['日付', '区分', '事業', '費目', '金額', '状態', '内容', '申請者'];
     const statusJa: Record<string, string> = { approved: '承認済', requested: '申請中', rejected: '却下' };
-    const rows = expenses.map(e => [
-      e.date, e.project, catMap.get(e.categoryId) || e.categoryId, String(e.amount),
+    // 集計タブで区分を絞っている場合は、その区分の経費だけを出力する
+    const target = sumDivision === 'all' ? expenses : expenses.filter(e => divisionOf(e.project) === sumDivision);
+    const rows = target.map(e => [
+      e.date, divisionLabel(divisionOf(e.project)), e.project, catMap.get(e.categoryId) || e.categoryId, String(e.amount),
       statusJa[e.status] || e.status, e.description,
       e.staffId ? (staffMap.get(e.staffId) || '職員') : '事務局',
     ]);
@@ -188,7 +219,7 @@ export default function Accounting() {
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' }); // BOM付きでExcelの文字化け防止
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `経費明細_${fy}年度.csv`;
+    a.download = sumDivision === 'all' ? `経費明細_${fy}年度.csv` : `経費明細_${fy}年度_${divisionLabel(sumDivision)}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -228,12 +259,18 @@ export default function Accounting() {
           </div>
           <Card className="p-0 overflow-x-auto">
             <Table>
-              <thead><tr><Th>事業</Th><Th>費目</Th><Th>予算</Th><Th>執行</Th><Th>残額</Th><Th>備考</Th><Th className="w-12"></Th></tr></thead>
+              <thead><tr><Th>区分</Th><Th>事業</Th><Th>費目</Th><Th>予算</Th><Th>執行</Th><Th>残額</Th><Th>備考</Th><Th className="w-12"></Th></tr></thead>
               <tbody>
                 {budgets.map(b => {
                   const used = usedOf(expenses, b.project, b.categoryId);
                   return (
                     <tr key={b.id}>
+                      <Td className="min-w-28">
+                        <Select value={b.division || ''} onChange={e => setBudgetRow(b.id, { division: e.target.value })}>
+                          <option value="">未分類</option>
+                          {PROJECT_DIVISIONS.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                        </Select>
+                      </Td>
                       <Td className="min-w-32"><Input value={b.project} onChange={e => setBudgetRow(b.id, { project: e.target.value })} placeholder="例: 水泳教室" /></Td>
                       <Td className="min-w-28">
                         <Select value={b.categoryId} onChange={e => setBudgetRow(b.id, { categoryId: e.target.value })}>
@@ -248,7 +285,7 @@ export default function Accounting() {
                     </tr>
                   );
                 })}
-                {budgets.length === 0 && <tr><Td className="text-center text-gray-400 py-8" colSpan={7}>{loading ? '読み込み中…' : 'この年度の予算はまだありません。「行を追加」で登録してください。'}</Td></tr>}
+                {budgets.length === 0 && <tr><Td className="text-center text-gray-400 py-8" colSpan={8}>{loading ? '読み込み中…' : 'この年度の予算はまだありません。「行を追加」で登録してください。'}</Td></tr>}
               </tbody>
             </Table>
           </Card>
@@ -326,14 +363,32 @@ export default function Accounting() {
       {/* 集計タブ */}
       {tab === 'summary' && (
         <>
-          <div className="flex justify-end gap-2 mb-3">
+          <div className="flex flex-wrap justify-end items-center gap-2 mb-3">
+            <div className="mr-auto flex items-center gap-2">
+              <span className="text-sm text-gray-600 whitespace-nowrap">事業区分</span>
+              <div className="w-48">
+                <Select value={sumDivision} onChange={e => setSumDivision(e.target.value)}>
+                  <option value="all">すべての区分</option>
+                  {PROJECT_DIVISIONS.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  <option value="">未分類</option>
+                </Select>
+              </div>
+            </div>
             <Button variant="secondary" size="sm" onClick={exportCsv}>CSV出力</Button>
-            <Button variant="secondary" size="sm" onClick={() => navigate(`/labor/accounting/print?fy=${fy}`)}>PDF出力</Button>
+            <Button variant="secondary" size="sm" onClick={() => navigate(`/labor/accounting/print?fy=${fy}&division=${sumDivision}`)}>PDF出力</Button>
           </div>
 
-          <h2 className="font-bold text-gray-800 mb-2">事業ごとの費目別 予算・執行</h2>
-          {projectGroups.length === 0 && <Card className="mb-6"><p className="text-sm text-gray-400">{loading ? '読み込み中…' : '事業予算がまだ登録されていません。'}</p></Card>}
-          {projectGroups.map(g => (
+          <h2 className="font-bold text-gray-800 mb-2">区分・事業ごとの費目別 予算・執行</h2>
+          {shownDivisions.length === 0 && <Card className="mb-6"><p className="text-sm text-gray-400">{loading ? '読み込み中…' : '該当する事業予算がありません。'}</p></Card>}
+          {shownDivisions.map(d => (
+            <div key={d.id || 'none'} className="mb-6">
+              <div className="flex items-baseline justify-between mb-2">
+                <h3 className="font-bold text-emerald-700">{d.name}</h3>
+                <span className="text-xs text-gray-500">
+                  予算 {yen(d.budgetSum)}／執行 {yen(d.usedSum)}／残 <span className={d.budgetSum - d.usedSum < 0 ? 'text-red-600 font-medium' : ''}>{yen(d.budgetSum - d.usedSum)}</span>
+                </span>
+              </div>
+              {d.projects.map(g => (
             <Card key={g.project} className="p-0 overflow-hidden mb-4">
               <div className="px-3 py-2 bg-gray-50 border-b font-bold text-gray-800">{g.project}</div>
               <Table>
@@ -358,6 +413,8 @@ export default function Accounting() {
                 </tbody>
               </Table>
             </Card>
+              ))}
+            </div>
           ))}
 
           <h2 className="font-bold text-gray-800 mb-2 mt-6">月次集計（事業別・承認済み）</h2>

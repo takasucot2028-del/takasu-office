@@ -1,4 +1,4 @@
-import type { EmploymentType, StaffStatus, AttendanceDayType, WorkLocation, ShiftPattern, Staff, DocType, ExpenseCategory } from '../types';
+import type { EmploymentType, StaffStatus, AttendanceDayType, WorkLocation, ShiftPattern, Staff, DocType, ExpenseCategory, ProjectDivision } from '../types';
 
 // 事務局デモアカウント
 export const ADMIN_EMAIL = 'admin@takasu-sc.jp';
@@ -39,6 +39,17 @@ export function staffInLocation(workLocation: '' | WorkLocation | 'both', locati
  * 実在する区分と混ざらないよう、区分マスタでは使用しないIDにしている。
  */
 export const UNAVAILABLE_PATTERN_ID = '__unavailable__';
+
+/** 事業区分（会計の集計単位。区分 → 事業 → 費目 の最上位） */
+export const PROJECT_DIVISIONS: ProjectDivision[] = [
+  { id: 'sc', name: 'SC教室' },
+  { id: 'community', name: '地域クラブ' },
+  { id: 'entrusted', name: '運動教室委託' },
+];
+/** 区分IDから区分名を得る（未設定・不明は「未分類」） */
+export function divisionLabel(id: string): string {
+  return PROJECT_DIVISIONS.find(d => d.id === id)?.name ?? '未分類';
+}
 
 /** シフト区分の初期セット（区分マスタが空のときのフォールバック。事務局が編集可能） */
 export const DEFAULT_SHIFT_PATTERNS: ShiftPattern[] = [

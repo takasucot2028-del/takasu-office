@@ -45,6 +45,7 @@ var SHEETS = {
   ] },
   budgets: { name: '予算', columns: [
     ['id', 'ID'], ['fiscalYear', '年度'], ['project', '事業'], ['categoryId', '費目ID'], ['amount', '予算額'], ['note', '備考'],
+    ['division', '区分'],
   ] },
   expenses: { name: '経費', columns: [
     ['id', 'ID'], ['fiscalYear', '年度'], ['staffId', '申請者ID'], ['date', '日付'], ['project', '事業'],
@@ -933,11 +934,7 @@ function handleSaveBudgets(fiscalYear, records) {
     kept.push(data[i].slice(0, ncol));
   }
   const newRows = (records || []).map(function (r) { return objectToRow('budgets', r); });
-  const out = [colLabels('budgets')].concat(kept).concat(newRows);
-  sheet.clearContents();
-  sheet.getRange(1, 1, sheet.getMaxRows(), ncol).setNumberFormat('@');
-  sheet.getRange(1, 1, out.length, ncol).setValues(out);
-  sheet.setFrozenRows(1);
+  replaceSheetRows_('budgets', kept.concat(newRows)); // 全消去せず置換（保存中に空が読まれるのを防ぐ）
   return { success: true };
 }
 
