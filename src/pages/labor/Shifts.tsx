@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { PageContainer, Card, Button, Alert } from '../../components/UI';
 import {
-  getReference, todayStr,
+  getReference, todayStr, onDataRefresh,
   saveMonthAvailability, saveMonthConfirmed, getShiftMonthData, genId,
 } from '../../api/data';
 import { WORK_LOCATION_LABELS, WEEKDAY_LABELS, staffInLocation } from '../../utils/constants';
@@ -78,14 +78,17 @@ export default function Shifts() {
   // 初回：職員・区分を読み込む
   useEffect(() => {
     let alive = true;
-    (async () => {
+    const load = async () => {
       const { staff: s, patterns: p } = await getReference();
       if (!alive) return;
       setAllStaff(s);
       setPatterns(p);
       setStaffLoaded(true);
-    })();
-    return () => { alive = false; };
+    };
+    load();
+    // 職員・区分が裏で最新化されたら反映する
+    const off = onDataRefresh(key => { if (key === 'staff' || key === 'patterns') load(); });
+    return () => { alive = false; off(); };
   }, []);
 
   // 月が変わるたびに希望・確定を読み込む

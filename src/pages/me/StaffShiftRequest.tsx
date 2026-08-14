@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PageContainer, Card, Button, Alert } from '../../components/UI';
-import { getMyProfile, listShiftPatterns, getMyAvailability, saveMyAvailability, genId, todayStr } from '../../api/data';
+import { getMyProfile, listShiftPatterns, getMyAvailability, saveMyAvailability, onDataRefresh, genId, todayStr } from '../../api/data';
 import { WEEKDAY_LABELS } from '../../utils/constants';
 import type { Staff, ShiftPattern, AvailabilityRecord } from '../../types';
 
@@ -33,10 +33,16 @@ export default function StaffShiftRequest() {
   );
 
   useEffect(() => {
-    (async () => {
+    let alive = true;
+    const load = async () => {
       const [p, pat] = await Promise.all([getMyProfile(), listShiftPatterns()]);
+      if (!alive) return;
       setStaff(p); setPatterns(pat);
-    })();
+    };
+    load();
+    // 区分マスタが裏で最新化されたら反映する（事務局が追加した区分を取りこぼさない）
+    const off = onDataRefresh(key => { if (key === 'patterns' || key === 'myProfile') load(); });
+    return () => { alive = false; off(); };
   }, []);
 
   useEffect(() => {

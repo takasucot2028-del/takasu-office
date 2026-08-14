@@ -55,6 +55,16 @@ function persistClear() {
   } catch { /* noop */ }
 }
 
+// 背景で最新化した結果、内容が変わったときに画面へ知らせる仕組み。
+// （保存値を即表示したあと最新が届いても再描画されない問題を防ぐ）
+const _refreshListeners = new Set<(key: string) => void>();
+/** 基礎データ（職員・区分・費目）が裏で更新されたら通知を受け取る。戻り値で解除する。 */
+export function onDataRefresh(fn: (key: string) => void): () => void {
+  _refreshListeners.add(fn);
+  return () => { _refreshListeners.delete(fn); };
+}
+function notifyRefresh(key: string) { _refreshListeners.forEach(fn => { try { fn(key); } catch { /* noop */ } }); }
+
 // stale-while-revalidate な memo。永続キーは保存値があれば即返し、裏で最新化する。
 async function memo<T>(key: string, loader: () => Promise<T>): Promise<T> {
   const c = _cache.get(key);
@@ -74,9 +84,12 @@ function invalidate(...keys: string[]) {
   });
 }
 function cacheSet(key: string, v: unknown) {
+  const prev = _cache.get(key) ?? (PERSIST_KEYS.has(key) ? persistRead(key) : null);
   const entry = { t: Date.now(), v };
   _cache.set(key, entry);
   if (PERSIST_KEYS.has(key)) persistWrite(key, entry);
+  // 内容が変わったときだけ画面へ通知する（同じ内容での無駄な再描画を避ける）
+  if (prev && JSON.stringify(prev.v) !== JSON.stringify(v)) notifyRefresh(key);
 }
 function cacheFresh(key: string): boolean { const c = _cache.get(key); return !!c && Date.now() - c.t < CACHE_TTL; }
 /** キャッシュ全消去（ログイン/ログアウト時に呼ぶ。端末保存分も消す） */
