@@ -435,6 +435,14 @@ function findRowIndex(sheet, colIndex, value) {
   return -1;
 }
 
+// セル値を yyyy-MM-dd 文字列へ正規化する。日付がDate型に変換されていても正しく比較できる。
+function cellYmd_(v) {
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  return String(v == null ? '' : v).trim();
+}
+
 // 同じIDが無ければ追加する（冪等）。リトライで二重登録されないようにする。
 function appendUnique_(sheetKey, record) {
   const sheet = getSheet(sheetKey);
@@ -547,7 +555,7 @@ function handleSaveMonthAttendance(staffId, month, records) {
   const kept = [];
   for (let i = 1; i < data.length; i++) {
     const rowStaff = String(data[i][1]);
-    const rowDate = String(data[i][2]);
+    const rowDate = cellYmd_(data[i][2]);
     if (rowStaff === String(staffId) && rowDate.slice(0, 7) === month) continue;
     kept.push(data[i].slice(0, ncol));
   }
@@ -606,7 +614,7 @@ function handleSaveMonthAvailability(month, staffIds, records) {
   const kept = [];
   for (let i = 1; i < data.length; i++) {
     const rowStaff = String(data[i][1]);
-    const rowDate = String(data[i][2]);
+    const rowDate = cellYmd_(data[i][2]);
     if (rowDate.slice(0, 7) === month && ids[rowStaff]) continue; // 対象は捨てて入れ直す
     kept.push(data[i].slice(0, ncol));
   }
@@ -635,7 +643,7 @@ function handleSaveMonthConfirmed(month, location, records) {
   const data = sheet.getDataRange().getValues();
   const kept = [];
   for (let i = 1; i < data.length; i++) {
-    const rowDate = String(data[i][2]);
+    const rowDate = cellYmd_(data[i][2]);
     const rowLoc = String(data[i][3]);
     if (rowDate.slice(0, 7) === month && rowLoc === String(location)) continue;
     kept.push(data[i].slice(0, ncol));
@@ -674,7 +682,7 @@ function handleSaveMonthOvertime(staffId, month, records) {
   const kept = [];
   for (let i = 1; i < data.length; i++) {
     const rowStaff = String(data[i][1]);
-    const rowDate = String(data[i][2]);
+    const rowDate = cellYmd_(data[i][2]);
     if (rowStaff === String(staffId) && rowDate.slice(0, 7) === month) continue;
     kept.push(data[i].slice(0, ncol));
   }
@@ -1090,7 +1098,7 @@ function handleSaveMyAvailability(session, month, records) {
   const data = sheet.getDataRange().getValues();
   const kept = [];
   for (let i = 1; i < data.length; i++) {
-    if (String(data[i][1]) === staff.id && String(data[i][2]).slice(0, 7) === month) continue;
+    if (String(data[i][1]) === staff.id && cellYmd_(data[i][2]).slice(0, 7) === month) continue;
     kept.push(data[i].slice(0, ncol));
   }
   const mine = (records || []).map(function (r) {
