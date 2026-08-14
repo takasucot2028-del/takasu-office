@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PageContainer, Card, Button, Alert } from '../../components/UI';
 import { getMyProfile, listShiftPatterns, getMyAvailability, saveMyAvailability, onDataRefresh, genId, todayStr } from '../../api/data';
-import { WEEKDAY_LABELS } from '../../utils/constants';
+import { WEEKDAY_LABELS, UNAVAILABLE_PATTERN_ID } from '../../utils/constants';
 import type { Staff, ShiftPattern, AvailabilityRecord } from '../../types';
 
 function currentMonth(): string { return todayStr().slice(0, 7); }
@@ -61,12 +61,26 @@ export default function StaffShiftRequest() {
   const toggle = (date: string, pid: string) => {
     setMap(prev => {
       const cur = prev[date] || [];
-      const arr = cur.includes(pid) ? cur.filter(x => x !== pid) : [...cur, pid];
+      // 区分を選んだら「勤務不可」は解除する（両立しないため）
+      const base = cur.filter(x => x !== UNAVAILABLE_PATTERN_ID);
+      const arr = base.includes(pid) ? base.filter(x => x !== pid) : [...base, pid];
       const next = { ...prev };
       if (arr.length) next[date] = arr; else delete next[date];
       return next;
     });
   };
+
+  /** 勤務不可のON/OFF。ONにすると区分の選択はすべて解除する */
+  const toggleUnavailable = (date: string) => {
+    setMap(prev => {
+      const cur = prev[date] || [];
+      const next = { ...prev };
+      if (cur.includes(UNAVAILABLE_PATTERN_ID)) delete next[date];
+      else next[date] = [UNAVAILABLE_PATTERN_ID];
+      return next;
+    });
+  };
+  const isUnavailable = (date: string) => (map[date] || []).includes(UNAVAILABLE_PATTERN_ID);
 
   const handleSave = async () => {
     if (!staff) return;
@@ -93,7 +107,10 @@ export default function StaffShiftRequest() {
           <div className="flex-1" />
           <Button size="sm" onClick={handleSave} disabled={saving || !staff}>{saving ? '提出中…' : '提出する'}</Button>
         </div>
-        <p className="mt-2 text-xs text-gray-500">勤務できる区分を日ごとにタップで選んでください（複数可）。提出後、事務局がシフトを確定します。</p>
+        <p className="mt-2 text-xs text-gray-500">
+          勤務できる区分を日ごとにタップで選んでください（複数可）。終日勤務できない日は
+          <span className="text-red-600 font-medium">「勤務不可」</span>を選んでください。提出後、事務局がシフトを確定します。
+        </p>
       </Card>
 
       {message && <Alert type="success">{message}</Alert>}
@@ -116,13 +133,19 @@ export default function StaffShiftRequest() {
               <div className="flex flex-wrap gap-1">
                 {validPatterns.map(p => {
                   const on = sel.includes(p.id);
+                  const ng = isUnavailable(date);
                   return (
                     <button key={p.id} onClick={() => toggle(date, p.id)}
-                      className={`px-2 py-1 rounded text-xs border ${on ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
-                      {p.name} <span className={on ? 'text-emerald-100' : 'text-gray-400'}>{p.startTime}〜{p.endTime}</span>
+                      className={`px-2 py-1 rounded text-xs border ${on ? 'bg-emerald-600 text-white border-emerald-600' : ng ? 'bg-gray-100 text-gray-300 border-gray-200' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+                      {p.name} <span className={on ? 'text-emerald-100' : ng ? 'text-gray-300' : 'text-gray-400'}>{p.startTime}〜{p.endTime}</span>
                     </button>
                   );
                 })}
+                {/* 勤務不可（終日）。ONにすると区分の選択は解除される */}
+                <button onClick={() => toggleUnavailable(date)}
+                  className={`px-2 py-1 rounded text-xs border ${isUnavailable(date) ? 'bg-red-600 text-white border-red-600' : 'bg-white text-red-600 border-red-300 hover:bg-red-50'}`}>
+                  {isUnavailable(date) ? '✓ 勤務不可' : '勤務不可'}
+                </button>
               </div>
             </div>
           );

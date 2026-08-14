@@ -33,6 +33,13 @@ export function staffInLocation(workLocation: '' | WorkLocation | 'both', locati
   return workLocation === location || workLocation === 'both';
 }
 
+/**
+ * 「勤務不可」を表す予約済みの区分ID。
+ * シフト希望（availability）に patternId としてこの値で保存する。
+ * 実在する区分と混ざらないよう、区分マスタでは使用しないIDにしている。
+ */
+export const UNAVAILABLE_PATTERN_ID = '__unavailable__';
+
 /** シフト区分の初期セット（区分マスタが空のときのフォールバック。事務局が編集可能） */
 export const DEFAULT_SHIFT_PATTERNS: ShiftPattern[] = [
   { id: 'p1', name: '①', startTime: '08:30', endTime: '13:00', order: 1, location: '' },

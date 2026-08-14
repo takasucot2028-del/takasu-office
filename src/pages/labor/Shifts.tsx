@@ -6,7 +6,7 @@ import {
   getReference, todayStr, onDataRefresh,
   saveMonthAvailability, saveMonthConfirmed, getShiftMonthData, genId,
 } from '../../api/data';
-import { WORK_LOCATION_LABELS, WEEKDAY_LABELS, staffInLocation } from '../../utils/constants';
+import { WORK_LOCATION_LABELS, WEEKDAY_LABELS, staffInLocation, UNAVAILABLE_PATTERN_ID } from '../../utils/constants';
 import { isClosedDay, isNationalHoliday } from '../../utils/holidays';
 import type { Staff, ShiftPattern, WorkLocation, AvailabilityRecord, ConfirmedShift } from '../../types';
 
@@ -117,13 +117,17 @@ export default function Shifts() {
   const reqIds = (staffId: string, date: string) => orderValid(reqMap[aKey(staffId, date)] || []);
   const confIds = (staffId: string, date: string) => orderValid(confMap[cKey(staffId, date, location)] || []);
   const names = (ids: string[]) => ids.map(id => patternMap.get(id)?.name ?? '').join(' ');
+  /** その職員・その日が「勤務不可」で申請されているか */
+  const isUnavailable = (staffId: string, date: string) =>
+    (reqMap[aKey(staffId, date)] || []).includes(UNAVAILABLE_PATTERN_ID);
 
   // ポップアップで区分を付け外し（モードにより希望/確定を更新）
   const togglePattern = (staffId: string, date: string, patternId: string) => {
     if (mode === 'request') {
       const k = aKey(staffId, date);
       setReqMap(prev => {
-        const cur = prev[k] || [];
+        // 区分を選んだら「勤務不可」は解除する（従業員側と同じ扱い）
+        const cur = (prev[k] || []).filter(id => id !== UNAVAILABLE_PATTERN_ID);
         const arr = cur.includes(patternId) ? cur.filter(id => id !== patternId) : [...cur, patternId];
         const next = { ...prev };
         if (arr.length) next[k] = arr; else delete next[k];
@@ -338,6 +342,7 @@ export default function Shifts() {
           {mode === 'request'
             ? <span>セルをクリックで希望の区分を選択（複数可・空欄＝希望なし）</span>
             : <span>セルをクリックで区分を割り当て（複数可）。希望がある日は<span className="text-amber-600"> 黄色 </span>で表示</span>}
+          <span>本人が勤務不可の日は<span className="text-red-600"> 赤（×） </span>で表示</span>
           {validPatterns.map(p => (
             <span key={p.id} className="text-gray-600">{p.name}: {p.startTime}〜{p.endTime}</span>
           ))}
@@ -462,12 +467,16 @@ export default function Shifts() {
                       const ids = mode === 'request' ? reqIds(s.id, date) : confIds(s.id, date);
                       const weekend = wd === 0 ? 'bg-red-50/40' : wd === 6 ? 'bg-blue-50/40' : '';
                       const hasReq = reqIds(s.id, date).length > 0;
-                      const bg = mode === 'confirm' && hasReq ? 'bg-amber-50' : weekend;
+                      const ng = isUnavailable(s.id, date); // 従業員が「勤務不可」で申請した日
+                      const bg = ng ? 'bg-red-100' : mode === 'confirm' && hasReq ? 'bg-amber-50' : weekend;
                       return (
                         <td key={date}
                           onClick={e => setMenu({ staffId: s.id, date, x: e.clientX, y: e.clientY })}
-                          className={`${cellBase} ${bg}`}>
-                          <span className="font-medium text-gray-800 leading-tight px-0.5">{names(ids)}</span>
+                          className={`${cellBase} ${bg}`}
+                          title={ng ? '本人が「勤務不可」で申請しています' : undefined}>
+                          {ng && ids.length === 0
+                            ? <span className="text-red-600 font-bold leading-tight">×</span>
+                            : <span className="font-medium text-gray-800 leading-tight px-0.5">{names(ids)}</span>}
                         </td>
                       );
                     })}
@@ -507,7 +516,10 @@ export default function Shifts() {
             <div className="text-xs text-gray-500 mb-1 px-1">
               {menuStaff.lastName} {menuStaff.firstName}・{Number(menu.date.slice(5, 7))}/{Number(menu.date.slice(8))}
             </div>
-            {mode === 'confirm' && (
+            {isUnavailable(menu.staffId, menu.date) && (
+              <div className="text-xs text-red-700 bg-red-50 rounded px-1.5 py-1 mb-1 font-medium">本人が「勤務不可」で申請しています</div>
+            )}
+            {mode === 'confirm' && !isUnavailable(menu.staffId, menu.date) && (
               <div className="text-xs text-amber-700 bg-amber-50 rounded px-1.5 py-1 mb-1">希望: {menuReqNames || 'なし'}</div>
             )}
             <div className="flex flex-col gap-1">
