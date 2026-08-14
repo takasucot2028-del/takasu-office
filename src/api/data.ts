@@ -11,11 +11,11 @@ import type {
   OvertimeRecord, CompLeaveUse, DocumentItem,
   ExpenseCategory, Budget, Expense,
 } from '../types';
-import { DEFAULT_SHIFT_PATTERNS, LEAVE_HOURS_PER_DAY } from '../utils/constants';
+import { DEFAULT_SHIFT_PATTERNS, LEAVE_HOURS_PER_DAY, currentFiscalYear } from '../utils/constants';
 import * as local from '../utils/store';
 import * as gas from './client';
-import type { ExpenseContext, TodayWork } from './client';
-export type { TodayWork } from './client';
+import type { ExpenseContext, TodayWork, PendingSummary } from './client';
+export type { TodayWork, PendingSummary } from './client';
 
 const USE_GAS = !!import.meta.env.VITE_GAS_URL;
 
@@ -617,7 +617,7 @@ export async function getReference(): Promise<ReferenceData> {
 }
 
 // --- ダッシュボード ---
-export interface DashboardData { staff: Staff[]; patterns: ShiftPattern[]; confirmed: ConfirmedShift[]; absences: DayAbsences }
+export interface DashboardData { staff: Staff[]; patterns: ShiftPattern[]; confirmed: ConfirmedShift[]; absences: DayAbsences; pending: PendingSummary }
 // 当日分のダッシュボードを端末保存し、再訪問時にまず即表示（stale-while-revalidate）する。
 // 日付をキーにするので「別の日の内容」が出ることはない。
 function dashKey(date: string): string { return `tof_dash_${date}`; }
@@ -630,11 +630,23 @@ function persistDash(date: string, data: DashboardData) {
     localStorage.setItem(dashKey(date), JSON.stringify(data));
   } catch { /* 容量超過等は無視 */ }
 }
+const EMPTY_PENDING: PendingSummary = { expenses: 0, overtime: 0, leave: 0 };
+/** デモ用：未承認件数をlocalStorageから数える */
+function localPending(): PendingSummary {
+  return {
+    expenses: local.listExpenses(currentFiscalYear()).filter(e => e.status === 'requested').length,
+    overtime: local.listOvertimeByMonth(todayStr().slice(0, 7)).filter(r => r.status === 'applied').length,
+    leave: local.listAllLeave().filter(r => r.status === 'requested').length,
+  };
+}
 export async function getDashboardData(date: string): Promise<DashboardData> {
   const month = date.slice(0, 7);
   if (!USE_GAS) {
     const [staff, patterns] = await Promise.all([listStaff(), listShiftPatterns()]);
-    return { staff, patterns, confirmed: local.listConfirmedByDate(date), absences: local.listAbsencesByDate(date) };
+    return {
+      staff, patterns, confirmed: local.listConfirmedByDate(date), absences: local.listAbsencesByDate(date),
+      pending: localPending(),
+    };
   }
   // 基礎データ（職員・区分・費目）が未キャッシュなら確定・休暇と一緒に1バッチで取得し、
   // キャッシュも温める。メモリ／端末保存にあれば確定・休暇だけを1バッチで取得する。
@@ -642,10 +654,10 @@ export async function getDashboardData(date: string): Promise<DashboardData> {
   const cached = memCached || refFromPersist();
   if (cached && !memCached) void loadReference().catch(() => {}); // 保存値を使うので裏で最新化
   const reqs: Record<string, unknown>[] = cached
-    ? [{ action: 'getConfirmedMonth', month }, { action: 'getAbsencesByDate', date }]
+    ? [{ action: 'getConfirmedMonth', month }, { action: 'getAbsencesByDate', date }, { action: 'getPendingSummary' }]
     : [
         { action: 'getStaff' }, { action: 'getShiftPatterns' }, { action: 'getExpenseCategories' },
-        { action: 'getConfirmedMonth', month }, { action: 'getAbsencesByDate', date },
+        { action: 'getConfirmedMonth', month }, { action: 'getAbsencesByDate', date }, { action: 'getPendingSummary' },
       ];
   const r = await batchCall(reqs);
   if (r) {
@@ -663,14 +675,15 @@ export async function getDashboardData(date: string): Promise<DashboardData> {
     }
     const confirmed = unwrap(r[base] as SubRes<ConfirmedShift[]>, []).filter(x => x.date === date);
     const absences = unwrap(r[base + 1] as SubRes<DayAbsences>, { leave: [], comp: [] });
-    const result = { staff, patterns, confirmed, absences };
+    const pending = unwrap(r[base + 2] as SubRes<PendingSummary>, EMPTY_PENDING);
+    const result = { staff, patterns, confirmed, absences, pending };
     persistDash(date, result);
     return result;
   }
   // フォールバック（旧GAS: バッチ未対応）
   const [staff, patterns] = await Promise.all([listStaff(), listShiftPatterns()]);
   const [conf, absences] = await Promise.all([listConfirmedByDate(date), listAbsencesByDate(date)]);
-  return { staff, patterns, confirmed: conf, absences };
+  return { staff, patterns, confirmed: conf, absences, pending: EMPTY_PENDING };
 }
 
 // --- シフト表 ---

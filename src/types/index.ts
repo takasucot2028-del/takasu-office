@@ -29,6 +29,7 @@ export interface Staff {
   address: string;
   qualifications: string;     // 保有資格
   hourlyWage: number;         // 時給（時間外手当の計算に使用。0=未設定）
+  monthlyHourLimit: number;   // 月の労働時間の上限（扶養等の制限。0=制限なし）
   hasPassword?: boolean;      // 従業員ログイン用パスワードが設定済みか（サーバー算出・読取専用）
   note: string;
   createdAt: string;

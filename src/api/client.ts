@@ -16,6 +16,9 @@ export interface TodayWorkShift {
 export interface TodayWorkAbsence { staffName: string; days?: number; hours: number; note: string }
 export interface TodayWork { shifts: TodayWorkShift[]; leave: TodayWorkAbsence[]; comp: TodayWorkAbsence[] }
 
+/** 未承認（要対応）の申請件数 */
+export interface PendingSummary { expenses: number; overtime: number; leave: number }
+
 /** 従業員の経費申請フォーム用コンテキスト（年度の予算行＋残額） */
 export interface ExpenseContext {
   categories: ExpenseCategory[];
@@ -102,6 +105,8 @@ export const setMyBreak = (breakStart: string, breakEnd: string, token: string) 
     'setMyBreak', { breakStart, breakEnd, token });
 export const getTodayWork = (date: string, token: string) =>
   request<TodayWork>('getTodayWork', { date, token });
+export const getPendingSummary = (token: string) =>
+  request<PendingSummary>('getPendingSummary', { token });
 export const getMyAvailability = (month: string, token: string) =>
   request<AvailabilityRecord[]>('getMyAvailability', { month, token });
 export const saveMyAvailability = (month: string, records: AvailabilityRecord[], token: string) =>

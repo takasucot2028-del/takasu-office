@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageContainer, Card, Badge } from '../components/UI';
 import { getDashboardData, getDashboardCached, todayStr } from '../api/data';
-import type { DayAbsences } from '../api/data';
+import type { DayAbsences, PendingSummary } from '../api/data';
 import { WORK_LOCATION_LABELS, WEEKDAY_LABELS } from '../utils/constants';
 import type { WorkLocation, Staff, ShiftPattern, ConfirmedShift } from '../types';
 
@@ -11,6 +11,7 @@ export default function Dashboard() {
   const [patterns, setPatterns] = useState<ShiftPattern[]>([]);
   const [todayShifts, setTodayShifts] = useState<ConfirmedShift[]>([]);
   const [absences, setAbsences] = useState<DayAbsences>({ leave: [], comp: [] });
+  const [pending, setPending] = useState<PendingSummary>({ expenses: 0, overtime: 0, leave: 0 });
   const [loading, setLoading] = useState(true);
 
   const today = todayStr();
@@ -18,8 +19,9 @@ export default function Dashboard() {
 
   useEffect(() => {
     let alive = true;
-    const apply = (d: { staff: Staff[]; patterns: ShiftPattern[]; confirmed: ConfirmedShift[]; absences: DayAbsences }) => {
+    const apply = (d: { staff: Staff[]; patterns: ShiftPattern[]; confirmed: ConfirmedShift[]; absences: DayAbsences; pending?: PendingSummary }) => {
       setStaff(d.staff); setPatterns(d.patterns); setTodayShifts(d.confirmed); setAbsences(d.absences);
+      if (d.pending) setPending(d.pending);
       setLoading(false);
     };
     const cached = getDashboardCached(today); // 当日の保存があればまず即表示
@@ -37,6 +39,33 @@ export default function Dashboard() {
 
   return (
     <PageContainer title="事務管理ダッシュボード">
+      {/* 未承認の申請（要対応） */}
+      {!loading && (pending.expenses + pending.overtime + pending.leave) > 0 && (
+        <Card className="mb-4 border-amber-300 bg-amber-50">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-bold text-amber-800">未承認の申請があります</h2>
+            <Badge color="yellow">要対応 {pending.expenses + pending.overtime + pending.leave}件</Badge>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {pending.overtime > 0 && (
+              <Link to="/labor/overtime" className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-white border border-amber-300 text-sm text-amber-800 hover:bg-amber-100">
+                時間外申請 <span className="font-bold">{pending.overtime}</span>件 →
+              </Link>
+            )}
+            {pending.leave > 0 && (
+              <Link to="/labor/leave" className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-white border border-amber-300 text-sm text-amber-800 hover:bg-amber-100">
+                休暇申請 <span className="font-bold">{pending.leave}</span>件 →
+              </Link>
+            )}
+            {pending.expenses > 0 && (
+              <Link to="/labor/accounting" className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-white border border-amber-300 text-sm text-amber-800 hover:bg-amber-100">
+                経費申請 <span className="font-bold">{pending.expenses}</span>件 →
+              </Link>
+            )}
+          </div>
+        </Card>
+      )}
+
       {/* 本日の勤務 */}
       <Card className="mb-4">
         <div className="flex items-center justify-between mb-3">

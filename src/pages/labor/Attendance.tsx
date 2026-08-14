@@ -192,6 +192,7 @@ export default function Attendance() {
 
           <div className="flex justify-end gap-2 mb-3">
             <Button variant="secondary" size="sm" onClick={() => navigate(`/labor/attendance/print?staffId=${staffId}&month=${month}`)}>出勤簿PDF</Button>
+            <Button variant="secondary" size="sm" onClick={() => navigate(`/labor/attendance/print?all=1&month=${month}`)}>全員分をまとめて印刷</Button>
             <Button variant="secondary" size="sm" onClick={exportExcel}>Excel出力</Button>
             <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? '保存中…' : '保存する'}</Button>
           </div>

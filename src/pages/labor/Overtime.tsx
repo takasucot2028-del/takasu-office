@@ -6,7 +6,7 @@ import {
   saveMonthOvertime, addCompUse, deleteCompUse,
   genId, todayStr,
 } from '../../api/data';
-import { WEEKDAY_LABELS } from '../../utils/constants';
+import { WEEKDAY_LABELS, breakMinutesBetween } from '../../utils/constants';
 import {
   isOvertimeTarget, overtimeKindOf, standardHoursOf, resultHoursOf, allowanceOf,
   patternHours,
@@ -56,7 +56,8 @@ export default function Overtime() {
 
   // 申請フォーム
   const [fDate, setFDate] = useState(todayStr());
-  const [fHours, setFHours] = useState('1');
+  const [fStart, setFStart] = useState('18:00');
+  const [fEnd, setFEnd] = useState('19:00');
   const [fReason, setFReason] = useState('');
   // 代休取得フォーム
   const [cDate, setCDate] = useState(todayStr());
@@ -128,14 +129,17 @@ export default function Overtime() {
 
   const addApplication = () => {
     if (!staff) return;
-    const hrs = Number(fHours);
+    const hrs = breakMinutesBetween(fStart, fEnd) / 60; // 終了−開始（時間）
     if (!fDate.startsWith(month)) { setError('申請日は表示中の月の日付にしてください'); return; }
     if (records.some(r => r.date === fDate)) { setError('その日の時間外はすでにあります'); return; }
+    if (!fStart || !fEnd) { setError('開始と終了の時刻を入力してください'); return; }
+    if (hrs <= 0) { setError('終了は開始より後の時刻にしてください'); return; }
     setError('');
     const rec: OvertimeRecord = {
       id: genId('ot'), staffId: staff.id, date: fDate,
       kind: overtimeKindOf(staff, fDate),
-      appliedHours: hrs > 0 ? hrs : 0, reason: fReason,
+      appliedHours: Math.round(hrs * 100) / 100, reason: fReason,
+      startTime: fStart, endTime: fEnd,
       status: 'applied', disposition: '', resultHours: 0, note: '',
     };
     setRecords(prev => [...prev, rec].sort((a, b) => a.date.localeCompare(b.date)));
@@ -186,7 +190,8 @@ export default function Overtime() {
   const anyMissingAttendance = records.some(r => (attMap[r.date] || 0) === 0);
 
   // 時間外勤務実績簿は印刷ページ（PDF保存）で出力する
-  const openJisekibo = () => navigate(`/labor/overtime/print?month=${month}`);
+  const openJisekibo = () => navigate(`/labor/overtime/print?month=${month}&staffId=${staffId}`);
+  const openJisekiboAll = () => navigate(`/labor/overtime/print?month=${month}`);
 
   const addCompUseRec = async () => {
     if (!staff) return;
@@ -226,6 +231,7 @@ export default function Overtime() {
           </div>
           <div className="flex-1" />
           <Button variant="secondary" size="sm" onClick={openJisekibo}>実績簿PDF</Button>
+          <Button variant="secondary" size="sm" onClick={openJisekiboAll}>全員分をまとめて印刷</Button>
           <Button size="sm" onClick={handleSave} disabled={saving || !staff}>{saving ? '保存中…' : '保存する'}</Button>
         </div>
         <p className="mt-2 text-xs text-gray-500">
@@ -264,12 +270,15 @@ export default function Overtime() {
           {/* 申請追加 */}
           <Card className="mb-4">
             <h2 className="font-bold text-gray-800 mb-3">時間外の申請を追加</h2>
-            <div className="grid sm:grid-cols-4 gap-3 items-end">
+            <div className="grid sm:grid-cols-5 gap-3 items-end">
               <Field label="日付">
                 <Input type="date" value={fDate} onChange={e => setFDate(e.target.value)} />
               </Field>
-              <Field label="予定時間（h）">
-                <Input type="number" min={0} step={0.5} value={fHours} onChange={e => setFHours(e.target.value)} />
+              <Field label="開始">
+                <Input type="time" value={fStart} onChange={e => setFStart(e.target.value)} />
+              </Field>
+              <Field label="終了">
+                <Input type="time" value={fEnd} onChange={e => setFEnd(e.target.value)} />
               </Field>
               <Field label="事由">
                 <Input value={fReason} onChange={e => setFReason(e.target.value)} placeholder="例: イベント準備" />

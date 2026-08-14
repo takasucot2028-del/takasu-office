@@ -18,6 +18,7 @@ export default function OvertimePrint() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const month = params.get('month') || todayStr().slice(0, 7);
+  const onlyStaffId = params.get('staffId') || ''; // 指定時はその職員のみ（未指定＝該当者全員を一括）
 
   const [sheets, setSheets] = useState<Sheet[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +36,7 @@ export default function OvertimePrint() {
     (async () => {
       const [ot, staff] = await Promise.all([listOvertimeByMonth(month), listStaff()]);
       if (!alive) return;
-      const ids = Array.from(new Set(ot.map(r => r.staffId)));
+      const ids = Array.from(new Set(ot.map(r => r.staffId))).filter(id => !onlyStaffId || id === onlyStaffId);
       const targets = ids.map(id => staff.find(s => s.id === id)).filter((s): s is Staff => !!s);
       const built: Sheet[] = [];
       for (const s of targets) {
@@ -61,7 +62,7 @@ export default function OvertimePrint() {
       setLoading(false);
     })();
     return () => { alive = false; };
-  }, [month]);
+  }, [month, onlyStaffId]);
 
   const [y, m] = month.split('-');
   const dispLabel: Record<string, string> = { allowance: '手当', comp: '代休', '': '未定' };

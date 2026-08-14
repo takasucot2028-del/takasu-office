@@ -229,6 +229,27 @@ export default function Shifts() {
   const dayCount = (date: string) =>
     staffOfLoc.reduce((n, s) => n + (confIds(s.id, date).length ? 1 : 0), 0);
 
+  // 月の確定シフト時間（両方の勤務場所を合算）。扶養等の上限チェックに使う。
+  const monthHoursAll = (staffId: string) => {
+    let hours = 0;
+    for (const [k, pids] of Object.entries(confMap)) {
+      if (!k.startsWith(`${staffId}_`)) continue;
+      const rest = k.slice(staffId.length + 1);
+      if (!rest.startsWith(month)) continue;
+      for (const id of pids) { const p = patternMap.get(id); if (p) hours += patternHours(p); }
+    }
+    return Math.round(hours * 10) / 10;
+  };
+  // 上限を超えている職員（上限0＝制限なしは対象外）
+  const overLimitStaff = useMemo(() => {
+    if (mode !== 'confirm') return [];
+    return allStaff
+      .filter(s => s.status === 'active' && (s.monthlyHourLimit || 0) > 0)
+      .map(s => ({ staff: s, hours: monthHoursAll(s.id), limit: s.monthlyHourLimit }))
+      .filter(x => x.hours > x.limit);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allStaff, confMap, month, patternMap, mode]);
+
   // 入力チェック：総体・B&G（海洋センター）の確定シフトに必要な区分が入っているか
   //  ・総体の平日        … ③のみ必須（①②は常勤職員が勤務するため不問）
   //  ・総体の休日・祝日   … ①②③すべて必須
@@ -351,6 +372,23 @@ export default function Shifts() {
 
       {message && <Alert type="success">{message}</Alert>}
       {error && <Alert type="error">{error}</Alert>}
+
+      {/* 扶養等の月間労働時間の上限超過 */}
+      {overLimitStaff.length > 0 && (
+        <Alert type="warning">
+          <span className="font-medium">月の労働時間の上限を超えています</span>
+          <ul className="mt-1 space-y-0.5">
+            {overLimitStaff.map(x => (
+              <li key={x.staff.id} className="text-sm">
+                {x.staff.lastName} {x.staff.firstName}：
+                <span className="font-bold text-red-700">{x.hours}h</span> ／ 上限 {x.limit}h
+                <span className="text-xs ml-1">（{Math.round((x.hours - x.limit) * 10) / 10}h 超過）</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs mt-1">※ 総体・海洋センターの両方を合算した、表示中の月の確定シフト時間です。</p>
+        </Alert>
+      )}
 
       {checkResult && (
         <Card className="mb-4">
@@ -481,11 +519,18 @@ export default function Shifts() {
                       );
                     })}
                     {mode === 'confirm' && t && <td className="border-b px-2 text-center text-gray-600">{t.daysCount}</td>}
-                    {mode === 'confirm' && t && (
-                      s.employmentType === 'fulltime'
+                    {mode === 'confirm' && t && (() => {
+                      const limit = s.monthlyHourLimit || 0;
+                      const total = limit > 0 ? monthHoursAll(s.id) : 0;
+                      const over = limit > 0 && total > limit;
+                      if (over) return (
+                        <td className="border-b px-2 text-center text-red-600 font-bold bg-red-50"
+                          title={`月の上限 ${limit}h を超えています（両勤務場所の合計 ${total}h）`}>{t.hours}h</td>
+                      );
+                      return s.employmentType === 'fulltime'
                         ? <td className="border-b px-2 text-center text-gray-300" title="常勤は月給制のため、シフト予定の実働時間は給与・時間外には反映されません（予定値）">{t.hours}h</td>
-                        : <td className="border-b px-2 text-center text-gray-600">{t.hours}h</td>
-                    )}
+                        : <td className="border-b px-2 text-center text-gray-600" title={limit > 0 ? `月の上限 ${limit}h（両勤務場所の合計 ${total}h）` : undefined}>{t.hours}h</td>;
+                    })()}
                   </tr>
                 );
               })}

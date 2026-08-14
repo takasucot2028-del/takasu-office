@@ -13,7 +13,7 @@ function emptyStaff(): Staff {
     birthDate: '',
     employmentType: 'fulltime', workLocation: '', position: '',
     hireDate: '', retireDate: '', status: 'active',
-    phone: '', email: '', address: '', qualifications: '', hourlyWage: 0, note: '',
+    phone: '', email: '', address: '', qualifications: '', hourlyWage: 0, monthlyHourLimit: 0, note: '',
     createdAt: '', updatedAt: '',
   };
 }
@@ -206,6 +206,10 @@ export default function StaffDetail() {
             </Field>
             <Field label="職員番号">
               <Input value={form.employeeNumber} onChange={e => set('employeeNumber', e.target.value)} placeholder="従業員アプリのログインID" />
+            </Field>
+            <Field label="月の労働時間 上限（時間）">
+              <Input type="number" min={0} step={1} value={form.monthlyHourLimit || ''}
+                onChange={e => set('monthlyHourLimit', Number(e.target.value) || 0)} placeholder="扶養等の制限がある場合に設定（空欄=制限なし）" />
             </Field>
           </div>
         </Card>
