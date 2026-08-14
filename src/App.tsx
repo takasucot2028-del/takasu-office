@@ -26,6 +26,8 @@ import StaffLeaveRequest from './pages/me/StaffLeaveRequest';
 import StaffDocuments from './pages/me/StaffDocuments';
 import StaffExpense from './pages/me/StaffExpense';
 import StaffSettings from './pages/me/StaffSettings';
+import StaffAttendance from './pages/me/StaffAttendance';
+import AttendancePrint from './pages/labor/AttendancePrint';
 
 // 管理者専用
 function AdminGuard({ children }: { children: React.ReactNode }) {
@@ -57,6 +59,7 @@ function AppRoutes() {
         <Route path="/labor/shifts/print" element={<AdminGuard><ShiftsPrint /></AdminGuard>} />
         <Route path="/labor/shift-patterns" element={<AdminGuard><ShiftPatterns /></AdminGuard>} />
         <Route path="/labor/attendance" element={<AdminGuard><Attendance /></AdminGuard>} />
+        <Route path="/labor/attendance/print" element={<AdminGuard><AttendancePrint /></AdminGuard>} />
         <Route path="/labor/overtime" element={<AdminGuard><Overtime /></AdminGuard>} />
         <Route path="/labor/overtime/print" element={<AdminGuard><OvertimePrint /></AdminGuard>} />
         <Route path="/labor/leave" element={<AdminGuard><Leave /></AdminGuard>} />
@@ -73,6 +76,8 @@ function AppRoutes() {
         <Route path="/me/leave" element={<StaffGuard><StaffLeaveRequest /></StaffGuard>} />
         <Route path="/me/documents" element={<StaffGuard><StaffDocuments /></StaffGuard>} />
         <Route path="/me/expense" element={<StaffGuard><StaffExpense /></StaffGuard>} />
+        <Route path="/me/attendance" element={<StaffGuard><StaffAttendance /></StaffGuard>} />
+        <Route path="/me/attendance/print" element={<StaffGuard><AttendancePrint /></StaffGuard>} />
         <Route path="/me/settings" element={<StaffGuard><StaffSettings /></StaffGuard>} />
       </Routes>
     </div>

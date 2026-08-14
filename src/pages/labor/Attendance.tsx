@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { PageContainer, Card, Select, Input, Button, Table, Th, Td, Alert } from '../../components/UI';
 import { listStaff, listAttendance, saveMonthAttendance } from '../../api/data';
@@ -36,6 +37,7 @@ function formatMinutes(min: number): string {
 }
 
 export default function Attendance() {
+  const navigate = useNavigate();
   const [allStaff, setAllStaff] = useState<Staff[]>([]);
   const [staffLoaded, setStaffLoaded] = useState(false);
   const staff = useMemo(() => allStaff.filter(s => s.status === 'active'), [allStaff]);
@@ -183,6 +185,7 @@ export default function Attendance() {
           </div>
 
           <div className="flex justify-end gap-2 mb-3">
+            <Button variant="secondary" size="sm" onClick={() => navigate(`/labor/attendance/print?staffId=${staffId}&month=${month}`)}>出勤簿PDF</Button>
             <Button variant="secondary" size="sm" onClick={exportExcel}>Excel出力</Button>
             <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? '保存中…' : '保存する'}</Button>
           </div>

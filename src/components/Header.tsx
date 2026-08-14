@@ -14,6 +14,7 @@ const ADMIN_NAV = [
 ];
 const STAFF_NAV = [
   { to: '/me', label: '打刻・ホーム', short: '打刻' },
+  { to: '/me/attendance', label: '出勤簿', short: '出勤簿' },
   { to: '/me/shifts', label: 'シフト希望', short: 'シフト' },
   { to: '/me/overtime', label: '時間外申請', short: '時間外' },
   { to: '/me/leave', label: '休暇申請', short: '休暇' },
