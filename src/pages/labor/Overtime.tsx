@@ -8,8 +8,9 @@ import {
 } from '../../api/data';
 import { WEEKDAY_LABELS, breakMinutesBetween } from '../../utils/constants';
 import {
-  isOvertimeTarget, overtimeKindOf, standardHoursOf, resultHoursOf, allowanceOf,
-  patternHours,
+  isOvertimeTarget, overtimeKindOf, standardHoursOf, resultHoursOf,
+  allowanceDetail, priorOvertimeMap, patternHours,
+  OVERTIME_MONTHLY_THRESHOLD,
   OVERTIME_STATUS_LABELS, OVERTIME_KIND_LABELS,
 } from '../../utils/overtime';
 import type { Staff, ShiftPattern, ConfirmedShift, AttendanceRecord, OvertimeRecord, CompLeaveUse, OvertimeDisposition } from '../../types';
@@ -112,15 +113,27 @@ export default function Overtime() {
     setRecords(allOt.filter(r => r.date.startsWith(month)).map(r => ({ ...r })));
   }, [allOt, month]);
 
-  // 1レコードの計算（実働・基準・実績・手当額）
+  // 実績時間だけを求める（累計の計算に使う。手当は含めない）
+  const resultOf = (r: { date: string }) => {
+    if (!staff) return 0;
+    return resultHoursOf(attMap[r.date] || 0, standardHoursOf(staff, r.date, shiftMap[r.date] || 0));
+  };
+  // 各記録の「その記録より前の時間外累計」。月60時間超の割増判定に使う。
+  const priorMap = useMemo(
+    () => (staff ? priorOvertimeMap(records, r => overtimeKindOf(staff, r.date), resultOf) : new Map<string, number>()),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [staff, records, attMap, shiftMap]
+  );
+
+  // 1レコードの計算（実働・基準・実績・手当額）。手当は月60時間超の割増を反映する。
   const calc = (r: OvertimeRecord) => {
-    if (!staff) return { kind: r.kind, worked: 0, standard: 0, result: 0, amount: 0 };
+    if (!staff) return { kind: r.kind, worked: 0, standard: 0, result: 0, amount: 0, over60Hours: 0 };
     const kind = overtimeKindOf(staff, r.date);
     const worked = attMap[r.date] || 0;
     const standard = standardHoursOf(staff, r.date, shiftMap[r.date] || 0);
     const result = resultHoursOf(worked, standard);
-    const amount = allowanceOf(result, staff.hourlyWage || 0, kind);
-    return { kind, worked, standard, result, amount };
+    const d = allowanceDetail(result, staff.hourlyWage || 0, kind, priorMap.get(r.id) ?? 0);
+    return { kind, worked, standard, result, amount: d.amount, over60Hours: d.over60Hours };
   };
 
   const setRec = (id: string, patch: Partial<OvertimeRecord>) =>
@@ -186,6 +199,8 @@ export default function Overtime() {
   const monthHoliday = r1(approvedRecs.filter(r => calc(r).kind === 'holiday').reduce((s, r) => s + calc(r).result, 0));
   const monthAllowanceHours = r1(approvedRecs.filter(r => r.disposition === 'allowance').reduce((s, r) => s + calc(r).result, 0));
   const monthCompUsed = r1(compUse.filter(u => u.date.startsWith(month)).reduce((s, u) => s + (u.hours || 0), 0));
+  // 60時間を超えた分（×1.50 対象）の合計
+  const monthOver60 = r1(approvedRecs.reduce((s, r) => s + calc(r).over60Hours, 0));
   // 出退勤（実働）が未入力の申請があるか（実績が0のまま気づかないのを防ぐ）
   const anyMissingAttendance = records.some(r => (attMap[r.date] || 0) === 0);
 
@@ -235,7 +250,8 @@ export default function Overtime() {
           <Button size="sm" onClick={handleSave} disabled={saving || !staff}>{saving ? '保存中…' : '保存する'}</Button>
         </div>
         <p className="mt-2 text-xs text-gray-500">
-          実働は「勤怠管理」の出退勤から自動集計。実績時間＝実働−基準（常勤=7.5時間／パート=シフト予定、常勤の土日祝は休日勤務で実働全部）。手当＝時給×割増（時間外×1.25／休日×1.5）。
+          実働は「勤怠管理」の出退勤から自動集計。実績時間＝実働−基準（常勤=7.5時間／パート=シフト予定、常勤の土日祝は休日勤務で実働全部）。
+          手当＝時給×割増（時間外×1.20／<span className="font-medium">当月の時間外が60時間を超えた分は×1.50</span>／休日×1.35）。
         </p>
       </Card>
 
@@ -258,6 +274,12 @@ export default function Overtime() {
               <Tile label="代休付与" value={h1(monthComp)} />
               <Tile label="当月 代休消化" value={h1(monthCompUsed)} />
             </div>
+            {monthOver60 > 0 && (
+              <p className="mt-3 text-sm text-amber-700 bg-amber-50 rounded px-3 py-2">
+                当月の時間外が{OVERTIME_MONTHLY_THRESHOLD}時間を超えています。
+                超過分 <span className="font-bold">{h1(monthOver60)}</span> は割増率 ×1.50 で計算しています。
+              </p>
+            )}
           </Card>
 
           {/* 残数など */}
