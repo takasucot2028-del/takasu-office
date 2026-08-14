@@ -422,20 +422,31 @@ export async function saveMonthAttendance(
 }
 
 // === シフト区分マスタ ===
+/**
+ * 取得したシフト区分を確定する。
+ * 保存処理中などで一時的に空が返ることがあるため、空のときは既存の値を優先し、
+ * それも無い場合だけ既定値を使う（登録済みの区分が既定値に置き換わるのを防ぐ）。
+ */
+function resolvePatterns(list: ShiftPattern[]): ShiftPattern[] {
+  if (list.length) return list.slice().sort((a, b) => a.order - b.order);
+  const kept = (_cache.get('patterns')?.v ?? persistRead('patterns')?.v) as ShiftPattern[] | undefined;
+  if (kept && kept.length) return kept;
+  return DEFAULT_SHIFT_PATTERNS.slice().sort((a, b) => a.order - b.order);
+}
+
 export async function listShiftPatterns(): Promise<ShiftPattern[]> {
   return memo('patterns', async () => {
     if (!USE_GAS) return local.listShiftPatterns();
-    const list = unwrap(await gas.getShiftPatterns(token()), [] as ShiftPattern[]);
-    const use = list.length ? list : DEFAULT_SHIFT_PATTERNS;
-    return use.slice().sort((a, b) => a.order - b.order);
+    return resolvePatterns(unwrap(await gas.getShiftPatterns(token()), [] as ShiftPattern[]));
   });
 }
 
 export async function saveShiftPatterns(patterns: ShiftPattern[]): Promise<void> {
-  invalidate('patterns');
-  if (!USE_GAS) { local.saveShiftPatterns(patterns); return; }
+  if (!USE_GAS) { invalidate('patterns'); local.saveShiftPatterns(patterns); return; }
   const res = await gas.saveShiftPatterns(patterns, token());
   if (!res.success) throw new Error(res.error || 'シフト区分の保存に失敗しました');
+  // 保存が成功してからキャッシュを更新する（保存中の読み取りで古い値が入るのを防ぐ）
+  cacheSet('patterns', patterns.slice().sort((a, b) => a.order - b.order));
 }
 
 // === シフト希望（○×） ===
@@ -581,7 +592,7 @@ function loadReference(): Promise<ReferenceData> {
         const staff = unwrap(r[0] as SubRes<Staff[]>, [])
           .slice().sort((a, b) => (a.lastKana || '').localeCompare(b.lastKana || '', 'ja'));
         const patList = unwrap(r[1] as SubRes<ShiftPattern[]>, []);
-        const patterns = (patList.length ? patList : DEFAULT_SHIFT_PATTERNS).slice().sort((a, b) => a.order - b.order);
+        const patterns = resolvePatterns(patList);
         const catList = unwrap(r[2] as SubRes<ExpenseCategory[]>, []);
         const categories = catList.length ? catList : local.listExpenseCategories();
         cacheSet('staff', staff); cacheSet('patterns', patterns); cacheSet('categories', categories);
@@ -644,7 +655,7 @@ export async function getDashboardData(date: string): Promise<DashboardData> {
     } else {
       staff = unwrap(r[0] as SubRes<Staff[]>, []).slice().sort((a, b) => (a.lastKana || '').localeCompare(b.lastKana || '', 'ja'));
       const patList = unwrap(r[1] as SubRes<ShiftPattern[]>, []);
-      patterns = (patList.length ? patList : DEFAULT_SHIFT_PATTERNS).slice().sort((a, b) => a.order - b.order);
+      patterns = resolvePatterns(patList);
       const catList = unwrap(r[2] as SubRes<ExpenseCategory[]>, []);
       cacheSet('staff', staff); cacheSet('patterns', patterns);
       cacheSet('categories', catList.length ? catList : local.listExpenseCategories());

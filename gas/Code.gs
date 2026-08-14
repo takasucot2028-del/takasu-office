@@ -516,6 +516,27 @@ function cleanupDuplicateIds() {
   return msg;
 }
 
+/**
+ * シートの内容を丸ごと置き換える。
+ * clearContents() で全消去すると、書き込み完了までの一瞬「空」の状態ができ、
+ * その間に読み取りが入ると空データを返してしまう。これを避けるため、
+ * 上書き＋余剰行の削除で置き換える。
+ */
+function replaceSheetRows_(sheetKey, rows) {
+  const sheet = getSheet(sheetKey);
+  const labels = colLabels(sheetKey);
+  const ncol = labels.length;
+  const out = [labels].concat(rows || []);
+  const lastRow = sheet.getLastRow();
+  const maxRows = sheet.getMaxRows();
+  if (maxRows < out.length) sheet.insertRowsAfter(maxRows, out.length - maxRows);
+  const range = sheet.getRange(1, 1, out.length, ncol);
+  range.setNumberFormat('@');   // 時刻・年月の自動変換を防ぐ
+  range.setValues(out);
+  if (lastRow > out.length) sheet.deleteRows(out.length + 1, lastRow - out.length); // 余剰行を削除
+  sheet.setFrozenRows(1);
+}
+
 // 同じIDが無ければ追加する（冪等）。リトライで二重登録されないようにする。
 function appendUnique_(sheetKey, record) {
   const sheet = getSheet(sheetKey);
@@ -653,18 +674,9 @@ function handleGetShiftPatterns() {
 
 // 区分マスタを丸ごと保存（見出しごと書き直す）。
 function handleSaveShiftPatterns(patterns) {
-  const sheet = getSheet('shift_patterns');
-  const labels = colLabels('shift_patterns');
-  const ncol = labels.length;
-  sheet.clearContents();
-  sheet.getRange(1, 1, sheet.getMaxRows(), ncol).setNumberFormat('@');
-  sheet.getRange(1, 1, 1, ncol).setValues([labels]);
-  sheet.setFrozenRows(1);
   const list = patterns || [];
-  if (list.length) {
-    const rows = list.map(function (p) { return objectToRow('shift_patterns', p); });
-    sheet.getRange(2, 1, rows.length, ncol).setValues(rows);
-  }
+  const rows = list.map(function (p) { return objectToRow('shift_patterns', p); });
+  replaceSheetRows_('shift_patterns', rows); // 全消去せず置換（保存中に空が読まれるのを防ぐ）
   return { success: true, data: { saved: list.length } };
 }
 
