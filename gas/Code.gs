@@ -819,15 +819,44 @@ function handleGetAbsencesByDate(date) {
   return { success: true, data: { leave: leave, comp: comp } };
 }
 
-// 未承認（要対応）の申請件数をまとめて返す。ダッシュボードの通知に使う。
+// 未承認（要対応）の申請をまとめて返す。件数に加えて「誰の・いつ・何の申請か」も返す。
 function handleGetPendingSummary() {
+  const nameOf = {};
+  sheetToObjects(getSheet('staff'), 'staff').forEach(function (s) {
+    nameOf[s.id] = ((s.lastName || '') + ' ' + (s.firstName || '')).trim();
+  });
+  const who = function (id) { return nameOf[id] || '(不明)'; };
+
   const exp = dedupeById_(sheetToObjects(getSheet('expenses'), 'expenses'))
     .filter(function (e) { return String(e.status) === 'requested'; });
   const ot = dedupeById_(sheetToObjects(getSheet('overtime'), 'overtime'))
     .filter(function (r) { return String(r.status) === 'applied'; });
   const lv = dedupeById_(sheetToObjects(getSheet('leave'), 'leave'))
     .filter(function (r) { return String(r.status) === 'requested'; });
-  return { success: true, data: { expenses: exp.length, overtime: ot.length, leave: lv.length } };
+
+  const items = [];
+  ot.forEach(function (r) {
+    const span = (r.startTime && r.endTime) ? (r.startTime + '〜' + r.endTime) : ((Number(r.appliedHours) || 0) + 'h');
+    items.push({ type: 'overtime', staffName: who(r.staffId), date: String(r.date), detail: span });
+  });
+  lv.forEach(function (r) {
+    const h = Number(r.hours) || 0, d = Number(r.days) || 0;
+    const span = (r.startTime && r.endTime) ? (r.startTime + '〜' + r.endTime) : (h > 0 ? h + '時間' : d + '日');
+    items.push({ type: 'leave', staffName: who(r.staffId), date: String(r.date), detail: span });
+  });
+  exp.forEach(function (e) {
+    const amount = Number(e.amount) || 0;
+    items.push({
+      type: 'expense', staffName: e.staffId ? who(e.staffId) : '事務局',
+      date: String(e.date), detail: (e.project || '') + ' ¥' + amount.toLocaleString(),
+    });
+  });
+  items.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); }); // 新しい順
+
+  return {
+    success: true,
+    data: { expenses: exp.length, overtime: ot.length, leave: lv.length, items: items.slice(0, 50) },
+  };
 }
 
 // 従業員も閲覧できる「本日の勤務・休暇」。氏名・シフト時間・休暇のみ返す（個人情報は含めない）。

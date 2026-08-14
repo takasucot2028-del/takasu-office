@@ -14,8 +14,8 @@ import type {
 import { DEFAULT_SHIFT_PATTERNS, LEAVE_HOURS_PER_DAY, currentFiscalYear } from '../utils/constants';
 import * as local from '../utils/store';
 import * as gas from './client';
-import type { ExpenseContext, TodayWork, PendingSummary } from './client';
-export type { TodayWork, PendingSummary } from './client';
+import type { ExpenseContext, TodayWork, PendingSummary, PendingItem } from './client';
+export type { TodayWork, PendingSummary, PendingItem } from './client';
 
 const USE_GAS = !!import.meta.env.VITE_GAS_URL;
 
@@ -631,13 +631,28 @@ function persistDash(date: string, data: DashboardData) {
   } catch { /* 容量超過等は無視 */ }
 }
 const EMPTY_PENDING: PendingSummary = { expenses: 0, overtime: 0, leave: 0 };
-/** デモ用：未承認件数をlocalStorageから数える */
+/** デモ用：未承認の申請（件数と明細）をlocalStorageから集める */
 function localPending(): PendingSummary {
-  return {
-    expenses: local.listExpenses(currentFiscalYear()).filter(e => e.status === 'requested').length,
-    overtime: local.listOvertimeByMonth(todayStr().slice(0, 7)).filter(r => r.status === 'applied').length,
-    leave: local.listAllLeave().filter(r => r.status === 'requested').length,
-  };
+  const nameOf = new Map(local.listStaff().map(s => [s.id, `${s.lastName} ${s.firstName}`]));
+  const who = (id: string) => nameOf.get(id) || '(不明)';
+  const exp = local.listExpenses(currentFiscalYear()).filter(e => e.status === 'requested');
+  const ot = local.listOvertimeByMonth(todayStr().slice(0, 7)).filter(r => r.status === 'applied');
+  const lv = local.listAllLeave().filter(r => r.status === 'requested');
+  const items: PendingItem[] = [
+    ...ot.map(r => ({
+      type: 'overtime' as const, staffName: who(r.staffId), date: r.date,
+      detail: r.startTime && r.endTime ? `${r.startTime}〜${r.endTime}` : `${r.appliedHours || 0}h`,
+    })),
+    ...lv.map(r => ({
+      type: 'leave' as const, staffName: who(r.staffId), date: r.date,
+      detail: r.startTime && r.endTime ? `${r.startTime}〜${r.endTime}` : (r.hours > 0 ? `${r.hours}時間` : `${r.days}日`),
+    })),
+    ...exp.map(e => ({
+      type: 'expense' as const, staffName: e.staffId ? who(e.staffId) : '事務局', date: e.date,
+      detail: `${e.project} ¥${(e.amount || 0).toLocaleString()}`,
+    })),
+  ].sort((a, b) => b.date.localeCompare(a.date));
+  return { expenses: exp.length, overtime: ot.length, leave: lv.length, items };
 }
 export async function getDashboardData(date: string): Promise<DashboardData> {
   const month = date.slice(0, 7);

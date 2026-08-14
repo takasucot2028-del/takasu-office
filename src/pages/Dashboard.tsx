@@ -6,6 +6,11 @@ import type { DayAbsences, PendingSummary } from '../api/data';
 import { WORK_LOCATION_LABELS, WEEKDAY_LABELS } from '../utils/constants';
 import type { WorkLocation, Staff, ShiftPattern, ConfirmedShift } from '../types';
 
+// 未承認の種別ごとの表示設定
+const PENDING_LABEL = { overtime: '時間外', leave: '休暇', expense: '経費' } as const;
+const PENDING_COLOR = { overtime: 'yellow', leave: 'blue', expense: 'green' } as const;
+const PENDING_LINK = { overtime: '/labor/overtime', leave: '/labor/leave', expense: '/labor/accounting' } as const;
+
 export default function Dashboard() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [patterns, setPatterns] = useState<ShiftPattern[]>([]);
@@ -46,23 +51,40 @@ export default function Dashboard() {
             <h2 className="font-bold text-amber-800">未承認の申請があります</h2>
             <Badge color="yellow">要対応 {pending.expenses + pending.overtime + pending.leave}件</Badge>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {pending.overtime > 0 && (
-              <Link to="/labor/overtime" className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-white border border-amber-300 text-sm text-amber-800 hover:bg-amber-100">
-                時間外申請 <span className="font-bold">{pending.overtime}</span>件 →
-              </Link>
-            )}
-            {pending.leave > 0 && (
-              <Link to="/labor/leave" className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-white border border-amber-300 text-sm text-amber-800 hover:bg-amber-100">
-                休暇申請 <span className="font-bold">{pending.leave}</span>件 →
-              </Link>
-            )}
-            {pending.expenses > 0 && (
-              <Link to="/labor/accounting" className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-white border border-amber-300 text-sm text-amber-800 hover:bg-amber-100">
-                経費申請 <span className="font-bold">{pending.expenses}</span>件 →
-              </Link>
-            )}
-          </div>
+          {/* 誰から・いつ・何の申請かを一覧表示（そのまま該当画面へ移動できる） */}
+          {pending.items && pending.items.length > 0 ? (
+            <ul className="divide-y divide-amber-200 border border-amber-200 rounded-md bg-white">
+              {pending.items.map((it, i) => (
+                <li key={i}>
+                  <Link to={PENDING_LINK[it.type]} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2 hover:bg-amber-50">
+                    <Badge color={PENDING_COLOR[it.type]}>{PENDING_LABEL[it.type]}</Badge>
+                    <span className="font-medium text-gray-800">{it.staffName}</span>
+                    <span className="text-sm text-gray-500">{it.date}</span>
+                    <span className="text-sm text-gray-600">{it.detail}</span>
+                    <span className="ml-auto text-xs text-amber-700">確認する →</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {pending.overtime > 0 && (
+                <Link to="/labor/overtime" className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-white border border-amber-300 text-sm text-amber-800 hover:bg-amber-100">
+                  時間外申請 <span className="font-bold">{pending.overtime}</span>件 →
+                </Link>
+              )}
+              {pending.leave > 0 && (
+                <Link to="/labor/leave" className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-white border border-amber-300 text-sm text-amber-800 hover:bg-amber-100">
+                  休暇申請 <span className="font-bold">{pending.leave}</span>件 →
+                </Link>
+              )}
+              {pending.expenses > 0 && (
+                <Link to="/labor/accounting" className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-white border border-amber-300 text-sm text-amber-800 hover:bg-amber-100">
+                  経費申請 <span className="font-bold">{pending.expenses}</span>件 →
+                </Link>
+              )}
+            </div>
+          )}
         </Card>
       )}
 

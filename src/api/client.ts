@@ -16,8 +16,18 @@ export interface TodayWorkShift {
 export interface TodayWorkAbsence { staffName: string; days?: number; hours: number; note: string }
 export interface TodayWork { shifts: TodayWorkShift[]; leave: TodayWorkAbsence[]; comp: TodayWorkAbsence[] }
 
-/** 未承認（要対応）の申請件数 */
-export interface PendingSummary { expenses: number; overtime: number; leave: number }
+/** 未承認（要対応）の申請1件（誰の・いつ・何の申請か） */
+export interface PendingItem {
+  type: 'overtime' | 'leave' | 'expense';
+  staffName: string;
+  date: string;
+  detail: string;
+}
+/** 未承認（要対応）の申請件数と明細 */
+export interface PendingSummary {
+  expenses: number; overtime: number; leave: number;
+  items?: PendingItem[];
+}
 
 /** 従業員の経費申請フォーム用コンテキスト（年度の予算行＋残額） */
 export interface ExpenseContext {
