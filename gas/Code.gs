@@ -435,12 +435,85 @@ function findRowIndex(sheet, colIndex, value) {
   return -1;
 }
 
+// 同じIDのレコードを1件に絞る（読み取り時の保険）。重複行による二重計上を防ぐ。
+// 状態がある場合は承認済(approved)を優先して残す。
+function dedupeById_(records) {
+  const byId = {};
+  const order = [];
+  (records || []).forEach(function (r) {
+    const id = String(r.id || '');
+    if (!id) { order.push(r); return; } // ID無しはそのまま
+    const prev = byId[id];
+    if (prev === undefined) { byId[id] = r; order.push(r); return; }
+    if (String(r.status) === 'approved' && String(prev.status) !== 'approved') {
+      order[order.indexOf(prev)] = r; // 承認済みで置き換える
+      byId[id] = r;
+    }
+  });
+  return order;
+}
+
+// 同じIDの行をすべて返す（1-indexed・昇順）。過去の重複データにも対応するため。
+function findAllRowIndexes_(sheet, colIndex, value) {
+  const data = sheet.getDataRange().getValues();
+  const rows = [];
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][colIndex]) === String(value)) rows.push(i + 1);
+  }
+  return rows;
+}
+
+// 同じIDの行をすべて削除する（重複が残って「削除できない」状態を防ぐ）。
+function deleteRowsById_(sheetKey, id) {
+  const sheet = getSheet(sheetKey);
+  const rows = findAllRowIndexes_(sheet, 0, id);
+  for (let k = rows.length - 1; k >= 0; k--) sheet.deleteRow(rows[k]); // 下から消す
+  return rows.length;
+}
+
 // セル値を yyyy-MM-dd 文字列へ正規化する。日付がDate型に変換されていても正しく比較できる。
 function cellYmd_(v) {
   if (Object.prototype.toString.call(v) === '[object Date]') {
     return Utilities.formatDate(v, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   }
   return String(v == null ? '' : v).trim();
+}
+
+/**
+ * 【保守用・手動実行】同じIDが重複している行を1行に整理する。
+ * 過去のリトライ等で二重登録されたデータの後始末に使う（GASエディタから実行）。
+ * 状態列がある場合は「承認済(approved)」の行を優先して残す。
+ */
+function cleanupDuplicateIds() {
+  const targets = ['expenses', 'leave', 'comp_leave_use', 'overtime', 'documents'];
+  const report = [];
+  targets.forEach(function (key) {
+    const sheet = getSheet(key);
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return;
+    const keys = colKeys(key);
+    const statusCol = keys.indexOf('status');
+    const seen = {};          // id -> 残す行番号(1-indexed)
+    const removeRows = [];
+    for (let i = 1; i < data.length; i++) {
+      const id = String(data[i][0]);
+      if (!id) continue;
+      const rowNo = i + 1;
+      if (seen[id] === undefined) { seen[id] = rowNo; continue; }
+      // 既出。承認済みの方を残す（状態列がある場合）
+      const keptRow = seen[id];
+      const thisApproved = statusCol >= 0 && String(data[rowNo - 1][statusCol]) === 'approved';
+      const keptApproved = statusCol >= 0 && String(data[keptRow - 1][statusCol]) === 'approved';
+      if (thisApproved && !keptApproved) { removeRows.push(keptRow); seen[id] = rowNo; }
+      else { removeRows.push(rowNo); }
+    }
+    removeRows.sort(function (a, b) { return a - b; });
+    for (let k = removeRows.length - 1; k >= 0; k--) sheet.deleteRow(removeRows[k]); // 下から消す
+    report.push(sheetConf(key).name + ': ' + removeRows.length + '件の重複を削除');
+  });
+  const msg = report.join('\n');
+  Logger.log(msg);
+  return msg;
 }
 
 // 同じIDが無ければ追加する（冪等）。リトライで二重登録されないようにする。
@@ -660,16 +733,16 @@ function handleSaveMonthConfirmed(month, location, records) {
 // --- ハンドラー：時間外・休日勤務 ---
 function handleGetOvertimeMonth(month) {
   const sheet = getSheet('overtime');
-  const records = sheetToObjects(sheet, 'overtime').filter(function (r) {
+  const records = dedupeById_(sheetToObjects(sheet, 'overtime').filter(function (r) {
     return String(r.date).slice(0, 7) === month;
-  });
+  }));
   records.forEach(function (r) { r.appliedHours = Number(r.appliedHours) || 0; r.resultHours = Number(r.resultHours) || 0; });
   return { success: true, data: records };
 }
 
 function handleGetOvertimeByStaff(staffId) {
   const sheet = getSheet('overtime');
-  const records = sheetToObjects(sheet, 'overtime').filter(function (r) { return String(r.staffId) === String(staffId); });
+  const records = dedupeById_(sheetToObjects(sheet, 'overtime').filter(function (r) { return String(r.staffId) === String(staffId); }));
   records.forEach(function (r) { r.appliedHours = Number(r.appliedHours) || 0; r.resultHours = Number(r.resultHours) || 0; });
   return { success: true, data: records };
 }
@@ -711,10 +784,7 @@ function handleAddCompUse(record) {
 }
 
 function handleDeleteCompUse(id) {
-  const sheet = getSheet('comp_leave_use');
-  const rowIndex = findRowIndex(sheet, 0, id);
-  if (rowIndex < 0) return { success: true }; // 既に削除済み（リトライ）→成功扱い（冪等）
-  sheet.deleteRow(rowIndex);
+  deleteRowsById_('comp_leave_use', id); // 同一IDの重複行もまとめて削除（0件でも成功＝冪等）
   return { success: true };
 }
 
@@ -762,7 +832,7 @@ function handleGetTodayWork(date) {
 // --- ハンドラー：有給休暇 ---
 function handleGetLeave(staffId) {
   const sheet = getSheet('leave');
-  const records = sheetToObjects(sheet, 'leave').filter(function (r) { return String(r.staffId) === String(staffId); });
+  const records = dedupeById_(sheetToObjects(sheet, 'leave').filter(function (r) { return String(r.staffId) === String(staffId); }));
   records.forEach(function (r) { r.days = Number(r.days) || 0; r.hours = Number(r.hours) || 0; r.status = String(r.status || 'approved'); });
   records.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
   return { success: true, data: records };
@@ -776,10 +846,7 @@ function handleAddLeave(record) {
 }
 
 function handleDeleteLeave(id) {
-  const sheet = getSheet('leave');
-  const rowIndex = findRowIndex(sheet, 0, id);
-  if (rowIndex < 0) return { success: true }; // 既に削除済み（リトライ）→成功扱い（冪等）
-  sheet.deleteRow(rowIndex);
+  deleteRowsById_('leave', id); // 同一IDの重複行もまとめて削除（0件でも成功＝冪等）
   return { success: true };
 }
 
@@ -807,10 +874,7 @@ function handleSaveDocument(doc) {
 }
 
 function handleDeleteDocument(id) {
-  const sheet = getSheet('documents');
-  const rowIndex = findRowIndex(sheet, 0, id);
-  if (rowIndex < 0) return { success: true }; // 既に削除済み（リトライ）→成功扱い（冪等）
-  sheet.deleteRow(rowIndex);
+  deleteRowsById_('documents', id); // 同一IDの重複行もまとめて削除（0件でも成功＝冪等）
   return { success: true };
 }
 
@@ -872,9 +936,9 @@ function normalizeExpense_(e) {
   return e;
 }
 function handleGetExpenses(fiscalYear) {
-  const records = sheetToObjects(getSheet('expenses'), 'expenses')
+  const records = dedupeById_(sheetToObjects(getSheet('expenses'), 'expenses')
     .filter(function (e) { return Number(e.fiscalYear) === Number(fiscalYear); })
-    .map(normalizeExpense_);
+    .map(normalizeExpense_));
   records.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
   return { success: true, data: records };
 }
@@ -886,16 +950,14 @@ function handleAddExpense(record) {
 }
 function handleSetExpenseStatus(id, status) {
   const sheet = getSheet('expenses');
-  const rowIndex = findRowIndex(sheet, 0, id);
-  if (rowIndex < 0) return { success: false, error: '経費が見つかりません' };
-  sheet.getRange(rowIndex, colNum('expenses', 'status')).setValue(status);
+  const rows = findAllRowIndexes_(sheet, 0, id); // 重複行があっても状態が食い違わないよう全行更新
+  if (!rows.length) return { success: false, error: '経費が見つかりません' };
+  const col = colNum('expenses', 'status');
+  rows.forEach(function (r) { sheet.getRange(r, col).setValue(status); });
   return { success: true };
 }
 function handleDeleteExpense(id) {
-  const sheet = getSheet('expenses');
-  const rowIndex = findRowIndex(sheet, 0, id);
-  if (rowIndex < 0) return { success: true }; // 既に削除済み（リトライ）→成功扱い（冪等）
-  sheet.deleteRow(rowIndex);
+  deleteRowsById_('expenses', id); // 同一IDの重複行もまとめて削除（0件でも成功＝冪等）
   return { success: true };
 }
 
@@ -942,9 +1004,10 @@ function handleAddMyExpense(session, record) {
 // 管理者：休暇申請の承認/却下
 function handleSetLeaveStatus(id, status) {
   const sheet = getSheet('leave');
-  const rowIndex = findRowIndex(sheet, 0, id);
-  if (rowIndex < 0) return { success: false, error: '有給記録が見つかりません' };
-  sheet.getRange(rowIndex, colNum('leave', 'status')).setValue(status);
+  const rows = findAllRowIndexes_(sheet, 0, id); // 重複行があっても状態が食い違わないよう全行更新
+  if (!rows.length) return { success: false, error: '有給記録が見つかりません' };
+  const col = colNum('leave', 'status');
+  rows.forEach(function (r) { sheet.getRange(r, col).setValue(status); });
   return { success: true };
 }
 
