@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import { listStaff, listLeave, addLeave, deleteLeave, setLeaveStatus, computeLeaveBalance, genId, todayStr } from '../../api/data';
-import { EMPLOYMENT_TYPE_LABELS, standardLeaveGrant, LEAVE_HOURS_PER_DAY } from '../../utils/constants';
-import type { LeaveKind, LeaveRecord, Staff } from '../../types';
+import { EMPLOYMENT_TYPE_LABELS, standardLeaveGrant, LEAVE_HOURS_PER_DAY , SPECIAL_LEAVE_TYPES, CONDOLENCE_REASONS, specialLeaveDef, leaveTypeLabel, condolenceLabel } from '../../utils/constants';
+import type { LeaveKind, LeaveRecord, Staff, LeaveType } from '../../types';
 
 type LeaveUnit = 'day' | 'hour';
 /** 残の表示「X日（Yh）」 */
@@ -22,6 +22,8 @@ export default function Leave() {
 
   const [records, setRecords] = useState<LeaveRecord[]>([]);
   const [kind, setKind] = useState<LeaveKind>('use');
+  const [leaveType, setLeaveType] = useState<LeaveType>('paid');   // 休暇の種類（取得のみ）
+  const [subReason, setSubReason] = useState(CONDOLENCE_REASONS[0].id);
   const [unit, setUnit] = useState<LeaveUnit>('day'); // 取得の単位（日/時間）
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [amount, setAmount] = useState('1');
@@ -69,7 +71,8 @@ export default function Leave() {
       return;
     }
     const useHours = effUnit === 'hour' ? v : v * LEAVE_HOURS_PER_DAY;
-    if (kind === 'use' && useHours > summary.balanceHours) {
+    // 年次有給のみ残数で制限する（特別休暇は種類ごとの上限で運用）
+    if (kind === 'use' && leaveType === 'paid' && useHours > summary.balanceHours) {
       setError(`残（${balText(summary.balanceDays, summary.balanceHours)}）を超えています`);
       return;
     }
@@ -78,6 +81,8 @@ export default function Leave() {
       days: effUnit === 'day' ? v : 0,
       hours: effUnit === 'hour' ? v : 0,
       status: 'approved', // 事務局が直接登録する分は承認済み
+      leaveType: kind === 'grant' ? 'paid' : leaveType,          // 付与は年次有給のみ
+      subReason: kind === 'use' && leaveType === 'condolence' ? subReason : '',
     };
     setSaving(true);
     try {
@@ -165,7 +170,9 @@ export default function Leave() {
                 {pending.map(r => (
                   <div key={r.id} className="flex items-center gap-3 flex-wrap text-sm">
                     <span className="font-medium">{r.date}</span>
+                    <Badge color={(r.leaveType || 'paid') === 'paid' ? 'gray' : 'blue'}>{leaveTypeLabel(r.leaveType)}</Badge>
                     <span>{r.hours > 0 ? (r.startTime && r.endTime ? `${r.startTime}〜${r.endTime}（${r.hours}時間）` : `${r.hours}時間`) : `${r.days}日`}</span>
+                    {r.subReason && <span className="text-xs text-gray-500">{condolenceLabel(r.subReason)}</span>}
                     {r.note && <span className="text-xs text-gray-500">{r.note}</span>}
                     <div className="flex-1" />
                     <Button size="sm" onClick={() => changeStatus(r.id, 'approved')}>承認</Button>
@@ -205,6 +212,34 @@ export default function Leave() {
             <h2 className="font-bold text-gray-800 mb-4">記録の追加</h2>
             {error && <Alert type="error">{error}</Alert>}
             <form onSubmit={handleAdd} className="grid sm:grid-cols-6 gap-3 items-end">
+              {kind === 'use' && (
+                <Field label="休暇の種類">
+                  <Select value={leaveType} onChange={e => {
+                    const id = e.target.value as LeaveType;
+                    setLeaveType(id);
+                    const d = specialLeaveDef(id);
+                    if (d?.unit === 'hour') setUnit('hour'); else if (d?.unit === 'day') setUnit('day');
+                    if (id === 'condolence') {
+                      const r = CONDOLENCE_REASONS.find(x => x.id === subReason);
+                      if (r) setAmount(String(r.days));
+                    }
+                  }}>
+                    <option value="paid">年次有給休暇</option>
+                    {SPECIAL_LEAVE_TYPES.map(t => <option key={t.id} value={t.id}>{t.name}（{t.article}）</option>)}
+                  </Select>
+                </Field>
+              )}
+              {kind === 'use' && leaveType === 'condolence' && (
+                <Field label="事由">
+                  <Select value={subReason} onChange={e => {
+                    setSubReason(e.target.value);
+                    const r = CONDOLENCE_REASONS.find(x => x.id === e.target.value);
+                    if (r) setAmount(String(r.days));
+                  }}>
+                    {CONDOLENCE_REASONS.map(r => <option key={r.id} value={r.id}>{r.name}（{r.days}日）</option>)}
+                  </Select>
+                </Field>
+              )}
               <Field label="種別">
                 <Select value={kind} onChange={e => setKind(e.target.value as LeaveKind)}>
                   <option value="use">取得</option>
@@ -241,6 +276,7 @@ export default function Leave() {
                 <tr>
                   <Th>日付</Th>
                   <Th>種別</Th>
+                  <Th>休暇の種類</Th>
                   <Th>日数/時間</Th>
                   <Th>状態</Th>
                   <Th>備考</Th>
@@ -257,6 +293,10 @@ export default function Leave() {
                       <Badge color={r.kind === 'grant' ? 'blue' : 'green'}>
                         {r.kind === 'grant' ? '付与' : '取得'}
                       </Badge>
+                    </Td>
+                    <Td className="whitespace-nowrap text-xs">
+                      {r.kind === 'grant' ? '—' : leaveTypeLabel(r.leaveType)}
+                      {r.subReason && <span className="block text-gray-400">{condolenceLabel(r.subReason)}</span>}
                     </Td>
                     <Td className="whitespace-nowrap">{r.hours > 0 ? (r.startTime && r.endTime ? `${r.startTime}〜${r.endTime}（${r.hours}時間）` : `${r.hours}時間`) : `${r.days}日`}</Td>
                     <Td>

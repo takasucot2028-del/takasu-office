@@ -1,4 +1,4 @@
-import type { EmploymentType, StaffStatus, AttendanceDayType, WorkLocation, ShiftPattern, Staff, DocType, ExpenseCategory, ProjectDivision } from '../types';
+import type { EmploymentType, StaffStatus, AttendanceDayType, WorkLocation, ShiftPattern, Staff, DocType, ExpenseCategory, ProjectDivision, LeaveType } from '../types';
 
 // 事務局デモアカウント
 export const ADMIN_EMAIL = 'admin@takasu-sc.jp';
@@ -61,6 +61,99 @@ export const DEFAULT_SHIFT_PATTERNS: ShiftPattern[] = [
 
 // ==== 有給休暇の標準付与 ====
 export const LEAVE_HOURS_PER_DAY = 7.5;      // 1日の勤務時間（時間単位取得の換算に使用）
+
+// ==== 特別休暇（就業規則 第24〜29条）====
+
+/** 特別休暇の種類の定義 */
+export interface SpecialLeaveDef {
+  id: LeaveType;
+  name: string;
+  article: string;             // 根拠となる就業規則の条
+  unit: 'day' | 'hour' | 'both'; // 申請できる単位
+  annualDays: number;          // 年度（4/1〜3/31）あたりの上限日数。0＝上限なし（都度判断）
+  paid: boolean;               // 有給か（就業規則で無給と定めるものだけ false）
+  note: string;                // 画面に出す補足
+  needsSubReason?: boolean;    // 事由の選択が必要か（慶弔休暇）
+}
+
+/** 特別休暇の一覧。年次有給休暇は別枠のためここには含めない */
+export const SPECIAL_LEAVE_TYPES: SpecialLeaveDef[] = [
+  {
+    id: 'condolence', name: '慶弔休暇', article: '第27条', unit: 'day', annualDays: 0, paid: true,
+    needsSubReason: true, note: '事由ごとに日数が決まっています。',
+  },
+  {
+    id: 'sick', name: '病気休暇', article: '第28条', unit: 'both', annualDays: 10, paid: false,
+    note: '毎年4月1日に10日分。翌年度への繰越はできません。無給です。事前に承認を受けてください（やむを得ない場合は事後申請可）。診断書の提出を求めることがあります。',
+  },
+  {
+    id: 'fertility', name: '不妊治療休暇', article: '第26条', unit: 'both', annualDays: 5, paid: true,
+    note: '年5日が限度です。長期の休業を希望する場合は事務局にご相談ください。',
+  },
+  {
+    id: 'childNursing', name: '子の看護休暇', article: '第25条', unit: 'both', annualDays: 0, paid: true,
+    note: '育児・介護休業法に基づく休暇です。詳細は「育児・介護休業等に関する規則」によります。',
+  },
+  {
+    id: 'familyCare', name: '介護休暇', article: '第25条', unit: 'both', annualDays: 0, paid: true,
+    note: '育児・介護休業法に基づく休暇です。詳細は「育児・介護休業等に関する規則」によります。',
+  },
+  {
+    id: 'childcareTime', name: '育児時間', article: '第24条1項', unit: 'hour', annualDays: 0, paid: true,
+    note: '1歳に満たない子を養育する女性職員が対象です。休憩時間のほか、1日2回・1回30分を取得できます。',
+  },
+  {
+    id: 'menstrual', name: '生理休暇', article: '第24条2項', unit: 'both', annualDays: 0, paid: true,
+    note: '就業が著しく困難な場合に、必要な期間取得できます。',
+  },
+  {
+    id: 'jury', name: '裁判員等のための休暇', article: '第29条', unit: 'both', annualDays: 0, paid: true,
+    note: '裁判員・補充裁判員は必要な日数、裁判員候補者は必要な時間を取得できます。',
+  },
+];
+
+/** 慶弔休暇の事由と日数（第27条） */
+export interface CondolenceReason { id: string; name: string; days: number }
+export const CONDOLENCE_REASONS: CondolenceReason[] = [
+  { id: 'marriage', name: '本人が結婚したとき', days: 5 },
+  { id: 'birth', name: '妻が出産したとき', days: 3 },
+  { id: 'death1', name: '配偶者、子又は父母が死亡したとき', days: 10 },
+  { id: 'death2', name: '一親等の姻族（配偶者の父母）が死亡したとき', days: 7 },
+  { id: 'death3', name: '一親等の直系尊属（子）が死亡したとき', days: 5 },
+  { id: 'death4', name: '兄弟姉妹、祖父母、配偶者の父母又は兄弟姉妹が死亡したとき', days: 3 },
+];
+
+/** 休暇の種類の表示名（年次有給を含む） */
+export function leaveTypeLabel(id?: string): string {
+  if (!id || id === 'paid') return '年次有給';
+  return SPECIAL_LEAVE_TYPES.find(t => t.id === id)?.name ?? id;
+}
+/** 特別休暇の定義を得る */
+export function specialLeaveDef(id?: string): SpecialLeaveDef | undefined {
+  return SPECIAL_LEAVE_TYPES.find(t => t.id === id);
+}
+/**
+ * 指定年度（4/1〜3/31）に取得（承認済）した特別休暇の日数を求める。
+ * 時間単位の取得は 1日=7.5時間 で日数に換算する。
+ */
+export function specialLeaveUsedDays(
+  records: { kind: string; date: string; days: number; hours: number; status?: string; leaveType?: string }[],
+  typeId: string,
+  fiscalYear: number
+): number {
+  const used = records
+    .filter(r => r.kind === 'use'
+      && (r.leaveType || 'paid') === typeId
+      && (r.status || 'approved') === 'approved'
+      && fiscalYearOf(r.date) === fiscalYear)
+    .reduce((s, r) => s + (Number(r.days) || 0) + (Number(r.hours) || 0) / LEAVE_HOURS_PER_DAY, 0);
+  return Math.round(used * 100) / 100;
+}
+
+/** 慶弔事由の表示名 */
+export function condolenceLabel(id?: string): string {
+  return CONDOLENCE_REASONS.find(r => r.id === id)?.name ?? '';
+}
 export const FULLTIME_LEAVE_DAYS = 10;       // 常勤の標準付与日数
 export const PARTTIME_LEAVE_DAYS = 5;        // パートの標準付与日数
 export const PARTTIME_ELIGIBLE_MONTHS = 6;   // パートが付与可能になるまでの月数（雇用開始から）

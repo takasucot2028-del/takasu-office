@@ -229,6 +229,7 @@ export async function addMyLeaveRequest(record: Partial<LeaveRecord>): Promise<v
       id: rec.id!, staffId: staffId(), kind: 'use', date: rec.date || '',
       days: rec.days || 0, hours: rec.hours || 0, status: 'requested', note: rec.note || '',
       startTime: rec.startTime || '', endTime: rec.endTime || '',
+      leaveType: rec.leaveType || 'paid', subReason: rec.subReason || '',
     });
     return;
   }

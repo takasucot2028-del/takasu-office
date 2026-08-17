@@ -59,7 +59,7 @@ var SHEETS = {
   ] },
   leave: { name: '有給休暇', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['kind', '種別'], ['date', '日付'], ['days', '日数'], ['note', '備考'], ['hours', '時間'], ['status', '状態'],
-    ['startTime', '開始'], ['endTime', '終了'],
+    ['startTime', '開始'], ['endTime', '終了'], ['leaveType', '休暇種類'], ['subReason', '事由'],
   ] },
   shift_patterns: { name: 'シフト区分', columns: [
     ['id', 'ID'], ['name', '区分名'], ['startTime', '開始'], ['endTime', '終了'], ['order', '並び順'], ['location', '対象'],
@@ -1354,6 +1354,7 @@ function handleAddMyLeaveRequest(session, record) {
     days: Number(record.days) || 0, hours: Number(record.hours) || 0,
     status: 'requested', note: record.note || '',
     startTime: String(record.startTime || ''), endTime: String(record.endTime || ''),
+    leaveType: String(record.leaveType || 'paid'), subReason: String(record.subReason || ''),
   };
   appendUnique_('leave', rec);
   return { success: true };

@@ -139,6 +139,21 @@ export type RequestStatus = 'requested' | 'approved' | 'rejected';
 /** 有給休暇の記録種別 */
 export type LeaveKind = 'grant' | 'use';
 
+/**
+ * 休暇の種類。'paid'＝年次有給休暇（従来からの記録はすべてこれ）。
+ * それ以外は就業規則の特別休暇（第24〜29条）。
+ */
+export type LeaveType =
+  | 'paid'          // 年次有給休暇
+  | 'sick'          // 病気休暇（第28条）
+  | 'condolence'    // 慶弔休暇（第27条）
+  | 'fertility'     // 不妊治療休暇（第26条）
+  | 'childcareTime' // 育児時間（第24条1項）
+  | 'menstrual'     // 生理休暇（第24条2項）
+  | 'childNursing'  // 子の看護休暇（第25条）
+  | 'familyCare'    // 介護休暇（第25条）
+  | 'jury';         // 裁判員等のための休暇（第29条）
+
 /** 有給休暇記録（付与または取得）。取得は日単位・時間単位のどちらも可（1日=7.5時間） */
 export interface LeaveRecord {
   id: string;
@@ -150,6 +165,8 @@ export interface LeaveRecord {
   startTime?: string;         // 時間単位取得の開始 HH:MM（任意）
   endTime?: string;           // 時間単位取得の終了 HH:MM（任意）
   status: RequestStatus;      // 承認状態（付与・事務局登録=approved、従業員申請=requested）
+  leaveType?: LeaveType;      // 休暇の種類（未設定＝'paid' 年次有給休暇として扱う）
+  subReason?: string;         // 慶弔休暇の事由ID（CondolenceReason.id）
   note: string;
 }
 
