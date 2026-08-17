@@ -87,8 +87,8 @@ export const SPECIAL_LEAVE_TYPES: SpecialLeaveDef[] = [
     note: '毎年4月1日に10日分。翌年度への繰越はできません。無給です。事前に承認を受けてください（やむを得ない場合は事後申請可）。診断書の提出を求めることがあります。',
   },
   {
-    id: 'refresh', name: 'リフレッシュ休暇', article: '', unit: 'both', annualDays: 3, paid: true,
-    note: '年3日を限度に取得できます。',
+    id: 'refresh', name: 'リフレッシュ休暇', article: '第30条', unit: 'day', annualDays: 3, paid: true,
+    note: '心身の疲労回復のための有給休暇です。毎年度3日間。所定休日（第18条）は3日間に含みません（勤務日だけを日数に数えてください）。当該年度内に取得する必要があり、翌年度への繰越はできません。',
   },
   {
     id: 'fertility', name: '不妊治療休暇', article: '第26条', unit: 'both', annualDays: 5, paid: true,
