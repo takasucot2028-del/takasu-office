@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
-import { getMyLeave, addMyLeaveRequest, computeLeaveBalance, todayStr } from '../../api/data';
+import { getMyLeave, getMyProfile, addMyLeaveRequest, computeLeaveBalance, todayStr } from '../../api/data';
 import {
   LEAVE_HOURS_PER_DAY, hoursBetween, currentFiscalYear, fiscalYearLabel,
   SPECIAL_LEAVE_TYPES, CONDOLENCE_REASONS, specialLeaveDef, specialLeaveOptionLabel, specialLeaveUsedDays, leaveTypeLabel, condolenceLabel,
+  canUseSpecialLeave, EMPLOYMENT_TYPE_LABELS,
 } from '../../utils/constants';
-import type { LeaveRecord, RequestStatus, LeaveType } from '../../types';
+import type { LeaveRecord, RequestStatus, LeaveType, Staff } from '../../types';
 
 type LeaveUnit = 'day' | 'hour';
 const STATUS_LABEL: Record<RequestStatus, string> = { requested: '申請中', approved: '承認済', rejected: '却下' };
@@ -13,6 +14,7 @@ const STATUS_COLOR: Record<RequestStatus, 'yellow' | 'green' | 'red'> = { reques
 
 export default function StaffLeaveRequest() {
   const [records, setRecords] = useState<LeaveRecord[]>([]);
+  const [me, setMe] = useState<Staff | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [version, setVersion] = useState(0);
@@ -28,6 +30,9 @@ export default function StaffLeaveRequest() {
   const [end, setEnd] = useState('12:00');         // 時間単位の終了
   const [note, setNote] = useState('');
   const hourAmt = hoursBetween(start, end);        // 時間単位の取得時間
+
+  // 特別休暇（第24〜30条）は常勤職員のみ。それ以外は年次有給休暇だけ申請できる
+  const specialOk = me ? canUseSpecialLeave(me) : true;
 
   const summary = useMemo(() => computeLeaveBalance(records), [records]);
   const pending = records.filter(r => r.status === 'requested');
@@ -63,6 +68,17 @@ export default function StaffLeaveRequest() {
     return () => { alive = false; };
   }, [version]);
 
+  // 自分の雇用区分（特別休暇を出すかの判定に使う。ホーム画面のキャッシュがあれば即返る）
+  useEffect(() => {
+    let alive = true;
+    getMyProfile().then(s => {
+      if (!alive || !s) return;
+      setMe(s);
+      if (!canUseSpecialLeave(s)) { setLeaveType('paid'); setUnit('day'); }
+    });
+    return () => { alive = false; };
+  }, []);
+
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
     const v = unit === 'hour' ? hourAmt : Number(amount);
@@ -84,6 +100,9 @@ export default function StaffLeaveRequest() {
         setError(`${def.name}の今年度の残（${remainDays}日 / ${def.annualDays}日）を超えています`);
         return;
       }
+    }
+    if (!isPaid && !specialOk) {
+      setError('特別休暇は常勤職員のみに付与されます'); return;
     }
     setSaving(true); setError(''); setMessage('');
     try {
@@ -125,9 +144,9 @@ export default function StaffLeaveRequest() {
         <form onSubmit={add} className="grid sm:grid-cols-6 gap-3 items-end">
           <div className="sm:col-span-2">
             <Field label="休暇の種類">
-              <Select value={leaveType} onChange={e => changeType(e.target.value as LeaveType)}>
+              <Select value={leaveType} onChange={e => changeType(e.target.value as LeaveType)} disabled={!specialOk}>
                 <option value="paid">年次有給休暇</option>
-                {SPECIAL_LEAVE_TYPES.map(t => (
+                {specialOk && SPECIAL_LEAVE_TYPES.map(t => (
                   <option key={t.id} value={t.id}>{specialLeaveOptionLabel(t)}</option>
                 ))}
               </Select>
@@ -169,6 +188,12 @@ export default function StaffLeaveRequest() {
         <p className="text-xs text-gray-400">
           1日＝{LEAVE_HOURS_PER_DAY}時間。時間単位は開始〜終了で申請（現在: <span className="font-medium text-gray-600">{unit === 'hour' ? (hourAmt > 0 ? `${hourAmt}h` : '—') : `${amount || 0}日`}</span>）。申請は事務局の承認後に反映されます。
         </p>
+        {!specialOk && me && (
+          <p className="mt-3 text-xs bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-gray-600">
+            特別休暇（就業規則 第24〜30条）は常勤職員のみに付与されます。
+            {EMPLOYMENT_TYPE_LABELS[me.employmentType]}の方は年次有給休暇の申請のみできます。
+          </p>
+        )}
         {def && (
           <div className="mt-3 text-xs bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-gray-600">
             <span className="font-medium text-gray-800">{def.article ? def.name + '（就業規則 ' + def.article + '）' : def.name}</span>

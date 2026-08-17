@@ -76,6 +76,14 @@ export interface SpecialLeaveDef {
   needsSubReason?: boolean;    // 事由の選択が必要か（慶弔休暇）
 }
 
+/**
+ * 特別休暇（第24〜30条）の対象かどうか。
+ * 特別休暇は常勤職員のみに付与する。パート・指導員・業務委託は年次有給休暇のみ。
+ */
+export function canUseSpecialLeave(staff: Pick<Staff, 'employmentType'>): boolean {
+  return staff.employmentType === 'fulltime';
+}
+
 /** 特別休暇の一覧。年次有給休暇は別枠のためここには含めない */
 export const SPECIAL_LEAVE_TYPES: SpecialLeaveDef[] = [
   {

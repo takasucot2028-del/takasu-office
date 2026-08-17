@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import { listStaff, listLeave, addLeave, deleteLeave, setLeaveStatus, computeLeaveBalance, genId, todayStr } from '../../api/data';
-import { EMPLOYMENT_TYPE_LABELS, standardLeaveGrant, LEAVE_HOURS_PER_DAY , SPECIAL_LEAVE_TYPES, CONDOLENCE_REASONS, specialLeaveDef, specialLeaveOptionLabel, leaveTypeLabel, condolenceLabel } from '../../utils/constants';
+import { EMPLOYMENT_TYPE_LABELS, standardLeaveGrant, LEAVE_HOURS_PER_DAY , canUseSpecialLeave, SPECIAL_LEAVE_TYPES, CONDOLENCE_REASONS, specialLeaveDef, specialLeaveOptionLabel, leaveTypeLabel, condolenceLabel } from '../../utils/constants';
 import type { LeaveKind, LeaveRecord, Staff, LeaveType } from '../../types';
 
 type LeaveUnit = 'day' | 'hour';
@@ -18,6 +18,8 @@ export default function Leave() {
   const staff = useMemo(() => allStaff.filter(s => s.status === 'active'), [allStaff]);
   const [staffId, setStaffId] = useState('');
   const selectedStaff = useMemo(() => staff.find(s => s.id === staffId) ?? null, [staff, staffId]);
+  // 特別休暇（第24〜30条）は常勤職員のみ
+  const specialOk = selectedStaff ? canUseSpecialLeave(selectedStaff) : false;
   const [version, setVersion] = useState(0); // 追加・削除後の再読込用
 
   const [records, setRecords] = useState<LeaveRecord[]>([]);
@@ -49,6 +51,11 @@ export default function Leave() {
 
   // 職員・更新のたびに有給記録を読み込む
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!specialOk) { setLeaveType('paid'); }
+  }, [specialOk]);
+
+  useEffect(() => {
     if (!staffId) { setRecords([]); return; }
     let alive = true;
     (async () => {
@@ -72,6 +79,9 @@ export default function Leave() {
     }
     const useHours = effUnit === 'hour' ? v : v * LEAVE_HOURS_PER_DAY;
     // 年次有給のみ残数で制限する（特別休暇は種類ごとの上限で運用）
+    if (kind === 'use' && leaveType !== 'paid' && !specialOk) {
+      setError('特別休暇は常勤職員のみに付与されます'); return;
+    }
     if (kind === 'use' && leaveType === 'paid' && useHours > summary.balanceHours) {
       setError(`残（${balText(summary.balanceDays, summary.balanceHours)}）を超えています`);
       return;
@@ -225,8 +235,13 @@ export default function Leave() {
                     }
                   }}>
                     <option value="paid">年次有給休暇</option>
-                    {SPECIAL_LEAVE_TYPES.map(t => <option key={t.id} value={t.id}>{specialLeaveOptionLabel(t)}</option>)}
+                    {specialOk && SPECIAL_LEAVE_TYPES.map(t => <option key={t.id} value={t.id}>{specialLeaveOptionLabel(t)}</option>)}
                   </Select>
+                  {!specialOk && selectedStaff && (
+                    <p className="text-xs text-gray-400 -mt-3 mb-4">
+                      特別休暇は常勤職員のみです（この職員は{EMPLOYMENT_TYPE_LABELS[selectedStaff.employmentType]}）。
+                    </p>
+                  )}
                 </Field>
               )}
               {kind === 'use' && leaveType === 'condolence' && (
