@@ -30,6 +30,7 @@ export interface Staff {
   qualifications: string;     // 保有資格
   hourlyWage: number;         // 時給（時間外手当の計算に使用。0=未設定）
   monthlyHourLimit: number;   // 月の労働時間の上限（扶養等の制限。0=制限なし）
+  childNursingChildren: number; // 子の看護等休暇（第26条）の対象となる子の人数。0=未設定（1人=年5日/2人以上=年10日）
   hasPassword?: boolean;      // 従業員ログイン用パスワードが設定済みか（サーバー算出・読取専用）
   note: string;
   createdAt: string;
@@ -141,19 +142,19 @@ export type LeaveKind = 'grant' | 'use';
 
 /**
  * 休暇の種類。'paid'＝年次有給休暇（従来からの記録はすべてこれ）。
- * それ以外は就業規則の特別休暇（第24〜29条）。
+ * それ以外は就業規則の特別休暇（第24〜31条）。
  */
 export type LeaveType =
   | 'paid'          // 年次有給休暇
-  | 'sick'          // 病気休暇（第28条）
-  | 'refresh'       // リフレッシュ休暇（年3日）
-  | 'condolence'    // 慶弔休暇（第27条）
-  | 'fertility'     // 不妊治療休暇（第26条）
+  | 'sick'          // 病気休暇（第29条）
+  | 'refresh'       // リフレッシュ休暇（第31条・年3日）
+  | 'condolence'    // 慶弔休暇（第28条）
+  | 'fertility'     // 不妊治療休暇（第27条）
   | 'childcareTime' // 育児時間（第24条1項）
   | 'menstrual'     // 生理休暇（第24条2項）
-  | 'childNursing'  // 子の看護休暇（第25条）
+  | 'childNursing'  // 子の看護等休暇（第26条）
   | 'familyCare'    // 介護休暇（第25条）
-  | 'jury';         // 裁判員等のための休暇（第29条）
+  | 'jury';         // 裁判員等のための休暇（第30条）
 
 /** 有給休暇記録（付与または取得）。取得は日単位・時間単位のどちらも可（1日=7.5時間） */
 export interface LeaveRecord {
@@ -167,7 +168,7 @@ export interface LeaveRecord {
   endTime?: string;           // 時間単位取得の終了 HH:MM（任意）
   status: RequestStatus;      // 承認状態（付与・事務局登録=approved、従業員申請=requested）
   leaveType?: LeaveType;      // 休暇の種類（未設定＝'paid' 年次有給休暇として扱う）
-  subReason?: string;         // 慶弔休暇の事由ID（CondolenceReason.id）
+  subReason?: string;         // 事由ID（慶弔休暇・子の看護等休暇。SubReason.id）
   note: string;
 }
 

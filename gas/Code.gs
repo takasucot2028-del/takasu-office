@@ -27,7 +27,7 @@ var SHEETS = {
     ['phone', '電話番号'], ['email', 'メールアドレス'], ['address', '住所'],
     ['qualifications', '保有資格'], ['note', '備考'], ['createdAt', '作成日時'], ['updatedAt', '更新日時'],
     ['hourlyWage', '時給'], ['employeeNumber', '職員番号'], ['passwordHash', 'パスワードハッシュ'],
-    ['monthlyHourLimit', '月間上限時間'],
+    ['monthlyHourLimit', '月間上限時間'], ['childNursingChildren', '看護休暇対象の子'],
   ] },
   overtime: { name: '時間外', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['kind', '種別'],
@@ -604,6 +604,7 @@ function handleGetStaff() {
   list.forEach(function (s) {
     s.hourlyWage = Number(s.hourlyWage) || 0;
     s.monthlyHourLimit = Number(s.monthlyHourLimit) || 0;
+    s.childNursingChildren = Number(s.childNursingChildren) || 0;
     s.hasPassword = !!(s.passwordHash && String(s.passwordHash).length);
     delete s.passwordHash; // ハッシュは返さない
   });
@@ -1138,6 +1139,7 @@ function stripStaff_(s) {
   const out = {}; Object.keys(s).forEach(function (k) { if (k !== 'passwordHash') out[k] = s[k]; });
   out.hourlyWage = Number(out.hourlyWage) || 0;
   out.monthlyHourLimit = Number(out.monthlyHourLimit) || 0;
+  out.childNursingChildren = Number(out.childNursingChildren) || 0;
   return out;
 }
 

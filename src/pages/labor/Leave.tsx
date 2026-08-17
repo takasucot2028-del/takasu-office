@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import { listStaff, listLeave, addLeave, deleteLeave, setLeaveStatus, computeLeaveBalance, genId, todayStr } from '../../api/data';
-import { EMPLOYMENT_TYPE_LABELS, standardLeaveGrant, LEAVE_HOURS_PER_DAY , canUseSpecialLeave, SPECIAL_LEAVE_TYPES, CONDOLENCE_REASONS, specialLeaveDef, specialLeaveOptionLabel, leaveTypeLabel, condolenceLabel } from '../../utils/constants';
+import { EMPLOYMENT_TYPE_LABELS, standardLeaveGrant, LEAVE_HOURS_PER_DAY , canUseSpecialLeave, SPECIAL_LEAVE_TYPES, specialLeaveDef, specialLeaveOptionLabel, specialLeaveAnnualDays, specialLeaveUsedDays, subReasonsFor, subReasonLabel, leaveTypeLabel, currentFiscalYear } from '../../utils/constants';
 import type { LeaveKind, LeaveRecord, Staff, LeaveType } from '../../types';
 
 type LeaveUnit = 'day' | 'hour';
@@ -18,14 +18,16 @@ export default function Leave() {
   const staff = useMemo(() => allStaff.filter(s => s.status === 'active'), [allStaff]);
   const [staffId, setStaffId] = useState('');
   const selectedStaff = useMemo(() => staff.find(s => s.id === staffId) ?? null, [staff, staffId]);
-  // 特別休暇（第24〜30条）は常勤職員のみ
+  // 特別休暇（第24〜31条）は常勤職員のみ
   const specialOk = selectedStaff ? canUseSpecialLeave(selectedStaff) : false;
   const [version, setVersion] = useState(0); // 追加・削除後の再読込用
 
   const [records, setRecords] = useState<LeaveRecord[]>([]);
   const [kind, setKind] = useState<LeaveKind>('use');
   const [leaveType, setLeaveType] = useState<LeaveType>('paid');   // 休暇の種類（取得のみ）
-  const [subReason, setSubReason] = useState(CONDOLENCE_REASONS[0].id);
+  // 事由の選択が要る休暇（慶弔休暇・子の看護等休暇）
+  const reasons = subReasonsFor(leaveType);
+  const [subReason, setSubReason] = useState('');
   const [unit, setUnit] = useState<LeaveUnit>('day'); // 取得の単位（日/時間）
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [amount, setAmount] = useState('1');
@@ -82,6 +84,17 @@ export default function Leave() {
     if (kind === 'use' && leaveType !== 'paid' && !specialOk) {
       setError('特別休暇は常勤職員のみに付与されます'); return;
     }
+    const useDef = specialLeaveDef(leaveType);
+    const limit = useDef ? specialLeaveAnnualDays(useDef, selectedStaff) : 0;
+    if (kind === 'use' && useDef && limit > 0) {
+      const fy = currentFiscalYear();
+      const remain = limit - specialLeaveUsedDays(records, useDef.id, fy);
+      const useDays = effUnit === 'hour' ? v / LEAVE_HOURS_PER_DAY : v;
+      if (useDays > Math.round(remain * 100) / 100) {
+        setError(`${useDef.name}の今年度の残（${Math.round(remain * 100) / 100}日 / ${limit}日）を超えています`);
+        return;
+      }
+    }
     if (kind === 'use' && leaveType === 'paid' && useHours > summary.balanceHours) {
       setError(`残（${balText(summary.balanceDays, summary.balanceHours)}）を超えています`);
       return;
@@ -92,7 +105,7 @@ export default function Leave() {
       hours: effUnit === 'hour' ? v : 0,
       status: 'approved', // 事務局が直接登録する分は承認済み
       leaveType: kind === 'grant' ? 'paid' : leaveType,          // 付与は年次有給のみ
-      subReason: kind === 'use' && leaveType === 'condolence' ? subReason : '',
+      subReason: kind === 'use' && specialLeaveDef(leaveType)?.needsSubReason ? subReason : '',
     };
     setSaving(true);
     try {
@@ -182,7 +195,7 @@ export default function Leave() {
                     <span className="font-medium">{r.date}</span>
                     <Badge color={(r.leaveType || 'paid') === 'paid' ? 'gray' : 'blue'}>{leaveTypeLabel(r.leaveType)}</Badge>
                     <span>{r.hours > 0 ? (r.startTime && r.endTime ? `${r.startTime}〜${r.endTime}（${r.hours}時間）` : `${r.hours}時間`) : `${r.days}日`}</span>
-                    {r.subReason && <span className="text-xs text-gray-500">{condolenceLabel(r.subReason)}</span>}
+                    {r.subReason && <span className="text-xs text-gray-500">{subReasonLabel(r.subReason)}</span>}
                     {r.note && <span className="text-xs text-gray-500">{r.note}</span>}
                     <div className="flex-1" />
                     <Button size="sm" onClick={() => changeStatus(r.id, 'approved')}>承認</Button>
@@ -229,10 +242,9 @@ export default function Leave() {
                     setLeaveType(id);
                     const d = specialLeaveDef(id);
                     if (d?.unit === 'hour') setUnit('hour'); else if (d?.unit === 'day') setUnit('day');
-                    if (id === 'condolence') {
-                      const r = CONDOLENCE_REASONS.find(x => x.id === subReason);
-                      if (r) setAmount(String(r.days));
-                    }
+                    const list = subReasonsFor(id);
+                    setSubReason(list.length ? list[0].id : '');
+                    if (list[0]?.days) setAmount(String(list[0].days));
                   }}>
                     <option value="paid">年次有給休暇</option>
                     {specialOk && SPECIAL_LEAVE_TYPES.map(t => <option key={t.id} value={t.id}>{specialLeaveOptionLabel(t)}</option>)}
@@ -244,14 +256,16 @@ export default function Leave() {
                   )}
                 </Field>
               )}
-              {kind === 'use' && leaveType === 'condolence' && (
+              {kind === 'use' && reasons.length > 0 && (
                 <Field label="事由">
                   <Select value={subReason} onChange={e => {
                     setSubReason(e.target.value);
-                    const r = CONDOLENCE_REASONS.find(x => x.id === e.target.value);
-                    if (r) setAmount(String(r.days));
+                    const r = reasons.find(x => x.id === e.target.value);
+                    if (r?.days) setAmount(String(r.days));
                   }}>
-                    {CONDOLENCE_REASONS.map(r => <option key={r.id} value={r.id}>{r.name}（{r.days}日）</option>)}
+                    {reasons.map(r => (
+                      <option key={r.id} value={r.id}>{r.days ? `${r.name}（${r.days}日）` : r.name}</option>
+                    ))}
                   </Select>
                 </Field>
               )}
@@ -311,7 +325,7 @@ export default function Leave() {
                     </Td>
                     <Td className="whitespace-nowrap text-xs">
                       {r.kind === 'grant' ? '—' : leaveTypeLabel(r.leaveType)}
-                      {r.subReason && <span className="block text-gray-400">{condolenceLabel(r.subReason)}</span>}
+                      {r.subReason && <span className="block text-gray-400">{subReasonLabel(r.subReason)}</span>}
                     </Td>
                     <Td className="whitespace-nowrap">{r.hours > 0 ? (r.startTime && r.endTime ? `${r.startTime}〜${r.endTime}（${r.hours}時間）` : `${r.hours}時間`) : `${r.days}日`}</Td>
                     <Td>

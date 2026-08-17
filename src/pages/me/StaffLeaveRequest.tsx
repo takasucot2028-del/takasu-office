@@ -3,8 +3,8 @@ import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge
 import { getMyLeave, getMyProfile, addMyLeaveRequest, computeLeaveBalance, todayStr } from '../../api/data';
 import {
   LEAVE_HOURS_PER_DAY, hoursBetween, currentFiscalYear, fiscalYearLabel,
-  SPECIAL_LEAVE_TYPES, CONDOLENCE_REASONS, specialLeaveDef, specialLeaveOptionLabel, specialLeaveUsedDays, leaveTypeLabel, condolenceLabel,
-  canUseSpecialLeave, EMPLOYMENT_TYPE_LABELS,
+  SPECIAL_LEAVE_TYPES, specialLeaveDef, specialLeaveOptionLabel, specialLeaveUsedDays, specialLeaveAnnualDays,
+  subReasonsFor, subReasonLabel, leaveTypeLabel, canUseSpecialLeave, EMPLOYMENT_TYPE_LABELS,
 } from '../../utils/constants';
 import type { LeaveRecord, RequestStatus, LeaveType, Staff } from '../../types';
 
@@ -22,7 +22,7 @@ export default function StaffLeaveRequest() {
   const [error, setError] = useState('');
 
   const [leaveType, setLeaveType] = useState<LeaveType>('paid');
-  const [subReason, setSubReason] = useState(CONDOLENCE_REASONS[0].id);
+  const [subReason, setSubReason] = useState('');
   const [unit, setUnit] = useState<LeaveUnit>('day');
   const [date, setDate] = useState(todayStr());
   const [amount, setAmount] = useState('1');       // 日単位の日数
@@ -40,14 +40,16 @@ export default function StaffLeaveRequest() {
   const fy = currentFiscalYear();
   const def = specialLeaveDef(leaveType);              // 特別休暇の定義（年次有給のときは undefined）
   const isPaid = leaveType === 'paid';
-  // 上限がある特別休暇（病気休暇10日・不妊治療5日）の今年度の使用状況
+  // 年度あたりの上限日数。子の看護等休暇は対象の子の人数で 5日／10日 に分かれる
+  const annualDays = def ? specialLeaveAnnualDays(def, me) : 0;
   const usedDays = useMemo(
-    () => (def && def.annualDays > 0 ? specialLeaveUsedDays(records, def.id, fy) : 0),
-    [records, def, fy]
+    () => (def && annualDays > 0 ? specialLeaveUsedDays(records, def.id, fy) : 0),
+    [records, def, annualDays, fy]
   );
-  const remainDays = def && def.annualDays > 0 ? Math.round((def.annualDays - usedDays) * 100) / 100 : 0;
-  // 慶弔休暇は事由ごとに日数が決まっている
-  const condolence = CONDOLENCE_REASONS.find(r => r.id === subReason);
+  const remainDays = annualDays > 0 ? Math.round((annualDays - usedDays) * 100) / 100 : 0;
+  // 事由の選択が要る休暇（慶弔休暇・子の看護等休暇）
+  const reasons = subReasonsFor(leaveType);
+  const reason = reasons.find(r => r.id === subReason);
 
   // 種類を変えたら、その種類で使える単位に合わせる
   const changeType = (id: LeaveType) => {
@@ -55,10 +57,10 @@ export default function StaffLeaveRequest() {
     const d = specialLeaveDef(id);
     if (d?.unit === 'hour') setUnit('hour');
     else if (d?.unit === 'day') setUnit('day');
-    if (id === 'condolence') {
-      const r = CONDOLENCE_REASONS.find(x => x.id === subReason);
-      if (r) setAmount(String(r.days));
-    }
+    // 事由が要る休暇は先頭の事由を選び、日数が決まっている事由ならその日数を入れる
+    const list = subReasonsFor(id);
+    setSubReason(list.length ? list[0].id : '');
+    if (list[0]?.days) setAmount(String(list[0].days));
   };
 
   useEffect(() => {
@@ -93,11 +95,11 @@ export default function StaffLeaveRequest() {
         setError(`残（${summary.balanceDays}日 / ${summary.balanceHours}h）を超えています`);
         return;
       }
-    } else if (def && def.annualDays > 0) {
+    } else if (def && annualDays > 0) {
       // 年間の上限がある特別休暇は残日数を超えられない
       const useDays = unit === 'hour' ? v / LEAVE_HOURS_PER_DAY : v;
       if (useDays > remainDays) {
-        setError(`${def.name}の今年度の残（${remainDays}日 / ${def.annualDays}日）を超えています`);
+        setError(`${def.name}の今年度の残（${remainDays}日 / ${annualDays}日）を超えています`);
         return;
       }
     }
@@ -109,7 +111,7 @@ export default function StaffLeaveRequest() {
       await addMyLeaveRequest({
         date, days: unit === 'day' ? v : 0, hours: unit === 'hour' ? v : 0, note,
         startTime: unit === 'hour' ? start : '', endTime: unit === 'hour' ? end : '',
-        leaveType, subReason: leaveType === 'condolence' ? subReason : '',
+        leaveType, subReason: def?.needsSubReason ? subReason : '',
       });
       setMessage(`${leaveTypeLabel(leaveType)}を申請しました。事務局の承認をお待ちください。`);
       setNote(''); setAmount('1');
@@ -131,9 +133,9 @@ export default function StaffLeaveRequest() {
           <Tile label="取得(承認済)" value={`${summary.usedDays}日`} sub={`${summary.usedHours}h`} />
           <Tile label="残（1日=7.5h）" value={`${summary.balanceDays}日`} sub={`${summary.balanceHours}h`} highlight />
         </div>
-      ) : def && def.annualDays > 0 ? (
+      ) : def && annualDays > 0 ? (
         <div className="grid grid-cols-3 gap-3 mb-4">
-          <Tile label="今年度の上限" value={`${def.annualDays}日`} sub={fiscalYearLabel(fy)} />
+          <Tile label="今年度の上限" value={`${annualDays}日`} sub={fiscalYearLabel(fy)} />
           <Tile label="取得(承認済)" value={`${usedDays}日`} />
           <Tile label="残" value={`${remainDays}日`} highlight />
         </div>
@@ -152,15 +154,17 @@ export default function StaffLeaveRequest() {
               </Select>
             </Field>
           </div>
-          {leaveType === 'condolence' && (
+          {reasons.length > 0 && (
             <div className="sm:col-span-4">
               <Field label="事由">
                 <Select value={subReason} onChange={e => {
                   setSubReason(e.target.value);
-                  const r = CONDOLENCE_REASONS.find(x => x.id === e.target.value);
-                  if (r) setAmount(String(r.days));
+                  const r = reasons.find(x => x.id === e.target.value);
+                  if (r?.days) setAmount(String(r.days));
                 }}>
-                  {CONDOLENCE_REASONS.map(r => <option key={r.id} value={r.id}>{r.name}（{r.days}日）</option>)}
+                  {reasons.map(r => (
+                    <option key={r.id} value={r.id}>{r.days ? `${r.name}（${r.days}日）` : r.name}</option>
+                  ))}
                 </Select>
               </Field>
             </div>
@@ -190,7 +194,7 @@ export default function StaffLeaveRequest() {
         </p>
         {!specialOk && me && (
           <p className="mt-3 text-xs bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-gray-600">
-            特別休暇（就業規則 第24〜30条）は常勤職員のみに付与されます。
+            特別休暇（就業規則 第24〜31条）は常勤職員のみに付与されます。
             {EMPLOYMENT_TYPE_LABELS[me.employmentType]}の方は年次有給休暇の申請のみできます。
           </p>
         )}
@@ -199,8 +203,13 @@ export default function StaffLeaveRequest() {
             <span className="font-medium text-gray-800">{def.article ? def.name + '（就業規則 ' + def.article + '）' : def.name}</span>
             {!def.paid && <span className="ml-2 text-amber-700 font-medium">無給</span>}
             <p className="mt-1">{def.note}</p>
-            {leaveType === 'condolence' && condolence && (
-              <p className="mt-1">この事由の日数は <span className="font-bold text-gray-800">{condolence.days}日</span> です。</p>
+            {reason?.days && (
+              <p className="mt-1">この事由の日数は <span className="font-bold text-gray-800">{reason.days}日</span> です。</p>
+            )}
+            {leaveType === 'childNursing' && (
+              annualDays > 0
+                ? <p className="mt-1">あなたの上限は <span className="font-bold text-gray-800">年{annualDays}日</span> です（対象の子 {me?.childNursingChildren}人）。</p>
+                : <p className="mt-1 text-amber-700">対象となる子の人数が未設定のため、上限の判定ができません。事務局にご確認ください。</p>
             )}
           </div>
         )}
@@ -220,7 +229,7 @@ export default function StaffLeaveRequest() {
                 <Td>{r.kind === 'grant' ? <Badge color="blue">付与</Badge> : <Badge color="gray">取得</Badge>}</Td>
                 <Td className="whitespace-nowrap text-xs">
                   {leaveTypeLabel(r.leaveType)}
-                  {r.subReason && <span className="block text-gray-400">{condolenceLabel(r.subReason)}</span>}
+                  {r.subReason && <span className="block text-gray-400">{subReasonLabel(r.subReason)}</span>}
                 </Td>
                 <Td className="whitespace-nowrap">
                   {r.hours > 0

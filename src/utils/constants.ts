@@ -62,7 +62,7 @@ export const DEFAULT_SHIFT_PATTERNS: ShiftPattern[] = [
 // ==== 有給休暇の標準付与 ====
 export const LEAVE_HOURS_PER_DAY = 7.5;      // 1日の勤務時間（時間単位取得の換算に使用）
 
-// ==== 特別休暇（就業規則 第24〜29条）====
+// ==== 特別休暇（就業規則 第24〜31条）====
 
 /** 特別休暇の種類の定義 */
 export interface SpecialLeaveDef {
@@ -70,14 +70,14 @@ export interface SpecialLeaveDef {
   name: string;
   article: string;             // 根拠となる就業規則の条
   unit: 'day' | 'hour' | 'both'; // 申請できる単位
-  annualDays: number;          // 年度（4/1〜3/31）あたりの上限日数。0＝上限なし（都度判断）
+  annualDays: number;          // 年度（4/1〜3/31）あたりの上限日数。0＝上限なし（職員ごとに決まるものを含む）
   paid: boolean;               // 有給か（就業規則で無給と定めるものだけ false）
   note: string;                // 画面に出す補足
-  needsSubReason?: boolean;    // 事由の選択が必要か（慶弔休暇）
+  needsSubReason?: boolean;    // 事由の選択が必要か（慶弔休暇・子の看護等休暇）
 }
 
 /**
- * 特別休暇（第24〜30条）の対象かどうか。
+ * 特別休暇（第24〜31条）の対象かどうか。
  * 特別休暇は常勤職員のみに付与する。パート・指導員・業務委託は年次有給休暇のみ。
  */
 export function canUseSpecialLeave(staff: Pick<Staff, 'employmentType'>): boolean {
@@ -87,24 +87,25 @@ export function canUseSpecialLeave(staff: Pick<Staff, 'employmentType'>): boolea
 /** 特別休暇の一覧。年次有給休暇は別枠のためここには含めない */
 export const SPECIAL_LEAVE_TYPES: SpecialLeaveDef[] = [
   {
-    id: 'condolence', name: '慶弔休暇', article: '第27条', unit: 'day', annualDays: 0, paid: true,
+    id: 'condolence', name: '慶弔休暇', article: '第28条', unit: 'day', annualDays: 0, paid: true,
     needsSubReason: true, note: '事由ごとに日数が決まっています。',
   },
   {
-    id: 'sick', name: '病気休暇', article: '第28条', unit: 'both', annualDays: 10, paid: false,
+    id: 'sick', name: '病気休暇', article: '第29条', unit: 'both', annualDays: 10, paid: false,
     note: '毎年4月1日に10日分。翌年度への繰越はできません。無給です。事前に承認を受けてください（やむを得ない場合は事後申請可）。診断書の提出を求めることがあります。',
   },
   {
-    id: 'refresh', name: 'リフレッシュ休暇', article: '第30条', unit: 'day', annualDays: 3, paid: true,
+    id: 'refresh', name: 'リフレッシュ休暇', article: '第31条', unit: 'day', annualDays: 3, paid: true,
     note: '心身の疲労回復のための有給休暇です。毎年度3日間。所定休日（第18条）は3日間に含みません（勤務日だけを日数に数えてください）。当該年度内に取得する必要があり、翌年度への繰越はできません。',
   },
   {
-    id: 'fertility', name: '不妊治療休暇', article: '第26条', unit: 'both', annualDays: 5, paid: true,
-    note: '年5日が限度です。長期の休業を希望する場合は事務局にご相談ください。',
+    id: 'fertility', name: '不妊治療休暇', article: '第27条', unit: 'both', annualDays: 5, paid: true,
+    note: '年5日が限度です。長期の休業（休業開始日の属する事業年度を含む5事業年度で最長1年間）を希望する場合は事務局にご相談ください。',
   },
   {
-    id: 'childNursing', name: '子の看護休暇', article: '第25条', unit: 'both', annualDays: 0, paid: true,
-    note: '育児・介護休業法に基づく休暇です。詳細は「育児・介護休業等に関する規則」によります。',
+    id: 'childNursing', name: '子の看護等休暇', article: '第26条', unit: 'both', annualDays: 0, paid: true,
+    needsSubReason: true,
+    note: '小学校卒業までの子を養育する職員が対象です。上限は1年間（4/1〜3/31）で、対象の子が1人なら5日、2人以上なら10日です（人数は職員名簿の設定を使います）。1日単位でも1時間単位でも取得できます。時間単位は始業から連続・終業まで連続のほか、就業時間の途中に取得してその後就業する（中抜け）こともできます。有給です。',
   },
   {
     id: 'familyCare', name: '介護休暇', article: '第25条', unit: 'both', annualDays: 0, paid: true,
@@ -119,14 +120,36 @@ export const SPECIAL_LEAVE_TYPES: SpecialLeaveDef[] = [
     note: '就業が著しく困難な場合に、必要な期間取得できます。',
   },
   {
-    id: 'jury', name: '裁判員等のための休暇', article: '第29条', unit: 'both', annualDays: 0, paid: true,
+    id: 'jury', name: '裁判員等のための休暇', article: '第30条', unit: 'both', annualDays: 0, paid: true,
     note: '裁判員・補充裁判員は必要な日数、裁判員候補者は必要な時間を取得できます。',
   },
 ];
 
-/** 慶弔休暇の事由と日数（第27条） */
-export interface CondolenceReason { id: string; name: string; days: number }
-export const CONDOLENCE_REASONS: CondolenceReason[] = [
+/** 子の看護等休暇の上限日数（第26条2項）。対象の子が1人=5日、2人以上=10日 */
+export const CHILD_NURSING_DAYS_ONE = 5;
+export const CHILD_NURSING_DAYS_MANY = 10;
+
+/**
+ * その職員のその休暇の年度あたり上限日数。0＝上限なし（都度判断）。
+ * 子の看護等休暇だけは対象となる子の人数で 5日／10日 に分かれる。
+ */
+export function specialLeaveAnnualDays(
+  def: SpecialLeaveDef,
+  staff?: Pick<Staff, 'childNursingChildren'> | null
+): number {
+  if (def.id === 'childNursing') {
+    const n = Number(staff?.childNursingChildren) || 0;
+    if (n <= 0) return 0;   // 人数が未設定なら上限判定をしない
+    return n >= 2 ? CHILD_NURSING_DAYS_MANY : CHILD_NURSING_DAYS_ONE;
+  }
+  return def.annualDays;
+}
+
+/** 特別休暇の事由。days がある事由は選ぶと日数が自動で入る */
+export interface SubReason { id: string; name: string; days?: number }
+
+/** 慶弔休暇の事由と日数（第28条） */
+export const CONDOLENCE_REASONS: SubReason[] = [
   { id: 'marriage', name: '本人が結婚したとき', days: 5 },
   { id: 'birth', name: '妻が出産したとき', days: 3 },
   { id: 'death1', name: '配偶者、子又は父母が死亡したとき', days: 10 },
@@ -134,6 +157,21 @@ export const CONDOLENCE_REASONS: CondolenceReason[] = [
   { id: 'death3', name: '一親等の直系尊属（子）が死亡したとき', days: 5 },
   { id: 'death4', name: '兄弟姉妹、祖父母、配偶者の父母又は兄弟姉妹が死亡したとき', days: 3 },
 ];
+
+/** 子の看護等休暇の事由（第26条1項）。日数は事由では決まらない */
+export const CHILD_NURSING_REASONS: SubReason[] = [
+  { id: 'illness', name: '負傷し、又は疾病にかかった子の世話をする' },
+  { id: 'vaccination', name: '子に予防接種又は健康診断を受けさせる' },
+  { id: 'closure', name: '感染症に伴う学級閉鎖等になった子の世話をする' },
+  { id: 'ceremony', name: '子の入園式、卒園式、入学式又は卒業式に参加する' },
+];
+
+/** その休暇で選べる事由の一覧（事由の選択が不要な休暇は空） */
+export function subReasonsFor(typeId?: string): SubReason[] {
+  if (typeId === 'condolence') return CONDOLENCE_REASONS;
+  if (typeId === 'childNursing') return CHILD_NURSING_REASONS;
+  return [];
+}
 
 /** 休暇の種類の表示名（年次有給を含む） */
 export function leaveTypeLabel(id?: string): string {
@@ -166,9 +204,10 @@ export function specialLeaveUsedDays(
   return Math.round(used * 100) / 100;
 }
 
-/** 慶弔事由の表示名 */
-export function condolenceLabel(id?: string): string {
-  return CONDOLENCE_REASONS.find(r => r.id === id)?.name ?? '';
+/** 事由の表示名（慶弔休暇・子の看護等休暇のどちらでも引ける） */
+export function subReasonLabel(id?: string): string {
+  if (!id) return '';
+  return [...CONDOLENCE_REASONS, ...CHILD_NURSING_REASONS].find(r => r.id === id)?.name ?? '';
 }
 export const FULLTIME_LEAVE_DAYS = 10;       // 常勤の標準付与日数
 export const PARTTIME_LEAVE_DAYS = 5;        // パートの標準付与日数
