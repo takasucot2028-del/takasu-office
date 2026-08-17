@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageContainer, Card, Button, Alert, Badge } from '../../components/UI';
-import { punch, setMyBreak, getStaffHomeData, todayStr } from '../../api/data';
+import { punch, setMyBreak, getStaffHomeData, markShiftChangesRead, todayStr } from '../../api/data';
 import type { TodayWork } from '../../api/data';
 import { WEEKDAY_LABELS, DOC_TYPE_LABELS, WORK_LOCATION_LABELS, breakMinutesBetween } from '../../utils/constants';
-import type { Staff, AttendanceRecord, DocumentItem, WorkLocation } from '../../types';
+import type { Staff, AttendanceRecord, DocumentItem, WorkLocation, ShiftChange } from '../../types';
 
 function parseHM(hm: string): number | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(hm || '');
@@ -25,6 +25,7 @@ export default function StaffHome() {
   const [today, setToday] = useState<AttendanceRecord | undefined>();
   const [todayWork, setTodayWork] = useState<TodayWork>({ shifts: [], leave: [], comp: [] });
   const [recentDocs, setRecentDocs] = useState<DocumentItem[]>([]);
+  const [shiftChanges, setShiftChanges] = useState<ShiftChange[]>([]);
   const [breakStartInput, setBreakStartInput] = useState('');
   const [breakEndInput, setBreakEndInput] = useState('');
   const [loading, setLoading] = useState(true);
@@ -44,6 +45,7 @@ export default function StaffHome() {
     setBreakStartInput(rec?.breakStart || '');
     setBreakEndInput(rec?.breakEnd || '');
     setTodayWork(home.today);
+    setShiftChanges(home.shiftChanges);
     setRecentDocs(home.documents.slice(0, 4));
     setLoading(false);
   };
@@ -58,6 +60,13 @@ export default function StaffHome() {
     } catch (err) {
       setError(err instanceof Error ? err.message : '打刻に失敗しました');
     } finally { setBusy(false); }
+  };
+
+  // シフト変更を確認済みにする（通知を消す）
+  const confirmShiftChanges = async () => {
+    setShiftChanges([]); // 先に消して待たせない
+    try { await markShiftChangesRead(); }
+    catch (err) { setError(err instanceof Error ? err.message : '確認の記録に失敗しました'); }
   };
 
   const saveBreak = async () => {
@@ -81,6 +90,36 @@ export default function StaffHome() {
     <PageContainer title={staff ? `こんにちは、${staff.lastName} ${staff.firstName} さん` : '打刻'}>
       {message && <Alert type="success">{message}</Alert>}
       {error && <Alert type="error">{error}</Alert>}
+
+      {/* シフト変更の通知 */}
+      {shiftChanges.length > 0 && (
+        <Card className="mb-4 border-blue-300 bg-blue-50">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-bold text-blue-800">シフトが変更されました</h2>
+            <Badge color="blue">{shiftChanges.length}件</Badge>
+          </div>
+          <ul className="divide-y divide-blue-200 border border-blue-200 rounded-md bg-white mb-3">
+            {shiftChanges.map(c => (
+              <li key={c.id} className="px-3 py-2 text-sm">
+                <div className="flex flex-wrap items-center gap-x-2">
+                  <span className="font-medium text-gray-800">
+                    {Number(c.date.slice(5, 7))}/{Number(c.date.slice(8))}
+                    （{WEEKDAY_LABELS[new Date(`${c.date}T00:00:00`).getDay()]}）
+                  </span>
+                  <span className="text-xs text-gray-500">{WORK_LOCATION_LABELS[c.location]}</span>
+                  <span className="text-gray-400 line-through">{c.before}</span>
+                  <span className="text-gray-400">→</span>
+                  <span className="font-bold text-blue-700">{c.after}</span>
+                </div>
+                <div className="text-xs text-gray-400 mt-0.5">{c.changedAt} に変更</div>
+              </li>
+            ))}
+          </ul>
+          <div className="flex justify-end">
+            <Button size="sm" variant="secondary" onClick={confirmShiftChanges}>確認しました</Button>
+          </div>
+        </Card>
+      )}
 
       {/* 打刻 */}
       <Card className="mb-4 text-center">

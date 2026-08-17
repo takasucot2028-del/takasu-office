@@ -3,7 +3,7 @@ import type {
   Staff, AttendanceRecord, LeaveRecord, WorkLocation,
   ShiftPattern, AvailabilityRecord, ConfirmedShift,
   OvertimeRecord, CompLeaveUse, DocumentItem,
-  ExpenseCategory, Budget, Expense, RequestStatus,
+  ExpenseCategory, Budget, Expense, RequestStatus, ShiftChange,
 } from '../types';
 import { ADMIN_EMAIL, ADMIN_PASSWORD, DEFAULT_SHIFT_PATTERNS, DEFAULT_EXPENSE_CATEGORIES, breakMinutesBetween } from './constants';
 
@@ -153,10 +153,58 @@ export function listConfirmedByDate(date: string): ConfirmedShift[] {
 
 /** 指定勤務場所・指定月の確定シフトを丸ごと差し替える */
 export function saveMonthConfirmed(month: string, location: WorkLocation, records: ConfirmedShift[]) {
-  const others = load<ConfirmedShift>(KEY_CONFIRMED).filter(
-    r => !(r.date.startsWith(month) && r.location === location)
-  );
+  const all = load<ConfirmedShift>(KEY_CONFIRMED);
+  const isTarget = (r: ConfirmedShift) => r.date.startsWith(month) && r.location === location;
+  const others = all.filter(r => !isTarget(r));
+  recordShiftChanges(location, all.filter(isTarget), records); // 変更を履歴に残す
   save(KEY_CONFIRMED, [...others, ...records]);
+}
+
+// ---- シフト変更履歴（従業員への通知） ----
+const KEY_SHIFT_CHANGES = 'tof_shift_changes';
+
+/** 確定シフトの置き換え前後を比較し、職員ごとの変更を履歴に追加する */
+export function recordShiftChanges(
+  location: WorkLocation,
+  oldList: ConfirmedShift[],
+  newList: ConfirmedShift[]
+) {
+  const patName = new Map(listShiftPatterns().map(p => [p.id, p.name]));
+  const label = (ids: string[]) => (ids.length ? ids.map(id => patName.get(id) || id).join(' ') : 'なし');
+  const group = (list: ConfirmedShift[]) => {
+    const m = new Map<string, string[]>();
+    for (const r of list) {
+      const key = `${r.staffId}|${r.date}`;
+      m.set(key, [...(m.get(key) || []), r.patternId].sort());
+    }
+    return m;
+  };
+  const before = group(oldList), after = group(newList);
+  const keys = new Set([...before.keys(), ...after.keys()]);
+  const d = new Date();
+  const now = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const added: ShiftChange[] = [];
+  for (const k of keys) {
+    const b = before.get(k) || [], a = after.get(k) || [];
+    if (b.join(',') === a.join(',')) continue;
+    const [staffId, date] = k.split('|');
+    added.push({ id: genId('sc'), staffId, date, location, before: label(b), after: label(a), changedAt: now, readAt: '' });
+  }
+  if (added.length) save(KEY_SHIFT_CHANGES, [...load<ShiftChange>(KEY_SHIFT_CHANGES), ...added]);
+}
+
+/** 自分の未確認のシフト変更（新しい順） */
+export function listMyShiftChanges(staffId: string): ShiftChange[] {
+  return load<ShiftChange>(KEY_SHIFT_CHANGES)
+    .filter(r => r.staffId === staffId && !r.readAt)
+    .sort((a, b) => b.changedAt.localeCompare(a.changedAt));
+}
+
+/** 自分のシフト変更をすべて確認済みにする */
+export function markShiftChangesReadLocal(staffId: string) {
+  const d = new Date();
+  const now = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  save(KEY_SHIFT_CHANGES, load<ShiftChange>(KEY_SHIFT_CHANGES).map(r => (r.staffId === staffId && !r.readAt ? { ...r, readAt: now } : r)));
 }
 
 // ---- 従業員ログイン（デモ。パスワードは平文でlocalStorage・デモ専用） ----

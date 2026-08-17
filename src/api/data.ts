@@ -9,7 +9,7 @@ import type {
   Staff, AttendanceRecord, LeaveRecord,
   ShiftPattern, AvailabilityRecord, ConfirmedShift, WorkLocation,
   OvertimeRecord, CompLeaveUse, DocumentItem,
-  ExpenseCategory, Budget, Expense,
+  ExpenseCategory, Budget, Expense, ShiftChange,
 } from '../types';
 import { DEFAULT_SHIFT_PATTERNS, LEAVE_HOURS_PER_DAY, currentFiscalYear } from '../utils/constants';
 import * as local from '../utils/store';
@@ -763,6 +763,19 @@ export async function getAccountingData(fiscalYear: number): Promise<AccountingD
   return { budgets, expenses };
 }
 
+// --- シフト変更の通知（従業員） ---
+/** 自分の未確認のシフト変更 */
+export async function getMyShiftChanges(): Promise<ShiftChange[]> {
+  if (!USE_GAS) return local.listMyShiftChanges(staffId());
+  return unwrap(await gas.getMyShiftChanges(token()), []);
+}
+/** 自分のシフト変更をすべて確認済みにする */
+export async function markShiftChangesRead(): Promise<void> {
+  if (!USE_GAS) { local.markShiftChangesReadLocal(staffId()); return; }
+  const res = await gas.markShiftChangesRead(token());
+  if (!res.success) throw new Error(res.error || '確認の記録に失敗しました');
+}
+
 // --- 本日の勤務・休暇（従業員も閲覧可。氏名・時間のみ、個人情報は含まない） ---
 const EMPTY_TODAY: TodayWork = { shifts: [], leave: [], comp: [] };
 export async function getTodayWork(date: string): Promise<TodayWork> {
@@ -786,17 +799,19 @@ export async function getTodayWork(date: string): Promise<TodayWork> {
 
 // --- 従業員ホーム ---
 // プロフィール・勤怠・文書・本日の勤務を1リクエスト(バッチ)でまとめて取得する。
-export interface StaffHomeData { staff: Staff | null; attendance: AttendanceRecord[]; documents: DocumentItem[]; today: TodayWork }
+export interface StaffHomeData { staff: Staff | null; attendance: AttendanceRecord[]; documents: DocumentItem[]; today: TodayWork; shiftChanges: ShiftChange[] }
 export async function getStaffHomeData(month: string): Promise<StaffHomeData> {
   const date = todayStr();
   if (!USE_GAS) {
     return {
       staff: local.getStaff(staffId()), attendance: local.listAttendance(staffId(), month),
       documents: local.listDocuments(), today: await getTodayWork(date),
+      shiftChanges: local.listMyShiftChanges(staffId()),
     };
   }
   const r = await batchCall([
     { action: 'getMyProfile' }, { action: 'getMyAttendance', month }, { action: 'getDocuments' }, { action: 'getTodayWork', date },
+    { action: 'getMyShiftChanges' },
   ]);
   if (r) {
     const staff = unwrap(r[0] as SubRes<Staff | null>, null);
@@ -806,8 +821,11 @@ export async function getStaffHomeData(month: string): Promise<StaffHomeData> {
       attendance: unwrap(r[1] as SubRes<AttendanceRecord[]>, []),
       documents: unwrap(r[2] as SubRes<DocumentItem[]>, []),
       today: unwrap(r[3] as SubRes<TodayWork>, EMPTY_TODAY),
+      shiftChanges: unwrap(r[4] as SubRes<ShiftChange[]>, []),
     };
   }
-  const [staff, attendance, documents, today] = await Promise.all([getMyProfile(), getMyAttendance(month), listDocuments(), getTodayWork(date)]);
-  return { staff, attendance, documents, today };
+  const [staff, attendance, documents, today, shiftChanges] = await Promise.all([
+    getMyProfile(), getMyAttendance(month), listDocuments(), getTodayWork(date), getMyShiftChanges(),
+  ]);
+  return { staff, attendance, documents, today, shiftChanges };
 }

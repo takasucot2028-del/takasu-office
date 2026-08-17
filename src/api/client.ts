@@ -6,7 +6,7 @@ import type {
   Staff, AttendanceRecord, LeaveRecord,
   ShiftPattern, AvailabilityRecord, ConfirmedShift, WorkLocation,
   OvertimeRecord, CompLeaveUse, RequestStatus, DocumentItem,
-  ExpenseCategory, Budget, Expense,
+  ExpenseCategory, Budget, Expense, ShiftChange,
 } from '../types';
 
 /** 本日の勤務・休暇（従業員も閲覧可。氏名・時間のみ、個人情報は含まない） */
@@ -117,6 +117,10 @@ export const getTodayWork = (date: string, token: string) =>
   request<TodayWork>('getTodayWork', { date, token });
 export const getPendingSummary = (token: string) =>
   request<PendingSummary>('getPendingSummary', { token });
+export const getMyShiftChanges = (token: string) =>
+  request<ShiftChange[]>('getMyShiftChanges', { token });
+export const markShiftChangesRead = (token: string) =>
+  request<void>('markShiftChangesRead', { token });
 export const getMyAvailability = (month: string, token: string) =>
   request<AvailabilityRecord[]>('getMyAvailability', { month, token });
 export const saveMyAvailability = (month: string, records: AvailabilityRecord[], token: string) =>

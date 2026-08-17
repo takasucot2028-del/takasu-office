@@ -71,6 +71,10 @@ var SHEETS = {
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['location', '勤務場所'],
     ['patternId', '区分ID'], ['note', '備考'],
   ] },
+  shift_changes: { name: 'シフト変更履歴', columns: [
+    ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['location', '勤務場所'],
+    ['before', '変更前'], ['after', '変更後'], ['changedAt', '変更日時'], ['readAt', '確認日時'],
+  ] },
 };
 
 function sheetConf(key) {
@@ -177,6 +181,7 @@ function getSession(token) {
 var PUBLIC_ACTIONS = { adminLogin: true, staffLogin: true };
 var STAFF_ACTIONS = {
   getMyProfile: true, getMyAttendance: true, punch: true, setMyBreak: true,
+  getMyShiftChanges: true, markShiftChangesRead: true,
   getMyAvailability: true, saveMyAvailability: true,
   getMyOvertime: true, addMyOvertime: true,
   getMyLeave: true, addMyLeaveRequest: true, staffChangePassword: true,
@@ -252,6 +257,12 @@ function dispatch(action, body) {
         break;
       case 'setMyBreak':
         result = handleSetMyBreak(getSession(body.token), body.breakStart, body.breakEnd);
+        break;
+      case 'getMyShiftChanges':
+        result = handleGetMyShiftChanges(getSession(body.token));
+        break;
+      case 'markShiftChangesRead':
+        result = handleMarkShiftChangesRead(getSession(body.token));
         break;
       case 'getMyAvailability':
         result = handleGetMyAvailability(getSession(body.token), body.month);
@@ -728,24 +739,72 @@ function handleGetConfirmedMonth(month) {
 }
 
 // 指定月・指定勤務場所の確定シフトを差し替える。
+// 置き換え前後を比較し、職員ごとの変更内容を「シフト変更履歴」に記録する（従業員への通知に使う）。
 function handleSaveMonthConfirmed(month, location, records) {
   const sheet = getSheet('shifts_confirmed');
   const ncol = colKeys('shifts_confirmed').length;
   const data = sheet.getDataRange().getValues();
   const kept = [];
+  const oldTargets = []; // 置き換え対象（同月・同勤務場所）の既存データ
   for (let i = 1; i < data.length; i++) {
     const rowDate = cellYmd_(data[i][2]);
     const rowLoc = String(data[i][3]);
-    if (rowDate.slice(0, 7) === month && rowLoc === String(location)) continue;
+    if (rowDate.slice(0, 7) === month && rowLoc === String(location)) {
+      oldTargets.push({ staffId: String(data[i][1]), date: rowDate, patternId: String(data[i][4]) });
+      continue;
+    }
     kept.push(data[i].slice(0, ncol));
   }
   const newRows = (records || []).map(function (r) { return objectToRow('shifts_confirmed', r); });
-  const out = [colLabels('shifts_confirmed')].concat(kept).concat(newRows);
-  sheet.clearContents();
-  sheet.getRange(1, 1, sheet.getMaxRows(), ncol).setNumberFormat('@');
-  sheet.getRange(1, 1, out.length, ncol).setValues(out);
-  sheet.setFrozenRows(1);
+  replaceSheetRows_('shifts_confirmed', kept.concat(newRows)); // 全消去せず置換
+
+  recordShiftChanges_(month, location, oldTargets, records || []);
   return { success: true };
+}
+
+// 変更前後を職員×日で比較し、差分だけを履歴に追加する。
+function recordShiftChanges_(month, location, oldList, newList) {
+  const patName = {};
+  sheetToObjects(getSheet('shift_patterns'), 'shift_patterns').forEach(function (p) { patName[p.id] = p.name; });
+  const label = function (ids) {
+    if (!ids.length) return 'なし';
+    return ids.map(function (id) { return patName[id] || id; }).join(' ');
+  };
+  // 職員×日ごとに区分IDをまとめる
+  const group = function (list) {
+    const m = {};
+    list.forEach(function (r) {
+      const key = String(r.staffId) + '|' + String(r.date);
+      (m[key] = m[key] || []).push(String(r.patternId));
+    });
+    Object.keys(m).forEach(function (k) { m[k].sort(); });
+    return m;
+  };
+  const before = group(oldList), after = group(newList);
+  const keys = {};
+  Object.keys(before).forEach(function (k) { keys[k] = true; });
+  Object.keys(after).forEach(function (k) { keys[k] = true; });
+
+  const tz = Session.getScriptTimeZone();
+  const now = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm');
+  const rows = [];
+  Object.keys(keys).forEach(function (k) {
+    const b = before[k] || [], a = after[k] || [];
+    if (b.join(',') === a.join(',')) return; // 変更なし
+    const parts = k.split('|');
+    rows.push(objectToRow('shift_changes', {
+      id: genId('sc'), staffId: parts[0], date: parts[1], location: location,
+      before: label(b), after: label(a), changedAt: now, readAt: '',
+    }));
+  });
+  if (!rows.length) return;
+  const sheet = getSheet('shift_changes');
+  const ncol = colKeys('shift_changes').length;
+  const start = sheet.getLastRow() + 1;
+  if (sheet.getMaxRows() < start + rows.length) sheet.insertRowsAfter(sheet.getMaxRows(), rows.length);
+  const range = sheet.getRange(start, 1, rows.length, ncol);
+  range.setNumberFormat('@');
+  range.setValues(rows);
 }
 
 // --- ハンドラー：時間外・休日勤務 ---
@@ -1198,6 +1257,31 @@ function breakMinutesBetween_(start, end) {
   if (!s || !e) return 0;
   const min = (Number(e[1]) * 60 + Number(e[2])) - (Number(s[1]) * 60 + Number(s[2]));
   return min > 0 ? min : 0;
+}
+
+// 自分のシフト変更のうち未確認のものを返す（新しい順）
+function handleGetMyShiftChanges(session) {
+  const staff = staffOf_(session);
+  const list = sheetToObjects(getSheet('shift_changes'), 'shift_changes')
+    .filter(function (r) { return String(r.staffId) === staff.id && !String(r.readAt || '').trim(); });
+  list.sort(function (a, b) { return String(b.changedAt).localeCompare(String(a.changedAt)); });
+  return { success: true, data: list.slice(0, 50) };
+}
+
+// 自分のシフト変更をすべて確認済みにする
+function handleMarkShiftChangesRead(session) {
+  const staff = staffOf_(session);
+  const sheet = getSheet('shift_changes');
+  const data = sheet.getDataRange().getValues();
+  const col = colNum('shift_changes', 'readAt');
+  const tz = Session.getScriptTimeZone();
+  const now = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm');
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][1]) !== staff.id) continue;
+    if (String(data[i][col - 1] || '').trim()) continue; // 既に確認済み
+    sheet.getRange(i + 1, col).setValue(now);
+  }
+  return { success: true };
 }
 
 function handleGetMyAvailability(session, month) {

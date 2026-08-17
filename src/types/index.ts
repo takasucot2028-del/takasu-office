@@ -173,6 +173,18 @@ export interface Budget {
   note: string;               // 備考（費目の内訳説明など）
 }
 
+/** シフト変更の通知（従業員へ知らせる確定シフトの変更） */
+export interface ShiftChange {
+  id: string;
+  staffId: string;
+  date: string;               // 変更された勤務日 YYYY-MM-DD
+  location: WorkLocation;
+  before: string;             // 変更前の区分名（例: 「① ②」「なし」）
+  after: string;              // 変更後の区分名
+  changedAt: string;          // 変更日時 YYYY-MM-DD HH:mm
+  readAt: string;             // 従業員が確認した日時（未確認は空）
+}
+
 /** 事業区分（区分 → 事業 → 費目 の最上位） */
 export interface ProjectDivision {
   id: string;
