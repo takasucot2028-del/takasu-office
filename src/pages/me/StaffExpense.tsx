@@ -71,7 +71,7 @@ export default function StaffExpense() {
         <h2 className="font-bold text-gray-800 mb-3">申請する</h2>
         {ctx.lines.length === 0 && !loading && <Alert type="info">今年度の事業予算がまだ登録されていません。事務局にお問い合わせください。</Alert>}
         <form onSubmit={submit} className="grid sm:grid-cols-2 gap-3">
-          <Field label="支出日"><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></Field>
+          <Field label="申請日"><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></Field>
           <Field label="金額（円）"><Input type="number" min={0} value={amount} onChange={e => setAmount(e.target.value)} required /></Field>
           <Field label="事業">
             <Select value={project} onChange={e => { setProject(e.target.value); setCategoryId(''); }}>
@@ -102,7 +102,7 @@ export default function StaffExpense() {
 
       <Card className="p-0 overflow-x-auto">
         <Table>
-          <thead><tr><Th>日付</Th><Th>事業／費目</Th><Th>金額</Th><Th>状態</Th><Th>内容</Th></tr></thead>
+          <thead><tr><Th>申請日</Th><Th>事業／費目</Th><Th>金額</Th><Th>状態</Th><Th>内容</Th></tr></thead>
           <tbody>
             {mine.map(e => (
               <tr key={e.id}>
