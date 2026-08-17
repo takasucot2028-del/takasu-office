@@ -71,7 +71,8 @@ export interface SpecialLeaveDef {
   article: string;             // 根拠となる就業規則の条
   unit: 'day' | 'hour' | 'both'; // 申請できる単位
   annualDays: number;          // 年度（4/1〜3/31）あたりの上限日数。0＝上限なし（職員ごとに決まるものを含む）
-  paid: boolean;               // 有給か（就業規則で無給と定めるものだけ false）
+  paid: boolean;               // 全期間が有給か（就業規則で無給と定めるものは false）
+  paidDays?: number;           // paid:false のとき、年度あたり有給となる日数の限度（超過分は無給）。未設定＝全期間無給
   note: string;                // 画面に出す補足
   needsSubReason?: boolean;    // 事由の選択が必要か（慶弔休暇・子の看護等休暇）
 }
@@ -91,8 +92,8 @@ export const SPECIAL_LEAVE_TYPES: SpecialLeaveDef[] = [
     needsSubReason: true, note: '事由ごとに日数が決まっています。',
   },
   {
-    id: 'sick', name: '病気休暇', article: '第29条', unit: 'both', annualDays: 10, paid: false,
-    note: '毎年4月1日に10日分。翌年度への繰越はできません。無給です。事前に承認を受けてください（やむを得ない場合は事後申請可）。診断書の提出を求めることがあります。',
+    id: 'sick', name: '病気休暇', article: '第29条', unit: 'both', annualDays: 0, paid: false, paidDays: 5,
+    note: '私的な負傷又は疾病の療養のため、勤務しないことがやむを得ないと認められる場合の休暇です。1年度（4/1〜3/31）につき5日までは有給、これを超える期間は無給です。事前に法人の承認を受けてください（やむを得ない場合は事後に承認を求めることができます。手続きを怠ると無断欠勤の扱いになります）。必要に応じて医師の診断書の提出を求めることがあります。',
   },
   {
     id: 'refresh', name: 'リフレッシュ休暇', article: '第31条', unit: 'day', annualDays: 3, paid: true,
@@ -143,6 +144,27 @@ export function specialLeaveAnnualDays(
     return n >= 2 ? CHILD_NURSING_DAYS_MANY : CHILD_NURSING_DAYS_ONE;
   }
   return def.annualDays;
+}
+
+/**
+ * 有給扱いになる日数の年度あたり残（病気休暇の年5日など）。
+ * 上限日数（annualDays）と違い、超えても取得はできる（超過分が無給になる）。
+ */
+export function specialLeavePaidRemain(
+  def: SpecialLeaveDef,
+  records: { kind: string; date: string; days: number; hours: number; status?: string; leaveType?: string }[],
+  fiscalYear: number
+): number {
+  const limit = def.paidDays ?? 0;
+  if (limit <= 0) return 0;
+  return Math.round((limit - specialLeaveUsedDays(records, def.id, fiscalYear)) * 100) / 100;
+}
+
+/** 支払いの扱いを1行で説明する（画面のバッジ用） */
+export function paymentLabel(def: SpecialLeaveDef): string {
+  if (def.paid) return '有給';
+  if (def.paidDays) return `年${def.paidDays}日まで有給・超過分は無給`;
+  return '無給';
 }
 
 /** 特別休暇の事由。days がある事由は選ぶと日数が自動で入る */

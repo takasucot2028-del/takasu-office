@@ -5,6 +5,7 @@ import {
   LEAVE_HOURS_PER_DAY, hoursBetween, currentFiscalYear, fiscalYearLabel,
   SPECIAL_LEAVE_TYPES, specialLeaveDef, specialLeaveOptionLabel, specialLeaveUsedDays, specialLeaveAnnualDays,
   subReasonsFor, subReasonLabel, leaveTypeLabel, canUseSpecialLeave, EMPLOYMENT_TYPE_LABELS,
+  specialLeavePaidRemain, paymentLabel,
 } from '../../utils/constants';
 import type { LeaveRecord, RequestStatus, LeaveType, Staff } from '../../types';
 
@@ -47,6 +48,15 @@ export default function StaffLeaveRequest() {
     [records, def, annualDays, fy]
   );
   const remainDays = annualDays > 0 ? Math.round((annualDays - usedDays) * 100) / 100 : 0;
+  // 有給で取得できる日数の残（病気休暇の年5日など）。超えても取得はできて、超過分が無給になる
+  const paidLimit = def?.paidDays ?? 0;
+  const paidRemain = useMemo(
+    () => (def && paidLimit > 0 ? Math.max(0, specialLeavePaidRemain(def, records, fy)) : 0),
+    [def, paidLimit, records, fy]
+  );
+  // 今回の申請のうち無給になる分
+  const requestDays = unit === 'hour' ? hourAmt / LEAVE_HOURS_PER_DAY : Number(amount) || 0;
+  const unpaidDays = paidLimit > 0 ? Math.max(0, Math.round((requestDays - paidRemain) * 100) / 100) : 0;
   // 事由の選択が要る休暇（慶弔休暇・子の看護等休暇）
   const reasons = subReasonsFor(leaveType);
   const reason = reasons.find(r => r.id === subReason);
@@ -139,6 +149,12 @@ export default function StaffLeaveRequest() {
           <Tile label="取得(承認済)" value={`${usedDays}日`} />
           <Tile label="残" value={`${remainDays}日`} highlight />
         </div>
+      ) : def && paidLimit > 0 ? (
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <Tile label="今年度の有給分" value={`${paidLimit}日`} sub={fiscalYearLabel(fy)} />
+          <Tile label="取得(承認済)" value={`${Math.round((paidLimit - paidRemain) * 100) / 100}日`} />
+          <Tile label="有給で取得できる残" value={`${paidRemain}日`} highlight />
+        </div>
       ) : null}
 
       <Card className="mb-4">
@@ -201,10 +217,18 @@ export default function StaffLeaveRequest() {
         {def && (
           <div className="mt-3 text-xs bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-gray-600">
             <span className="font-medium text-gray-800">{def.article ? def.name + '（就業規則 ' + def.article + '）' : def.name}</span>
-            {!def.paid && <span className="ml-2 text-amber-700 font-medium">無給</span>}
+            <span className="ml-2 text-amber-700 font-medium">{paymentLabel(def)}</span>
             <p className="mt-1">{def.note}</p>
             {reason?.days && (
               <p className="mt-1">この事由の日数は <span className="font-bold text-gray-800">{reason.days}日</span> です。</p>
+            )}
+            {paidLimit > 0 && (
+              unpaidDays > 0
+                ? <p className="mt-1 text-amber-700">
+                    今年度の有給分の残は {paidRemain}日 です。今回の申請 {requestDays}日 のうち{' '}
+                    <span className="font-bold">{unpaidDays}日 が無給</span> になります。
+                  </p>
+                : <p className="mt-1">今年度の有給分の残は <span className="font-bold text-gray-800">{paidRemain}日</span> です。</p>
             )}
             {leaveType === 'childNursing' && (
               annualDays > 0

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import { listStaff, listLeave, addLeave, deleteLeave, setLeaveStatus, computeLeaveBalance, genId, todayStr } from '../../api/data';
-import { EMPLOYMENT_TYPE_LABELS, standardLeaveGrant, LEAVE_HOURS_PER_DAY , canUseSpecialLeave, SPECIAL_LEAVE_TYPES, specialLeaveDef, specialLeaveOptionLabel, specialLeaveAnnualDays, specialLeaveUsedDays, subReasonsFor, subReasonLabel, leaveTypeLabel, currentFiscalYear } from '../../utils/constants';
+import { EMPLOYMENT_TYPE_LABELS, standardLeaveGrant, LEAVE_HOURS_PER_DAY , canUseSpecialLeave, SPECIAL_LEAVE_TYPES, specialLeaveDef, specialLeaveOptionLabel, specialLeaveAnnualDays, specialLeaveUsedDays, specialLeavePaidRemain, paymentLabel, subReasonsFor, subReasonLabel, leaveTypeLabel, currentFiscalYear } from '../../utils/constants';
 import type { LeaveKind, LeaveRecord, Staff, LeaveType } from '../../types';
 
 type LeaveUnit = 'day' | 'hour';
@@ -27,6 +27,11 @@ export default function Leave() {
   const [leaveType, setLeaveType] = useState<LeaveType>('paid');   // 休暇の種類（取得のみ）
   // 事由の選択が要る休暇（慶弔休暇・子の看護等休暇）
   const reasons = subReasonsFor(leaveType);
+  // 有給で取得できる日数の残（病気休暇の年5日など）。超過分は無給になるだけで登録は止めない
+  const typeDef = specialLeaveDef(leaveType);
+  const paidRemain = typeDef?.paidDays
+    ? Math.max(0, specialLeavePaidRemain(typeDef, records, currentFiscalYear()))
+    : 0;
   const [subReason, setSubReason] = useState('');
   const [unit, setUnit] = useState<LeaveUnit>('day'); // 取得の単位（日/時間）
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -252,6 +257,12 @@ export default function Leave() {
                   {!specialOk && selectedStaff && (
                     <p className="text-xs text-gray-400 -mt-3 mb-4">
                       特別休暇は常勤職員のみです（この職員は{EMPLOYMENT_TYPE_LABELS[selectedStaff.employmentType]}）。
+                    </p>
+                  )}
+                  {specialOk && typeDef && (
+                    <p className="text-xs text-gray-500 -mt-3 mb-4">
+                      {paymentLabel(typeDef)}
+                      {typeDef.paidDays ? `（今年度の有給分の残 ${paidRemain}日。超えた分は無給）` : ''}
                     </p>
                   )}
                 </Field>
