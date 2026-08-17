@@ -493,11 +493,12 @@ export default function Shifts() {
               </tr>
             </thead>
             <tbody>
-              {staffOfLoc.map(s => {
+              {staffOfLoc.map((s, rowIdx) => {
                 const t = mode === 'confirm' ? staffTotals(s.id) : null;
+                const stripe = rowIdx % 2 === 1 ? 'bg-gray-50' : 'bg-white'; // 1行おきにうすい背景
                 return (
-                  <tr key={s.id}>
-                    <td className="sticky left-0 z-10 bg-white px-3 py-1 border-b border-r whitespace-nowrap font-medium">
+                  <tr key={s.id} className={stripe}>
+                    <td className={`sticky left-0 z-10 ${stripe} px-3 py-1 border-b border-r whitespace-nowrap font-medium`}>
                       {s.lastName} {s.firstName}
                     </td>
                     {days.map(date => {
