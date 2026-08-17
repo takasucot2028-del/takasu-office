@@ -146,6 +146,7 @@ export type LeaveKind = 'grant' | 'use';
 export type LeaveType =
   | 'paid'          // 年次有給休暇
   | 'sick'          // 病気休暇（第28条）
+  | 'refresh'       // リフレッシュ休暇（年3日）
   | 'condolence'    // 慶弔休暇（第27条）
   | 'fertility'     // 不妊治療休暇（第26条）
   | 'childcareTime' // 育児時間（第24条1項）

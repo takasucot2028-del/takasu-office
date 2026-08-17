@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import { listStaff, listLeave, addLeave, deleteLeave, setLeaveStatus, computeLeaveBalance, genId, todayStr } from '../../api/data';
-import { EMPLOYMENT_TYPE_LABELS, standardLeaveGrant, LEAVE_HOURS_PER_DAY , SPECIAL_LEAVE_TYPES, CONDOLENCE_REASONS, specialLeaveDef, leaveTypeLabel, condolenceLabel } from '../../utils/constants';
+import { EMPLOYMENT_TYPE_LABELS, standardLeaveGrant, LEAVE_HOURS_PER_DAY , SPECIAL_LEAVE_TYPES, CONDOLENCE_REASONS, specialLeaveDef, specialLeaveOptionLabel, leaveTypeLabel, condolenceLabel } from '../../utils/constants';
 import type { LeaveKind, LeaveRecord, Staff, LeaveType } from '../../types';
 
 type LeaveUnit = 'day' | 'hour';
@@ -225,7 +225,7 @@ export default function Leave() {
                     }
                   }}>
                     <option value="paid">年次有給休暇</option>
-                    {SPECIAL_LEAVE_TYPES.map(t => <option key={t.id} value={t.id}>{t.name}（{t.article}）</option>)}
+                    {SPECIAL_LEAVE_TYPES.map(t => <option key={t.id} value={t.id}>{specialLeaveOptionLabel(t)}</option>)}
                   </Select>
                 </Field>
               )}

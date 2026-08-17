@@ -3,7 +3,7 @@ import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge
 import { getMyLeave, addMyLeaveRequest, computeLeaveBalance, todayStr } from '../../api/data';
 import {
   LEAVE_HOURS_PER_DAY, hoursBetween, currentFiscalYear, fiscalYearLabel,
-  SPECIAL_LEAVE_TYPES, CONDOLENCE_REASONS, specialLeaveDef, specialLeaveUsedDays, leaveTypeLabel, condolenceLabel,
+  SPECIAL_LEAVE_TYPES, CONDOLENCE_REASONS, specialLeaveDef, specialLeaveOptionLabel, specialLeaveUsedDays, leaveTypeLabel, condolenceLabel,
 } from '../../utils/constants';
 import type { LeaveRecord, RequestStatus, LeaveType } from '../../types';
 
@@ -128,7 +128,7 @@ export default function StaffLeaveRequest() {
               <Select value={leaveType} onChange={e => changeType(e.target.value as LeaveType)}>
                 <option value="paid">年次有給休暇</option>
                 {SPECIAL_LEAVE_TYPES.map(t => (
-                  <option key={t.id} value={t.id}>{t.name}（{t.article}）</option>
+                  <option key={t.id} value={t.id}>{specialLeaveOptionLabel(t)}</option>
                 ))}
               </Select>
             </Field>
@@ -171,7 +171,7 @@ export default function StaffLeaveRequest() {
         </p>
         {def && (
           <div className="mt-3 text-xs bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-gray-600">
-            <span className="font-medium text-gray-800">{def.name}（就業規則 {def.article}）</span>
+            <span className="font-medium text-gray-800">{def.article ? def.name + '（就業規則 ' + def.article + '）' : def.name}</span>
             {!def.paid && <span className="ml-2 text-amber-700 font-medium">無給</span>}
             <p className="mt-1">{def.note}</p>
             {leaveType === 'condolence' && condolence && (

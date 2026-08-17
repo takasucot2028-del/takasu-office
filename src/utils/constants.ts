@@ -87,6 +87,10 @@ export const SPECIAL_LEAVE_TYPES: SpecialLeaveDef[] = [
     note: '毎年4月1日に10日分。翌年度への繰越はできません。無給です。事前に承認を受けてください（やむを得ない場合は事後申請可）。診断書の提出を求めることがあります。',
   },
   {
+    id: 'refresh', name: 'リフレッシュ休暇', article: '', unit: 'both', annualDays: 3, paid: true,
+    note: '年3日を限度に取得できます。',
+  },
+  {
     id: 'fertility', name: '不妊治療休暇', article: '第26条', unit: 'both', annualDays: 5, paid: true,
     note: '年5日が限度です。長期の休業を希望する場合は事務局にご相談ください。',
   },
@@ -127,6 +131,10 @@ export const CONDOLENCE_REASONS: CondolenceReason[] = [
 export function leaveTypeLabel(id?: string): string {
   if (!id || id === 'paid') return '年次有給';
   return SPECIAL_LEAVE_TYPES.find(t => t.id === id)?.name ?? id;
+}
+/** 選択肢に出す表示名。根拠条があるものだけ「（第○条）」を付ける */
+export function specialLeaveOptionLabel(t: SpecialLeaveDef): string {
+  return t.article ? `${t.name}（${t.article}）` : t.name;
 }
 /** 特別休暇の定義を得る */
 export function specialLeaveDef(id?: string): SpecialLeaveDef | undefined {
