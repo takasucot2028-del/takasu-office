@@ -101,6 +101,7 @@ export default function StaffList() {
         <p className="text-sm text-gray-500">{filtered.length}名</p>
         <div className="flex gap-2">
           <Button variant="secondary" size="sm" onClick={exportExcel}>Excel出力</Button>
+          <Button variant="secondary" size="sm" onClick={() => navigate('/labor/staff/register/print')}>労働者名簿(PDF)</Button>
           <Button size="sm" onClick={() => navigate('/labor/staff/new')}>新規職員登録</Button>
         </div>
       </div>

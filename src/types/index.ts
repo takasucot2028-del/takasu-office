@@ -3,6 +3,9 @@
 /** 雇用区分 */
 export type EmploymentType = 'fulltime' | 'parttime' | 'instructor' | 'contract';
 
+/** 性別（労働者名簿の記載事項） */
+export type Gender = '' | 'male' | 'female' | 'other';
+
 /** 在職状況 */
 export type StaffStatus = 'active' | 'retired';
 
@@ -17,12 +20,14 @@ export interface Staff {
   lastKana: string;
   firstKana: string;
   birthDate: string;          // YYYY-MM-DD
+  gender: Gender;             // 性別（労働者名簿の記載事項）
   employeeNumber: string;     // 職員番号（従業員ログインのID。未設定は空）
   employmentType: EmploymentType;
   workLocation: WorkLocation | '' | 'both';  // 勤務場所（未設定は空、both=総体・海洋センター両方）
   position: string;           // 役職・担当
   hireDate: string;           // 入職日 YYYY-MM-DD
   retireDate: string;         // 退職日 YYYY-MM-DD（在職中は空）
+  retireReason: string;       // 退職の事由（解雇の場合はその理由。労働者名簿の記載事項）
   status: StaffStatus;
   phone: string;
   email: string;

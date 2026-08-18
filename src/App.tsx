@@ -28,6 +28,8 @@ import StaffExpense from './pages/me/StaffExpense';
 import StaffSettings from './pages/me/StaffSettings';
 import StaffAttendance from './pages/me/StaffAttendance';
 import AttendancePrint from './pages/labor/AttendancePrint';
+import StaffRegisterPrint from './pages/labor/StaffRegisterPrint';
+import WageLedgerPrint from './pages/labor/WageLedgerPrint';
 
 // 管理者専用
 function AdminGuard({ children }: { children: React.ReactNode }) {
@@ -60,6 +62,8 @@ function AppRoutes() {
         <Route path="/labor/shift-patterns" element={<AdminGuard><ShiftPatterns /></AdminGuard>} />
         <Route path="/labor/attendance" element={<AdminGuard><Attendance /></AdminGuard>} />
         <Route path="/labor/attendance/print" element={<AdminGuard><AttendancePrint /></AdminGuard>} />
+        <Route path="/labor/staff/register/print" element={<AdminGuard><StaffRegisterPrint /></AdminGuard>} />
+        <Route path="/labor/staff/wage/print" element={<AdminGuard><WageLedgerPrint /></AdminGuard>} />
         <Route path="/labor/overtime" element={<AdminGuard><Overtime /></AdminGuard>} />
         <Route path="/labor/overtime/print" element={<AdminGuard><OvertimePrint /></AdminGuard>} />
         <Route path="/labor/leave" element={<AdminGuard><Leave /></AdminGuard>} />

@@ -280,6 +280,11 @@ export function listOvertimeByMonth(month: string): OvertimeRecord[] {
   return load<OvertimeRecord>(KEY_OVERTIME).filter(r => r.date.startsWith(month));
 }
 
+export function listAttendanceRange(staffId: string, from: string, to: string): AttendanceRecord[] {
+  return load<AttendanceRecord>(KEY_ATTENDANCE)
+    .filter(r => r.staffId === staffId && r.date >= from && r.date <= to);
+}
+
 export function listOvertimeFiscalYear(fiscalYear: number): OvertimeRecord[] {
   const from = `${fiscalYear}-04-01`, to = `${fiscalYear + 1}-03-31`;
   return load<OvertimeRecord>(KEY_OVERTIME).filter(r => r.date >= from && r.date <= to);
@@ -430,7 +435,7 @@ export function deleteExpense(id: string) {
 
 function seedDemo() {
   const seeded = localStorage.getItem(KEY_SEEDED);
-  if (seeded === '7') return;
+  if (seeded === '8') return;
   if (seeded) {
     // 既存データに不足フィールドを補う（勤務場所・時給・職員番号・月間上限）
     const locDefaults: Record<string, WorkLocation> = { stf001: 'sotai', stf002: 'sotai', stf003: 'kaiyo' };
@@ -442,7 +447,7 @@ function seedDemo() {
       employeeNumber: s.employeeNumber ?? '',
     }));
     save(KEY_STAFF, migrated);
-    localStorage.setItem(KEY_SEEDED, '7');
+    localStorage.setItem(KEY_SEEDED, '8');
     return;
   }
   const now = new Date().toISOString();
@@ -450,7 +455,7 @@ function seedDemo() {
     {
       id: 'stf001', employeeNumber: '1001',
       lastName: '高須', firstName: '太郎', lastKana: 'タカス', firstKana: 'タロウ',
-      birthDate: '1975-04-10',
+      birthDate: '1975-04-10', gender: 'male', retireReason: '',
       employmentType: 'fulltime', workLocation: 'sotai', position: '事務局長',
       hireDate: '2015-04-01', retireDate: '', status: 'active',
       phone: '0166-87-1111', email: 'taro@takasu-sc.jp',
@@ -460,7 +465,7 @@ function seedDemo() {
     {
       id: 'stf002', employeeNumber: '1002',
       lastName: '鈴木', firstName: '花子', lastKana: 'スズキ', firstKana: 'ハナコ',
-      birthDate: '1988-09-22',
+      birthDate: '1988-09-22', gender: 'female', retireReason: '',
       employmentType: 'parttime', workLocation: 'sotai', position: '事務員',
       hireDate: '2020-06-01', retireDate: '', status: 'active',
       phone: '0166-87-2222', email: 'hanako@takasu-sc.jp',
@@ -470,7 +475,7 @@ function seedDemo() {
     {
       id: 'stf003', employeeNumber: '1003',
       lastName: '佐藤', firstName: '健', lastKana: 'サトウ', firstKana: 'ケン',
-      birthDate: '1992-01-15',
+      birthDate: '1992-01-15', gender: 'male', retireReason: '',
       employmentType: 'instructor', workLocation: 'kaiyo', position: '水泳教室 指導員',
       hireDate: '2022-04-01', retireDate: '', status: 'active',
       phone: '090-1234-5678', email: 'ken@example.com',
@@ -494,5 +499,5 @@ function seedDemo() {
   save(KEY_DOCUMENTS, docs);
   // デモの従業員ログイン用パスワード（職員番号1001〜1003、パスワードは全員 1234）
   localStorage.setItem(KEY_STAFF_PW, JSON.stringify({ stf001: '1234', stf002: '1234', stf003: '1234' }));
-  localStorage.setItem(KEY_SEEDED, '7');
+  localStorage.setItem(KEY_SEEDED, '8');
 }

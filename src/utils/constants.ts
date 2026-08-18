@@ -1,4 +1,4 @@
-import type { EmploymentType, StaffStatus, AttendanceDayType, WorkLocation, ShiftPattern, Staff, DocType, ExpenseCategory, ProjectDivision, LeaveType } from '../types';
+import type { EmploymentType, StaffStatus, Gender, AttendanceDayType, WorkLocation, ShiftPattern, Staff, DocType, ExpenseCategory, ProjectDivision, LeaveType } from '../types';
 
 // 事務局デモアカウント
 export const ADMIN_EMAIL = 'admin@takasu-sc.jp';
@@ -9,6 +9,13 @@ export const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
   parttime: 'パート・アルバイト',
   instructor: '指導員',
   contract: '業務委託',
+};
+
+export const GENDER_LABELS: Record<Gender, string> = {
+  '': '未設定',
+  male: '男性',
+  female: '女性',
+  other: 'その他',
 };
 
 export const STAFF_STATUS_LABELS: Record<StaffStatus, string> = {

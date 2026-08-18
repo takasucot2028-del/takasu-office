@@ -2,15 +2,15 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PageContainer, Card, Field, Input, Select, Button, Alert, Modal } from '../../components/UI';
 import { getStaff, upsertStaff, setStaffPassword, genId } from '../../api/data';
-import { EMPLOYMENT_TYPE_LABELS, WORK_LOCATION_LABELS } from '../../utils/constants';
-import type { Staff, EmploymentType, WorkLocation } from '../../types';
+import { EMPLOYMENT_TYPE_LABELS, WORK_LOCATION_LABELS, GENDER_LABELS } from '../../utils/constants';
+import type { Staff, EmploymentType, WorkLocation, Gender } from '../../types';
 
 function emptyStaff(): Staff {
   return {
     id: genId('stf'),
     employeeNumber: '',
     lastName: '', firstName: '', lastKana: '', firstKana: '',
-    birthDate: '',
+    birthDate: '', gender: '', retireReason: '',
     employmentType: 'fulltime', workLocation: '', position: '',
     hireDate: '', retireDate: '', status: 'active',
     phone: '', email: '', address: '', qualifications: '', hourlyWage: 0, monthlyHourLimit: 0,
@@ -30,6 +30,7 @@ export default function StaffDetail() {
   const [error, setError] = useState('');
   const [retireOpen, setRetireOpen] = useState(false);
   const [retireDate, setRetireDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [retireReason, setRetireReason] = useState('');
   const [newPw, setNewPw] = useState('');
   const [pwMsg, setPwMsg] = useState('');
 
@@ -107,7 +108,7 @@ export default function StaffDetail() {
   };
 
   const handleRetire = async () => {
-    const next: Staff = { ...form, status: 'retired', retireDate };
+    const next: Staff = { ...form, status: 'retired', retireDate, retireReason };
     setSaving(true);
     try {
       await upsertStaff(next);
@@ -142,7 +143,10 @@ export default function StaffDetail() {
       {message && <Alert type="success">{message}</Alert>}
       {error && <Alert type="error">{error}</Alert>}
       {form.status === 'retired' && (
-        <Alert type="info">この職員は退職済みです（退職日: {form.retireDate || '未設定'}）</Alert>
+        <Alert type="info">
+          この職員は退職済みです（退職日: {form.retireDate || '未設定'}
+          {form.retireReason ? `・事由: ${form.retireReason}` : ''}）
+        </Alert>
       )}
 
       <form onSubmit={handleSave}>
@@ -163,6 +167,13 @@ export default function StaffDetail() {
             </Field>
             <Field label="生年月日">
               <Input type="date" value={form.birthDate} onChange={e => set('birthDate', e.target.value)} />
+            </Field>
+            <Field label="性別">
+              <Select value={form.gender} onChange={e => set('gender', e.target.value as Gender)}>
+                {Object.entries(GENDER_LABELS).map(([v, label]) => (
+                  <option key={v} value={v}>{label}</option>
+                ))}
+              </Select>
             </Field>
           </div>
         </Card>
@@ -249,6 +260,16 @@ export default function StaffDetail() {
             <Button type="button" variant="secondary" onClick={() => navigate('/labor/staff')}>
               職員名簿へ戻る
             </Button>
+            {!isNew && (
+              <>
+                <Button type="button" variant="secondary" onClick={() => navigate(`/labor/staff/register/print?staffId=${form.id}`)}>
+                  労働者名簿(PDF)
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => navigate(`/labor/staff/wage/print?staffId=${form.id}`)}>
+                  賃金台帳(PDF)
+                </Button>
+              </>
+            )}
           </div>
           {!isNew && form.status === 'active' && (
             <Button type="button" variant="danger" onClick={() => setRetireOpen(true)}>
@@ -294,6 +315,10 @@ export default function StaffDetail() {
         </p>
         <Field label="退職日" required>
           <Input type="date" value={retireDate} onChange={e => setRetireDate(e.target.value)} />
+        </Field>
+        <Field label="退職の事由">
+          <Input value={retireReason} onChange={e => setRetireReason(e.target.value)}
+            placeholder="例: 自己都合退職、契約期間満了（解雇の場合はその理由）" />
         </Field>
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={() => setRetireOpen(false)}>キャンセル</Button>

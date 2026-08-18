@@ -27,7 +27,7 @@ var SHEETS = {
     ['phone', '電話番号'], ['email', 'メールアドレス'], ['address', '住所'],
     ['qualifications', '保有資格'], ['note', '備考'], ['createdAt', '作成日時'], ['updatedAt', '更新日時'],
     ['hourlyWage', '時給'], ['employeeNumber', '職員番号'], ['passwordHash', 'パスワードハッシュ'],
-    ['monthlyHourLimit', '月間上限時間'], ['childNursingChildren', '看護休暇対象の子'], ['weeklyWorkDays', '週所定労働日数'],
+    ['gender', '性別'], ['retireReason', '退職事由'], ['monthlyHourLimit', '月間上限時間'], ['childNursingChildren', '看護休暇対象の子'], ['weeklyWorkDays', '週所定労働日数'],
   ] },
   overtime: { name: '時間外', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['kind', '種別'],
@@ -343,6 +343,9 @@ function dispatch(action, body) {
       case 'upsertStaff':
         result = handleUpsertStaff(body.staff);
         break;
+      case 'getAttendanceRange':
+        result = handleGetAttendanceRange(body.staffId, body.from, body.to);
+        break;
       case 'getAttendance':
         result = handleGetAttendance(body.staffId, body.month);
         break;
@@ -655,6 +658,17 @@ function handleSetStaffPassword(staffId, password) {
 }
 
 // --- ハンドラー：勤怠 ---
+/** 期間指定の勤怠（賃金台帳など、複数月をまとめて出すときに使う） */
+function handleGetAttendanceRange(staffId, from, to) {
+  const sheet = getSheet('attendance');
+  const records = sheetToObjects(sheet, 'attendance').filter(function (r) {
+    const d = String(r.date);
+    return String(r.staffId) === String(staffId) && d >= from && d <= to;
+  });
+  records.forEach(function (r) { r.breakMinutes = Number(r.breakMinutes) || 0; });
+  return { success: true, data: records };
+}
+
 function handleGetAttendance(staffId, month) {
   const sheet = getSheet('attendance');
   const records = sheetToObjects(sheet, 'attendance').filter(function (r) {
