@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageContainer, Card, Badge } from '../components/UI';
-import { getDashboardData, getDashboardCached, todayStr } from '../api/data';
+import { getDashboardData, getDashboardCached, listAllLeave, todayStr } from '../api/data';
 import type { DayAbsences, PendingSummary } from '../api/data';
 import { WORK_LOCATION_LABELS, WEEKDAY_LABELS } from '../utils/constants';
-import type { WorkLocation, Staff, ShiftPattern, ConfirmedShift } from '../types';
+import { currentObligation } from '../utils/annualLeave';
+import type { WorkLocation, Staff, ShiftPattern, ConfirmedShift, LeaveRecord } from '../types';
 
 // 未承認の種別ごとの表示設定
 const PENDING_LABEL = { overtime: '時間外', leave: '休暇', expense: '経費' } as const;
@@ -18,6 +19,7 @@ export default function Dashboard() {
   const [absences, setAbsences] = useState<DayAbsences>({ leave: [], comp: [] });
   const [pending, setPending] = useState<PendingSummary>({ expenses: 0, overtime: 0, leave: 0 });
   const [loading, setLoading] = useState(true);
+  const [leaveAlerts, setLeaveAlerts] = useState<{ name: string; remaining: number; deadline: string; overdue: boolean }[] | null>(null);
 
   const today = todayStr();
   const weekday = WEEKDAY_LABELS[new Date(`${today}T00:00:00`).getDay()];
@@ -38,12 +40,56 @@ export default function Dashboard() {
     return () => { alive = false; };
   }, [today]);
 
+  // 年5日取得義務の未達者。主要表示の妨げにならないよう、描画後に裏で取得する
+  useEffect(() => {
+    if (!staff.length) return;
+    let alive = true;
+    (async () => {
+      let all: LeaveRecord[] = [];
+      try { all = await listAllLeave(); } catch { return; }
+      if (!alive) return;
+      const rows = staff
+        .filter(s => s.status === 'active')
+        .map(s => {
+          const o = currentObligation(all.filter(r => r.staffId === s.id), today);
+          if (!o || o.achieved) return null;
+          return { name: `${s.lastName} ${s.firstName}`, remaining: o.remaining, deadline: o.deadline, overdue: o.overdue };
+        })
+        .filter((x): x is { name: string; remaining: number; deadline: string; overdue: boolean } => x !== null)
+        .sort((a, b) => a.deadline.localeCompare(b.deadline));
+      setLeaveAlerts(rows);
+    })();
+    return () => { alive = false; };
+  }, [staff, today]);
+
   const activeStaff = staff.filter(s => s.status === 'active');
   const staffMap = new Map(staff.map(s => [s.id, s]));
   const patternMap = new Map(patterns.map(p => [p.id, p]));
 
   return (
     <PageContainer title="事務管理ダッシュボード">
+      {/* 年5日取得義務の未達（労基法第39条第7項） */}
+      {leaveAlerts && leaveAlerts.length > 0 && (
+        <Card className="mb-4 border-red-300 bg-red-50">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-bold text-gray-800">年5日の年休取得が未達の職員</h2>
+            <Badge color="red">{leaveAlerts.length}名</Badge>
+          </div>
+          <div className="space-y-1 text-sm">
+            {leaveAlerts.map((a, i) => (
+              <div key={i} className="flex items-center gap-3 flex-wrap">
+                <span className="font-medium">{a.name}</span>
+                <span>あと <span className="font-bold">{a.remaining}日</span></span>
+                <span className={a.overdue ? 'text-red-600 font-medium' : 'text-gray-500'}>
+                  期限 {a.deadline}{a.overdue ? '（超過）' : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+          <Link to="/labor/leave" className="text-xs text-emerald-700 hover:underline mt-2 inline-block">有給休暇管理を開く →</Link>
+        </Card>
+      )}
+
       {/* 未承認の申請（要対応） */}
       {!loading && (pending.expenses + pending.overtime + pending.leave) > 0 && (
         <Card className="mb-4 border-amber-300 bg-amber-50">

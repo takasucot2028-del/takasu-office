@@ -31,6 +31,7 @@ export interface Staff {
   hourlyWage: number;         // 時給（時間外手当の計算に使用。0=未設定）
   monthlyHourLimit: number;   // 月の労働時間の上限（扶養等の制限。0=制限なし）
   childNursingChildren: number; // 子の看護等休暇（第26条）の対象となる子の人数。0=未設定（1人=年5日/2人以上=年10日）
+  weeklyWorkDays: number;     // 週の所定労働日数。年次有給の比例付与の判定に使う（0=未設定＝通常付与で計算）
   hasPassword?: boolean;      // 従業員ログイン用パスワードが設定済みか（サーバー算出・読取専用）
   note: string;
   createdAt: string;

@@ -117,8 +117,10 @@ export function computeLeaveBalance(records: LeaveRecord[]): LeaveBalance {
   const toHours = (r: LeaveRecord) => (r.days || 0) * hpd + (r.hours || 0);
   const r1 = (n: number) => Math.round(n * 10) / 10;
   const approved = (r: LeaveRecord) => !r.status || r.status === 'approved'; // 旧データ（空）は承認扱い
-  const grantedHours = records.filter(r => r.kind === 'grant' && approved(r)).reduce((s, r) => s + toHours(r), 0);
-  const usedHours = records.filter(r => r.kind === 'use' && approved(r)).reduce((s, r) => s + toHours(r), 0);
+  // 年次有給の残なので、特別休暇（慶弔・病気など）の記録は数えない
+  const annual = (r: LeaveRecord) => (r.leaveType || 'paid') === 'paid';
+  const grantedHours = records.filter(r => r.kind === 'grant' && approved(r) && annual(r)).reduce((s, r) => s + toHours(r), 0);
+  const usedHours = records.filter(r => r.kind === 'use' && approved(r) && annual(r)).reduce((s, r) => s + toHours(r), 0);
   const balanceHours = grantedHours - usedHours;
   return {
     grantedHours: r1(grantedHours), usedHours: r1(usedHours), balanceHours: r1(balanceHours),
@@ -532,6 +534,12 @@ export async function listAbsencesByDate(date: string): Promise<DayAbsences> {
 }
 
 // === 有給休暇 ===
+/** 全職員の休暇記録。年5日取得義務の一覧に使う */
+export async function listAllLeave(): Promise<LeaveRecord[]> {
+  if (!USE_GAS) return local.listAllLeave();
+  return unwrap(await gas.getAllLeave(token()), []);
+}
+
 export async function listLeave(staffId: string): Promise<LeaveRecord[]> {
   if (!USE_GAS) return local.listLeave(staffId);
   return unwrap(await gas.getLeave(staffId, token()), []);

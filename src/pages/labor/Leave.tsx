@@ -2,7 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import { listStaff, listLeave, addLeave, deleteLeave, setLeaveStatus, computeLeaveBalance, genId, todayStr } from '../../api/data';
-import { EMPLOYMENT_TYPE_LABELS, standardLeaveGrant, LEAVE_HOURS_PER_DAY , canUseSpecialLeave, SPECIAL_LEAVE_TYPES, specialLeaveDef, specialLeaveOptionLabel, specialLeaveAnnualDays, specialLeaveUsedDays, specialLeavePaidRemain, paymentLabel, subReasonsFor, subReasonLabel, leaveTypeLabel, currentFiscalYear } from '../../utils/constants';
+import { EMPLOYMENT_TYPE_LABELS, LEAVE_HOURS_PER_DAY , canUseSpecialLeave, SPECIAL_LEAVE_TYPES, specialLeaveDef, specialLeaveOptionLabel, specialLeaveAnnualDays, specialLeaveUsedDays, specialLeavePaidRemain, paymentLabel, subReasonsFor, subReasonLabel, leaveTypeLabel, currentFiscalYear } from '../../utils/constants';
+import {
+  statutoryGrantSchedule, computeLeaveLedger, currentObligation, isProportional,
+  OBLIGATION_REQUIRED_DAYS, LEAVE_EXPIRY_MONTHS,
+} from '../../utils/annualLeave';
 import type { LeaveKind, LeaveRecord, Staff, LeaveType } from '../../types';
 
 type LeaveUnit = 'day' | 'hour';
@@ -41,6 +45,18 @@ export default function Leave() {
   const [saving, setSaving] = useState(false);
 
   const summary = computeLeaveBalance(records);
+  const today = todayStr();
+  // 2年の時効を考慮した残（法定どおり古い付与から消化する）
+  const ledger = useMemo(() => computeLeaveLedger(records, today), [records, today]);
+  // 法定付与のスケジュールと、まだ登録していない付与
+  const schedule = useMemo(
+    () => (selectedStaff ? statutoryGrantSchedule(selectedStaff, today, records) : []),
+    [selectedStaff, today, records]
+  );
+  const missingGrants = schedule.filter(g => !g.registered);
+  // 年5日取得義務の状況
+  const obligation = useMemo(() => currentObligation(records, today), [records, today]);
+  const d1 = (h: number) => Math.round((h / LEAVE_HOURS_PER_DAY) * 10) / 10;
 
   // 職員一覧を初回に読み込む
   useEffect(() => {
@@ -125,19 +141,23 @@ export default function Leave() {
     }
   };
 
-  const handleStandardGrant = async () => {
-    if (!selectedStaff) return;
+  // 未登録の法定付与をまとめて登録する
+  const handleStatutoryGrant = async () => {
+    if (!selectedStaff || missingGrants.length === 0) return;
     setError('');
-    const g = standardLeaveGrant(selectedStaff, todayStr());
-    if (!g.eligible) { setError(g.reason || '標準付与できません'); return; }
-    const typeLabel = EMPLOYMENT_TYPE_LABELS[selectedStaff.employmentType];
-    if (!confirm(`${selectedStaff.lastName} ${selectedStaff.firstName} さんに 標準付与 ${g.days}日 を付与します。よろしいですか？`)) return;
+    const lines = missingGrants.map(g => `${g.date}　勤続${g.serviceLabel}　${g.days}日`).join('\n');
+    if (!confirm(`${selectedStaff.lastName} ${selectedStaff.firstName} さんに次の法定付与を登録します。\n\n${lines}\n\nよろしいですか？`)) return;
     setSaving(true);
     try {
-      await addLeave({ id: genId('lv'), staffId, kind: 'grant', date: todayStr(), days: g.days, hours: 0, status: 'approved', note: `標準付与（${typeLabel}）` });
+      for (const g of missingGrants) {
+        await addLeave({
+          id: genId('lv'), staffId, kind: 'grant', date: g.date, days: g.days, hours: 0,
+          status: 'approved', leaveType: 'paid', note: `法定付与（勤続${g.serviceLabel}）`,
+        });
+      }
       setVersion(v => v + 1);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '標準付与に失敗しました');
+      setError(err instanceof Error ? err.message : '法定付与の登録に失敗しました');
     } finally {
       setSaving(false);
     }
@@ -184,11 +204,44 @@ export default function Leave() {
       {staffId && (
         <>
           {/* 残数サマリー（1日=7.5時間で換算） */}
-          <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
             <SummaryTile label="付与合計" value={`${summary.grantedDays}日`} sub={`${summary.grantedHours}h`} />
             <SummaryTile label="取得合計" value={`${summary.usedDays}日`} sub={`${summary.usedHours}h`} />
-            <SummaryTile label="残（1日=7.5h）" value={`${summary.balanceDays}日`} sub={`${summary.balanceHours}h`} highlight />
+            <SummaryTile label={`時効消滅（${LEAVE_EXPIRY_MONTHS / 12}年）`} value={`${d1(ledger.expiredHours)}日`} sub={`${ledger.expiredHours}h`} />
+            <SummaryTile label="有効な残（1日=7.5h）" value={`${d1(ledger.balanceHours)}日`} sub={`${ledger.balanceHours}h`} highlight />
           </div>
+          {ledger.overusedHours > 0 && (
+            <Alert type="error">
+              付与を {d1(ledger.overusedHours)}日（{ledger.overusedHours}h）超えて取得している記録があります。付与記録の登録漏れがないか確認してください。
+            </Alert>
+          )}
+
+          {/* 年5日取得義務（労基法第39条第7項） */}
+          {obligation && (
+            <Card className={`mb-4 ${obligation.overdue ? 'border-red-300' : obligation.achieved ? '' : 'border-yellow-300'}`}>
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                  <h2 className="font-bold text-gray-800">年5日取得義務</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    年10日以上付与された職員は、基準日から1年以内に5日取得させる必要があります（労基法第39条第7項）
+                  </p>
+                  <p className="text-sm mt-1">
+                    基準日 {obligation.baseDate} 〜 期限 <span className="font-medium">{obligation.deadline}</span>
+                    <span className="mx-2 text-gray-300">|</span>
+                    取得 <span className="font-bold">{obligation.taken}日</span> / {OBLIGATION_REQUIRED_DAYS}日
+                  </p>
+                </div>
+                {obligation.achieved ? (
+                  <Badge color="green">達成</Badge>
+                ) : obligation.overdue ? (
+                  <Badge color="red">期限超過・あと{obligation.remaining}日</Badge>
+                ) : (
+                  <Badge color="yellow">あと{obligation.remaining}日</Badge>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 mt-2">時間単位で取得した年休は、この5日には算入できません。</p>
+            </Card>
+          )}
 
           {/* 承認待ちの休暇申請 */}
           {pending.length > 0 && (
@@ -211,27 +264,71 @@ export default function Leave() {
             </Card>
           )}
 
-          {/* 標準付与 */}
+          {/* 法定付与（労基法第39条） */}
           {selectedStaff && (
-            <Card className="mb-4">
-              <div className="flex items-center justify-between flex-wrap gap-3">
+            <Card className={`mb-4 ${missingGrants.length > 0 ? 'border-yellow-300' : ''}`}>
+              <div className="flex items-start justify-between flex-wrap gap-3">
                 <div>
-                  <h2 className="font-bold text-gray-800">標準付与</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">常勤職員＝10日／パート職員＝5日（雇用開始から6か月経過後）</p>
+                  <h2 className="font-bold text-gray-800">法定付与</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    勤続6か月で最初の付与、以降1年ごと。
+                    {isProportional(selectedStaff)
+                      ? `週${selectedStaff.weeklyWorkDays}日勤務のため比例付与で計算しています。`
+                      : '通常付与（10日→11日→12日→14日→16日→18日→20日）で計算しています。'}
+                  </p>
                   <p className="text-xs text-gray-500 mt-1">
                     {EMPLOYMENT_TYPE_LABELS[selectedStaff.employmentType]}・入職日 {selectedStaff.hireDate || '未設定'}
-                    {(() => {
-                      const g = standardLeaveGrant(selectedStaff, todayStr());
-                      return g.eligible
-                        ? <span className="text-emerald-700"> → {g.days}日 付与可能</span>
-                        : <span className="text-gray-400"> → {g.reason}</span>;
-                    })()}
+                    {selectedStaff.employmentType !== 'fulltime' && !selectedStaff.weeklyWorkDays && (
+                      <span className="text-amber-700">　※週の所定労働日数が未設定のため通常付与で計算しています（職員名簿で設定してください）</span>
+                    )}
                   </p>
                 </div>
-                <Button variant="secondary" onClick={handleStandardGrant} disabled={saving || !standardLeaveGrant(selectedStaff, todayStr()).eligible}>
-                  標準付与する
+                <Button variant="secondary" onClick={handleStatutoryGrant} disabled={saving || missingGrants.length === 0}>
+                  {missingGrants.length > 0 ? `未登録の付与 ${missingGrants.length}件を登録` : '未登録の付与はありません'}
                 </Button>
               </div>
+              {!selectedStaff.hireDate ? (
+                <p className="text-sm text-gray-400 mt-3">入職日が未設定のため付与日を計算できません。</p>
+              ) : schedule.length === 0 ? (
+                <p className="text-sm text-gray-400 mt-3">まだ最初の付与日（勤続6か月）に達していません。</p>
+              ) : (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {schedule.map(g => (
+                    <span key={g.date}
+                      className={`text-xs px-2 py-1 rounded border ${g.registered
+                        ? 'bg-gray-50 border-gray-200 text-gray-500'
+                        : 'bg-yellow-50 border-yellow-300 text-yellow-800 font-medium'}`}>
+                      {g.date}　勤続{g.serviceLabel}　{g.days}日{g.registered ? '' : '（未登録）'}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {ledger.lots.length > 0 && (() => {
+                // 有効な付与だけを並べ、時効を過ぎたものは件数だけ示す
+                const live = ledger.lots.filter(l => l.expiry > today);
+                const gone = ledger.lots.filter(l => l.expiry <= today && l.expiredHours > 0);
+                return (
+                  <div className="mt-3 border-t border-gray-100 pt-3">
+                    <p className="text-xs font-medium text-gray-700 mb-1">有効な付与の残</p>
+                    {live.length === 0 ? (
+                      <p className="text-xs text-gray-400">有効な付与はありません。</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {live.map(l => (
+                          <span key={l.date} className="text-xs px-2 py-1 rounded border bg-emerald-50 border-emerald-200 text-emerald-800">
+                            {l.date}付与　残{d1(l.remainHours)}日　<span className="text-emerald-600">{l.expiry}まで</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {gone.length > 0 && (
+                      <p className="text-xs text-gray-400 mt-2">
+                        時効で消滅した付与 {gone.length}件（合計 {d1(gone.reduce((s, l) => s + l.expiredHours, 0))}日）
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </Card>
           )}
 

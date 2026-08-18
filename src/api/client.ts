@@ -237,6 +237,9 @@ export const getAbsencesByDate = (date: string, token: string) =>
   request<{ leave: LeaveRecord[]; comp: CompLeaveUse[] }>('getAbsencesByDate', { date, token });
 
 // === 有給休暇 ===
+export const getAllLeave = (token: string) =>
+  request<LeaveRecord[]>('getAllLeave', { token });
+
 export const getLeave = (staffId: string, token: string) =>
   request<LeaveRecord[]>('getLeave', { staffId, token });
 

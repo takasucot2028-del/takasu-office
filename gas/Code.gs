@@ -27,7 +27,7 @@ var SHEETS = {
     ['phone', '電話番号'], ['email', 'メールアドレス'], ['address', '住所'],
     ['qualifications', '保有資格'], ['note', '備考'], ['createdAt', '作成日時'], ['updatedAt', '更新日時'],
     ['hourlyWage', '時給'], ['employeeNumber', '職員番号'], ['passwordHash', 'パスワードハッシュ'],
-    ['monthlyHourLimit', '月間上限時間'], ['childNursingChildren', '看護休暇対象の子'],
+    ['monthlyHourLimit', '月間上限時間'], ['childNursingChildren', '看護休暇対象の子'], ['weeklyWorkDays', '週所定労働日数'],
   ] },
   overtime: { name: '時間外', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['kind', '種別'],
@@ -397,6 +397,9 @@ function dispatch(action, body) {
       case 'getLeave':
         result = handleGetLeave(body.staffId);
         break;
+      case 'getAllLeave':
+        result = handleGetAllLeave();
+        break;
       case 'addLeave':
         result = handleAddLeave(body.record);
         break;
@@ -605,6 +608,7 @@ function handleGetStaff() {
     s.hourlyWage = Number(s.hourlyWage) || 0;
     s.monthlyHourLimit = Number(s.monthlyHourLimit) || 0;
     s.childNursingChildren = Number(s.childNursingChildren) || 0;
+    s.weeklyWorkDays = Number(s.weeklyWorkDays) || 0;
     s.hasPassword = !!(s.passwordHash && String(s.passwordHash).length);
     delete s.passwordHash; // ハッシュは返さない
   });
@@ -948,6 +952,14 @@ function handleGetTodayWork(date) {
 }
 
 // --- ハンドラー：有給休暇 ---
+/** 全職員の休暇記録（年5日取得義務の判定に使う） */
+function handleGetAllLeave() {
+  const sheet = getSheet('leave');
+  const records = dedupeById_(sheetToObjects(sheet, 'leave'));
+  records.forEach(function (r) { r.days = Number(r.days) || 0; r.hours = Number(r.hours) || 0; r.status = String(r.status || 'approved'); });
+  return { success: true, data: records };
+}
+
 function handleGetLeave(staffId) {
   const sheet = getSheet('leave');
   const records = dedupeById_(sheetToObjects(sheet, 'leave').filter(function (r) { return String(r.staffId) === String(staffId); }));
@@ -1140,6 +1152,7 @@ function stripStaff_(s) {
   out.hourlyWage = Number(out.hourlyWage) || 0;
   out.monthlyHourLimit = Number(out.monthlyHourLimit) || 0;
   out.childNursingChildren = Number(out.childNursingChildren) || 0;
+  out.weeklyWorkDays = Number(out.weeklyWorkDays) || 0;
   return out;
 }
 

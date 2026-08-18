@@ -7,6 +7,7 @@ import {
   subReasonsFor, subReasonLabel, leaveTypeLabel, canUseSpecialLeave, EMPLOYMENT_TYPE_LABELS,
   specialLeavePaidRemain, paymentLabel,
 } from '../../utils/constants';
+import { computeLeaveLedger, currentObligation, OBLIGATION_REQUIRED_DAYS } from '../../utils/annualLeave';
 import type { LeaveRecord, RequestStatus, LeaveType, Staff } from '../../types';
 
 type LeaveUnit = 'day' | 'hour';
@@ -37,6 +38,14 @@ export default function StaffLeaveRequest() {
 
   const summary = useMemo(() => computeLeaveBalance(records), [records]);
   const pending = records.filter(r => r.status === 'requested');
+  // 2年の時効を考慮した有効残（古い付与から消化）
+  const ledger = useMemo(() => computeLeaveLedger(records, todayStr()), [records]);
+  const balanceHours = ledger.balanceHours;
+  const balanceDays = Math.round((balanceHours / LEAVE_HOURS_PER_DAY) * 10) / 10;
+  // 年5日取得義務の状況
+  const obligation = useMemo(() => currentObligation(records, todayStr()), [records]);
+  // 時効が近い付与（90日以内）
+  const soonExpiring = ledger.lots.filter(l => l.remainHours > 0 && l.expiry <= addDaysStr(todayStr(), 90));
 
   const fy = currentFiscalYear();
   const def = specialLeaveDef(leaveType);              // 特別休暇の定義（年次有給のときは undefined）
@@ -101,8 +110,8 @@ export default function StaffLeaveRequest() {
     if (isPaid) {
       // 年次有給は残数を超えられない
       const useHours = unit === 'hour' ? v : v * LEAVE_HOURS_PER_DAY;
-      if (useHours > summary.balanceHours) {
-        setError(`残（${summary.balanceDays}日 / ${summary.balanceHours}h）を超えています`);
+      if (useHours > balanceHours) {
+        setError(`有効な残（${balanceDays}日 / ${balanceHours}h）を超えています`);
         return;
       }
     } else if (def && annualDays > 0) {
@@ -141,7 +150,7 @@ export default function StaffLeaveRequest() {
         <div className="grid grid-cols-3 gap-3 mb-4">
           <Tile label="付与" value={`${summary.grantedDays}日`} sub={`${summary.grantedHours}h`} />
           <Tile label="取得(承認済)" value={`${summary.usedDays}日`} sub={`${summary.usedHours}h`} />
-          <Tile label="残（1日=7.5h）" value={`${summary.balanceDays}日`} sub={`${summary.balanceHours}h`} highlight />
+          <Tile label="有効な残（1日=7.5h）" value={`${balanceDays}日`} sub={`${balanceHours}h`} highlight />
         </div>
       ) : def && annualDays > 0 ? (
         <div className="grid grid-cols-3 gap-3 mb-4">
@@ -156,6 +165,21 @@ export default function StaffLeaveRequest() {
           <Tile label="有給で取得できる残" value={`${paidRemain}日`} highlight />
         </div>
       ) : null}
+
+      {isPaid && obligation && !obligation.achieved && (
+        <Alert type={obligation.overdue ? 'error' : 'info'}>
+          年次有給休暇は年{OBLIGATION_REQUIRED_DAYS}日の取得が必要です（労基法第39条第7項）。
+          {obligation.deadline} までに <span className="font-bold">あと{obligation.remaining}日</span> 取得してください
+          {obligation.overdue && '（期限を過ぎています）'}。
+        </Alert>
+      )}
+      {isPaid && soonExpiring.length > 0 && (
+        <Alert type="info">
+          まもなく期限を迎える年休があります：
+          {soonExpiring.map(l => ` ${l.expiry} までに ${Math.round((l.remainHours / LEAVE_HOURS_PER_DAY) * 10) / 10}日`).join('、')}
+          （付与から2年で消滅します）
+        </Alert>
+      )}
 
       <Card className="mb-4">
         <h2 className="font-bold text-gray-800 mb-3">申請する</h2>
@@ -271,6 +295,13 @@ export default function StaffLeaveRequest() {
       </Card>
     </PageContainer>
   );
+}
+
+/** YYYY-MM-DD に日数を足す */
+function addDaysStr(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, d + days);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 }
 
 function Tile({ label, value, sub, highlight }: { label: string; value: string; sub?: string; highlight?: boolean }) {
