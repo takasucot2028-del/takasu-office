@@ -27,7 +27,7 @@ var SHEETS = {
     ['phone', '電話番号'], ['email', 'メールアドレス'], ['address', '住所'],
     ['qualifications', '保有資格'], ['note', '備考'], ['createdAt', '作成日時'], ['updatedAt', '更新日時'],
     ['hourlyWage', '時給'], ['employeeNumber', '職員番号'], ['passwordHash', 'パスワードハッシュ'],
-    ['gender', '性別'], ['retireReason', '退職事由'], ['monthlyHourLimit', '月間上限時間'], ['childNursingChildren', '看護休暇対象の子'], ['weeklyWorkDays', '週所定労働日数'],
+    ['gender', '性別'], ['retireReason', '退職事由'], ['monthlyHourLimit', '月間上限時間'], ['childNursingChildren', '看護休暇対象の子'], ['weeklyWorkDays', '週所定労働日数'], ['defaultBreakStart', '既定休憩開始'], ['defaultBreakEnd', '既定休憩終了'],
   ] },
   overtime: { name: '時間外', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['kind', '種別'],
@@ -1344,6 +1344,32 @@ function handleGetMyAttendance(session, month) {
 }
 
 // 打刻（出勤=in / 退勤=out）。サーバー時刻で当日レコードを更新。
+/** 'HH:MM' を分に変換する。形式が違えば null */
+function toMinutes_(hm) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hm || ''));
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+/**
+ * 退勤打刻のときに、職員の既定休憩を勤怠へ自動入力する。
+ * - 既に休憩が入っている日は上書きしない（手入力を優先する）
+ * - 出勤〜退勤の中に休憩が収まらない日（早退など）は入れない
+ */
+function applyDefaultBreak_(rec, staff, punchType) {
+  if (punchType !== 'out') return;
+  if (rec.breakStart || rec.breakEnd || Number(rec.breakMinutes) > 0) return;
+  const bs = toMinutes_(staff.defaultBreakStart);
+  const be = toMinutes_(staff.defaultBreakEnd);
+  const ws = toMinutes_(rec.startTime);
+  const we = toMinutes_(rec.endTime);
+  if (bs === null || be === null || ws === null || we === null) return;
+  if (be <= bs) return;
+  if (bs < ws || be > we) return; // 勤務時間内に収まらない
+  rec.breakStart = String(staff.defaultBreakStart);
+  rec.breakEnd = String(staff.defaultBreakEnd);
+  rec.breakMinutes = be - bs;
+}
+
 function handlePunch(session, punchType) {
   const staff = staffOf_(session);
   const tz = Session.getScriptTimeZone();
@@ -1376,6 +1402,7 @@ function handlePunch(session, punchType) {
     breakStart: firstOf('breakStart'), breakEnd: firstOf('breakEnd'),
   };
   if (punchType === 'in') rec.startTime = now; else rec.endTime = now;
+  applyDefaultBreak_(rec, staff, punchType);
 
   const target = rows.length ? rows[0] : sheet.getLastRow() + 1;
   sheet.getRange(target, 1, 1, ncol).setNumberFormat('@'); // テキスト書式で保存（時刻の自動変換を防ぐ）

@@ -263,6 +263,26 @@ export function staffChangePasswordLocal(staffId: string, oldPw: string, newPw: 
 }
 
 // 打刻（出勤=in / 退勤=out）
+/**
+ * 退勤打刻のときに、職員の既定休憩を勤怠へ自動入力する。
+ * 既に休憩が入っている日は上書きせず、勤務時間内に収まらない場合も入れない。
+ */
+function applyDefaultBreak(rec: AttendanceRecord, staff: Staff | undefined, type: 'in' | 'out') {
+  if (type !== 'out' || !staff) return;
+  if (rec.breakStart || rec.breakEnd || (rec.breakMinutes || 0) > 0) return;
+  const min = (hm?: string) => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(hm || '');
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  };
+  const bs = min(staff.defaultBreakStart), be = min(staff.defaultBreakEnd);
+  const ws = min(rec.startTime), we = min(rec.endTime);
+  if (bs === null || be === null || ws === null || we === null) return;
+  if (be <= bs || bs < ws || be > we) return;
+  rec.breakStart = staff.defaultBreakStart;
+  rec.breakEnd = staff.defaultBreakEnd;
+  rec.breakMinutes = be - bs;
+}
+
 export function punchLocal(staffId: string, type: 'in' | 'out'): { date: string; time: string; punchType: 'in' | 'out' } {
   const date = todayStr();
   const d = new Date();
@@ -276,6 +296,7 @@ export function punchLocal(staffId: string, type: 'in' | 'out'): { date: string;
     if (type === 'in') rec.startTime = time; else rec.endTime = time;
     rec.dayType = 'work';
   }
+  applyDefaultBreak(rec, load<Staff>(KEY_STAFF).find(s => s.id === staffId), type);
   save(KEY_ATTENDANCE, all);
   return { date, time, punchType: type };
 }
@@ -482,7 +503,7 @@ export function deleteExpense(id: string) {
 
 function seedDemo() {
   const seeded = localStorage.getItem(KEY_SEEDED);
-  if (seeded === '8') return;
+  if (seeded === '9') return;
   if (seeded) {
     // 既存データに不足フィールドを補う（勤務場所・時給・職員番号・月間上限）
     const locDefaults: Record<string, WorkLocation> = { stf001: 'sotai', stf002: 'sotai', stf003: 'kaiyo' };
@@ -494,7 +515,7 @@ function seedDemo() {
       employeeNumber: s.employeeNumber ?? '',
     }));
     save(KEY_STAFF, migrated);
-    localStorage.setItem(KEY_SEEDED, '8');
+    localStorage.setItem(KEY_SEEDED, '9');
     return;
   }
   const now = new Date().toISOString();
@@ -507,7 +528,7 @@ function seedDemo() {
       hireDate: '2015-04-01', retireDate: '', status: 'active',
       phone: '0166-87-1111', email: 'taro@takasu-sc.jp',
       address: '北海道上川郡鷹栖町南1条2丁目', qualifications: 'スポーツ指導員',
-      hourlyWage: 1500, monthlyHourLimit: 0, childNursingChildren: 2, weeklyWorkDays: 5, note: '', createdAt: now, updatedAt: now,
+      hourlyWage: 1500, monthlyHourLimit: 0, childNursingChildren: 2, weeklyWorkDays: 5, defaultBreakStart: '12:00', defaultBreakEnd: '13:00', note: '', createdAt: now, updatedAt: now,
     },
     {
       id: 'stf002', employeeNumber: '1002',
@@ -517,7 +538,7 @@ function seedDemo() {
       hireDate: '2020-06-01', retireDate: '', status: 'active',
       phone: '0166-87-2222', email: 'hanako@takasu-sc.jp',
       address: '北海道上川郡鷹栖町北3条4丁目', qualifications: '簿記2級',
-      hourlyWage: 1100, monthlyHourLimit: 88, childNursingChildren: 0, weeklyWorkDays: 4, note: '週4日勤務', createdAt: now, updatedAt: now,
+      hourlyWage: 1100, monthlyHourLimit: 88, childNursingChildren: 0, weeklyWorkDays: 4, defaultBreakStart: '', defaultBreakEnd: '', note: '週4日勤務', createdAt: now, updatedAt: now,
     },
     {
       id: 'stf003', employeeNumber: '1003',
@@ -527,7 +548,7 @@ function seedDemo() {
       hireDate: '2022-04-01', retireDate: '', status: 'active',
       phone: '090-1234-5678', email: 'ken@example.com',
       address: '北海道旭川市', qualifications: '水泳指導員資格',
-      hourlyWage: 1200, monthlyHourLimit: 0, childNursingChildren: 0, weeklyWorkDays: 2, note: '', createdAt: now, updatedAt: now,
+      hourlyWage: 1200, monthlyHourLimit: 0, childNursingChildren: 0, weeklyWorkDays: 2, defaultBreakStart: '', defaultBreakEnd: '', note: '', createdAt: now, updatedAt: now,
     },
   ];
   save(KEY_STAFF, demo);
@@ -546,5 +567,5 @@ function seedDemo() {
   save(KEY_DOCUMENTS, docs);
   // デモの従業員ログイン用パスワード（職員番号1001〜1003、パスワードは全員 1234）
   localStorage.setItem(KEY_STAFF_PW, JSON.stringify({ stf001: '1234', stf002: '1234', stf003: '1234' }));
-  localStorage.setItem(KEY_SEEDED, '8');
+  localStorage.setItem(KEY_SEEDED, '9');
 }

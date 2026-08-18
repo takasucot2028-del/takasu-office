@@ -14,7 +14,7 @@ function emptyStaff(): Staff {
     employmentType: 'fulltime', workLocation: '', position: '',
     hireDate: '', retireDate: '', status: 'active',
     phone: '', email: '', address: '', qualifications: '', hourlyWage: 0, monthlyHourLimit: 0,
-    childNursingChildren: 0, weeklyWorkDays: 0, note: '',
+    childNursingChildren: 0, weeklyWorkDays: 0, defaultBreakStart: '', defaultBreakEnd: '', note: '',
     createdAt: '', updatedAt: '',
   };
 }
@@ -218,6 +218,14 @@ export default function StaffDetail() {
             </Field>
             <Field label="職員番号">
               <Input value={form.employeeNumber} onChange={e => set('employeeNumber', e.target.value)} placeholder="従業員アプリのログインID" />
+            </Field>
+            <Field label="休憩の自動入力（開始）">
+              <Input type="time" value={form.defaultBreakStart || ''}
+                onChange={e => set('defaultBreakStart', e.target.value)} />
+            </Field>
+            <Field label="休憩の自動入力（終了）">
+              <Input type="time" value={form.defaultBreakEnd || ''}
+                onChange={e => set('defaultBreakEnd', e.target.value)} />
             </Field>
             <Field label="週の所定労働日数（日）">
               <Input type="number" min={0} max={7} step={1} value={form.weeklyWorkDays || ''}
