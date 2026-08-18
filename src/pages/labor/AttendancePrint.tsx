@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../components/AuthContext';
-import { getStaff, listStaff, listAttendance, getMyProfile, getMyAttendance, todayStr } from '../../api/data';
+import {
+  getStaff, listStaff, listAttendance, getMyProfile, getMyAttendance,
+  listConfirmedByMonth, getMyConfirmed, listShiftPatterns, todayStr,
+} from '../../api/data';
 import { DAY_TYPE_LABELS, WEEKDAY_LABELS } from '../../utils/constants';
 import { isNationalHoliday } from '../../utils/holidays';
-import type { Staff, AttendanceRecord } from '../../types';
+import { shiftPlanByDate, isMissingPunch } from '../../utils/shiftPlan';
+import type { Staff, AttendanceRecord, ConfirmedShift, ShiftPattern } from '../../types';
 
 /** 'YYYY-MM' の月の日付一覧（YYYY-MM-DD） */
 function daysOfMonth(month: string): string[] {
@@ -25,7 +29,7 @@ function workMinutes(rec?: AttendanceRecord): number {
 }
 const hhmm = (min: number) => `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`;
 
-interface Sheet { staff: Staff; records: Record<string, AttendanceRecord> }
+interface Sheet { staff: Staff; records: Record<string, AttendanceRecord>; confirmed: ConfirmedShift[] }
 
 export default function AttendancePrint() {
   const navigate = useNavigate();
@@ -36,6 +40,7 @@ export default function AttendancePrint() {
   const all = params.get('all') === '1'; // 在職者全員を一括出力
 
   const [sheets, setSheets] = useState<Sheet[]>([]);
+  const [patterns, setPatterns] = useState<ShiftPattern[]>([]);
   const [loading, setLoading] = useState(true);
 
   // 印刷はA4縦（このページにいる間だけ @page を縦に上書き）
@@ -56,18 +61,23 @@ export default function AttendancePrint() {
       };
       let built: Sheet[] = [];
       if (isStaff) {
-        // 従業員は自分の勤怠のみ
-        const [s, list] = await Promise.all([getMyProfile(), getMyAttendance(month)]);
-        if (s) built = [{ staff: s, records: toMap(list) }];
+        // 従業員は自分の勤怠・シフトのみ
+        const [s, list, conf] = await Promise.all([getMyProfile(), getMyAttendance(month), getMyConfirmed(month)]);
+        if (s) built = [{ staff: s, records: toMap(list), confirmed: conf }];
       } else if (all) {
         // 事務局：在職者全員を1ページずつ（職員ごとに改ページ）
-        const staffList = (await listStaff()).filter(s => s.status === 'active');
-        for (const s of staffList) {
-          built.push({ staff: s, records: toMap(await listAttendance(s.id, month)) });
+        const [staffList, conf] = await Promise.all([listStaff(), listConfirmedByMonth(month)]);
+        for (const s of staffList.filter(x => x.status === 'active')) {
+          built.push({
+            staff: s, records: toMap(await listAttendance(s.id, month)),
+            confirmed: conf.filter(c => c.staffId === s.id),
+          });
         }
       } else {
-        const [s, list] = await Promise.all([getStaff(staffId), listAttendance(staffId, month)]);
-        if (s) built = [{ staff: s, records: toMap(list) }];
+        const [s, list, conf] = await Promise.all([
+          getStaff(staffId), listAttendance(staffId, month), listConfirmedByMonth(month),
+        ]);
+        if (s) built = [{ staff: s, records: toMap(list), confirmed: conf.filter(c => c.staffId === s.id) }];
       }
       if (!alive) return;
       setSheets(built);
@@ -76,7 +86,10 @@ export default function AttendancePrint() {
     return () => { alive = false; };
   }, [isStaff, staffId, month, all]);
 
+  useEffect(() => { listShiftPatterns().then(setPatterns).catch(() => {}); }, []);
+
   const days = useMemo(() => daysOfMonth(month), [month]);
+  const today = todayStr();
   const [y, m] = month.split('-');
 
   return (
@@ -96,6 +109,8 @@ export default function AttendancePrint() {
       ) : sheets.map((sh, idx) => {
         const staff = sh.staff;
         const records = sh.records;
+        const plans = shiftPlanByDate(sh.confirmed, patterns);
+        const missing = days.filter(d => isMissingPunch(records[d], plans.get(d), d, today));
         const list = days.map(d => records[d]).filter((r): r is AttendanceRecord => !!r);
         const totals = {
           work: list.filter(r => r.dayType === 'work').length,
@@ -129,6 +144,7 @@ export default function AttendancePrint() {
                 <tr>
                   <th className="border border-gray-500 bg-gray-100 px-1 py-1 w-10">日</th>
                   <th className="border border-gray-500 bg-gray-100 px-1 py-1 w-10">曜</th>
+                  <th className="border border-gray-500 bg-gray-100 px-1 py-1 w-28">シフト予定</th>
                   <th className="border border-gray-500 bg-gray-100 px-1 py-1 w-14">区分</th>
                   <th className="border border-gray-500 bg-gray-100 px-1 py-1 w-16">出勤</th>
                   <th className="border border-gray-500 bg-gray-100 px-1 py-1 w-16">退勤</th>
@@ -150,6 +166,11 @@ export default function AttendancePrint() {
                     <tr key={date}>
                       <td className={`border border-gray-500 px-1 py-0.5 text-center ${dayColor}`}>{Number(date.slice(8))}</td>
                       <td className={`border border-gray-500 px-1 py-0.5 text-center ${dayColor}`}>{WEEKDAY_LABELS[wd]}</td>
+                      <td className="border border-gray-500 px-1 py-0.5 text-center text-[10px] whitespace-nowrap">
+                        {plans.get(date)
+                          ? `${plans.get(date)!.label} ${plans.get(date)!.timeLabel}`
+                          : ''}
+                      </td>
                       <td className="border border-gray-500 px-1 py-0.5 text-center">{rec ? DAY_TYPE_LABELS[rec.dayType] : ''}</td>
                       <td className="border border-gray-500 px-1 py-0.5 text-center">{rec?.dayType === 'work' ? rec.startTime : ''}</td>
                       <td className="border border-gray-500 px-1 py-0.5 text-center">{rec?.dayType === 'work' ? rec.endTime : ''}</td>
@@ -161,6 +182,12 @@ export default function AttendancePrint() {
                 })}
               </tbody>
             </table>
+
+            {missing.length > 0 && (
+              <p className="text-xs text-red-600 mt-2">
+                ※ シフトが入っているのに出退勤が未入力の日: {missing.map(d => `${Number(d.slice(8))}日`).join('、')}
+              </p>
+            )}
 
             {/* 集計 */}
             <table className="w-full text-sm mt-3 border border-gray-500 border-collapse">

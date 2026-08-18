@@ -215,6 +215,9 @@ export const saveMonthConfirmed = (
 export const getOvertimeMonth = (month: string, token: string) =>
   request<OvertimeRecord[]>('getOvertimeMonth', { month, token });
 
+export const getMyConfirmed = (month: string, token: string) =>
+  request<ConfirmedShift[]>('getMyConfirmed', { month, token });
+
 export const getAttendanceMonthAll = (month: string, token: string) =>
   request<AttendanceRecord[]>('getAttendanceMonthAll', { month, token });
 

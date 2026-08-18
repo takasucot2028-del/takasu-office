@@ -190,13 +190,13 @@ var PUBLIC_ACTIONS = { adminLogin: true, staffLogin: true };
 var STAFF_ACTIONS = {
   getMyProfile: true, getMyAttendance: true, punch: true, setMyBreak: true,
   getMyShiftChanges: true, markShiftChangesRead: true,
-  getMyAvailability: true, saveMyAvailability: true,
+  getMyAvailability: true, saveMyAvailability: true, getMyConfirmed: true,
   getMyOvertime: true, addMyOvertime: true,
   getMyLeave: true, addMyLeaveRequest: true, staffChangePassword: true,
   getExpenseContext: true, getMyExpenses: true, addMyExpense: true,
 };
 // 認証済みなら role を問わず許可（事務局・従業員の両方が閲覧するもの）
-var AUTHED_ACTIONS = { getDocuments: true, getTodayWork: true };
+var AUTHED_ACTIONS = { getDocuments: true, getTodayWork: true, getShiftPatterns: true };
 function enforceAuth(action, body) {
   if (PUBLIC_ACTIONS[action]) return;
   const session = getSession(body.token);
@@ -460,6 +460,9 @@ function dispatch(action, body) {
         break;
       case 'saveMonthAvailability':
         result = handleSaveMonthAvailability(body.month, body.staffIds, body.records);
+        break;
+      case 'getMyConfirmed':
+        result = handleGetMyConfirmed(getSession(body.token), body.month);
         break;
       case 'getConfirmedMonth':
         result = handleGetConfirmedMonth(body.month);
@@ -951,6 +954,15 @@ function handleGetOvertimeFiscalYear(fiscalYear) {
     return d >= from && d <= to;
   }));
   records.forEach(function (r) { r.appliedHours = Number(r.appliedHours) || 0; r.resultHours = Number(r.resultHours) || 0; });
+  return { success: true, data: records };
+}
+
+/** 自分の確定シフト（出勤簿でシフト予定と実績を見比べるために使う） */
+function handleGetMyConfirmed(session, month) {
+  const staff = staffOf_(session);
+  const records = sheetToObjects(getSheet('shifts_confirmed'), 'shifts_confirmed').filter(function (r) {
+    return String(r.staffId) === String(staff.id) && String(r.date).slice(0, 7) === month;
+  });
   return { success: true, data: records };
 }
 

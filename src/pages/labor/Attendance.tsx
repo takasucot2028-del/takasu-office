@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { PageContainer, Card, Select, Input, Button, Table, Th, Td, Alert } from '../../components/UI';
-import { listStaff, listAttendance, saveMonthAttendance } from '../../api/data';
+import { listStaff, listAttendance, saveMonthAttendance, listConfirmedByMonth, getReference, todayStr } from '../../api/data';
 import { DAY_TYPE_LABELS, WEEKDAY_LABELS, breakMinutesBetween } from '../../utils/constants';
-import type { AttendanceRecord, AttendanceDayType, Staff } from '../../types';
+import { shiftPlanByDate, isMissingPunch } from '../../utils/shiftPlan';
+import type { AttendanceRecord, AttendanceDayType, Staff, ShiftPattern, ConfirmedShift } from '../../types';
 
 function currentMonth(): string {
   return new Date().toISOString().slice(0, 7);
@@ -46,6 +47,8 @@ export default function Attendance() {
   const [records, setRecords] = useState<Record<string, AttendanceRecord>>({});
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const [patterns, setPatterns] = useState<ShiftPattern[]>([]);
+  const [confirmed, setConfirmed] = useState<ConfirmedShift[]>([]);
 
   const days = daysOfMonth(month);
   const selectedStaff = staff.find(s => s.id === staffId);
@@ -64,20 +67,31 @@ export default function Attendance() {
     return () => { alive = false; };
   }, []);
 
-  // 職員・月が変わるたびに勤怠を読み込む
+  useEffect(() => { getReference().then(r => setPatterns(r.patterns)); }, []);
+
+  // 職員・月が変わるたびに勤怠と確定シフトを読み込む
   useEffect(() => {
     if (!staffId) return;
     let alive = true;
     setMessage('');
     (async () => {
-      const list = await listAttendance(staffId, month);
+      const [list, conf] = await Promise.all([listAttendance(staffId, month), listConfirmedByMonth(month)]);
       if (!alive) return;
       const map: Record<string, AttendanceRecord> = {};
       for (const rec of list) map[rec.date] = rec;
       setRecords(map);
+      setConfirmed(conf.filter(c => c.staffId === staffId));
     })();
     return () => { alive = false; };
   }, [staffId, month]);
+
+  // 日付ごとの勤務予定と、シフトがあるのに打刻がない日
+  const plans = useMemo(() => shiftPlanByDate(confirmed, patterns), [confirmed, patterns]);
+  const today = todayStr();
+  const missingDays = useMemo(
+    () => days.filter(d => isMissingPunch(records[d], plans.get(d), d, today)),
+    [days, records, plans, today]
+  );
 
   const getRec = (date: string): AttendanceRecord =>
     records[date] ?? {
@@ -134,14 +148,17 @@ export default function Attendance() {
       [`出勤簿 ${month}`, '', '', '', '', '', ''],
       [`氏名: ${selectedStaff.lastName} ${selectedStaff.firstName}`, '', '', '', '', '', ''],
       [],
-      ['日付', '曜日', '区分', '出勤', '退勤', '休憩', '休憩(分)', '実働', '備考'],
+      ['日付', '曜日', 'シフト予定', 'シフト時間', '区分', '出勤', '退勤', '休憩', '休憩(分)', '実働', '備考'],
       ...days.map(date => {
         const rec = records[date];
+        const plan = plans.get(date);
         const wd = WEEKDAY_LABELS[new Date(`${date}T00:00:00`).getDay()];
-        if (!rec) return [date, wd, '', '', '', '', '', '', ''];
+        const planCells = [plan ? plan.timeLabel : '', plan ? plan.hours : ''];
+        if (!rec) return [date, wd, ...planCells, '', '', '', '', '', '', ''];
         return [
           date,
           wd,
+          ...planCells,
           DAY_TYPE_LABELS[rec.dayType],
           rec.startTime,
           rec.endTime,
@@ -181,6 +198,13 @@ export default function Attendance() {
       {selectedStaff && (
         <>
           {message && <Alert type="success">{message}</Alert>}
+          {missingDays.length > 0 && (
+            <Alert type="error">
+              シフトが入っているのに出退勤が未入力の日が <b>{missingDays.length}日</b> あります
+              （{missingDays.map(d => `${Number(d.slice(8))}日`).join('、')}）。
+              表の該当行を色付きで表示しています。出退勤を入力するか、有給・欠勤として登録してください。
+            </Alert>
+          )}
 
           {/* 月次集計 */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
@@ -202,6 +226,7 @@ export default function Attendance() {
               <thead>
                 <tr>
                   <Th>日付</Th>
+                  <Th>シフト予定</Th>
                   <Th>区分</Th>
                   <Th>出勤</Th>
                   <Th>退勤</Th>
@@ -215,13 +240,25 @@ export default function Attendance() {
                   const wd = new Date(`${date}T00:00:00`).getDay();
                   const rec = records[date];
                   const isWork = rec?.dayType === 'work';
+                  const plan = plans.get(date);
+                  const missing = isMissingPunch(rec, plan, date, today);
                   return (
-                    <tr key={date} className={wd === 0 ? 'bg-red-50/50' : wd === 6 ? 'bg-blue-50/50' : ''}>
+                    <tr key={date} className={missing ? 'bg-amber-50' : wd === 0 ? 'bg-red-50/50' : wd === 6 ? 'bg-blue-50/50' : ''}>
                       <Td className="whitespace-nowrap">
                         {Number(date.slice(8))}日
                         <span className={`ml-1 text-xs ${wd === 0 ? 'text-red-500' : wd === 6 ? 'text-blue-500' : 'text-gray-400'}`}>
                           ({WEEKDAY_LABELS[wd]})
                         </span>
+                      </Td>
+                      <Td className="whitespace-nowrap">
+                        {plan ? (
+                          <>
+                            <span className="font-medium text-gray-700">{plan.label}</span>
+                            <span className="ml-1 text-xs text-gray-500">{plan.timeLabel}</span>
+                            <span className="ml-1 text-xs text-gray-400">({plan.hours}h)</span>
+                            {missing && <span className="ml-2 text-xs text-amber-700 font-medium">打刻なし</span>}
+                          </>
+                        ) : <span className="text-xs text-gray-300">—</span>}
                       </Td>
                       <Td className="min-w-24">
                         <Select

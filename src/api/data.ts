@@ -495,6 +495,18 @@ export async function listOvertimeByMonth(month: string): Promise<OvertimeRecord
   return unwrap(await gas.getOvertimeMonth(month, token()), []);
 }
 
+/** 指定月の勤怠（全職員）。シフトとの突き合わせに使う */
+export async function listAttendanceMonthAll(month: string): Promise<AttendanceRecord[]> {
+  if (!USE_GAS) return local.listAttendanceMonthAll(month);
+  return unwrap(await gas.getAttendanceMonthAll(month, token()), []);
+}
+
+/** 自分の確定シフト（従業員用）。出勤簿でシフト予定と実績を見比べるのに使う */
+export async function getMyConfirmed(month: string): Promise<ConfirmedShift[]> {
+  if (!USE_GAS) return local.listConfirmedByMonth(month).filter(r => r.staffId === staffId());
+  return unwrap(await gas.getMyConfirmed(month, token()), []);
+}
+
 /** 期間指定の勤怠。賃金台帳のように複数月をまとめて出すときに使う */
 export async function listAttendanceRange(staffId: string, from: string, to: string): Promise<AttendanceRecord[]> {
   if (!USE_GAS) return local.listAttendanceRange(staffId, from, to);

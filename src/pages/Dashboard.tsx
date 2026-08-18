@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageContainer, Card, Badge } from '../components/UI';
-import { getDashboardData, getDashboardCached, listAllLeave, listOvertimeFiscalYear, todayStr } from '../api/data';
+import { getDashboardData, getDashboardCached, listAllLeave, listOvertimeFiscalYear, listConfirmedByMonth, listAttendanceMonthAll, todayStr } from '../api/data';
 import type { DayAbsences, PendingSummary } from '../api/data';
 import { WORK_LOCATION_LABELS, WEEKDAY_LABELS, currentFiscalYear } from '../utils/constants';
 import { currentObligation } from '../utils/annualLeave';
 import { monthlyTotals, evaluate36 } from '../utils/limit36';
+import { shiftPlanByDate, isMissingPunch } from '../utils/shiftPlan';
 import type { WorkLocation, Staff, ShiftPattern, ConfirmedShift, LeaveRecord, OvertimeRecord } from '../types';
 
 // 未承認の種別ごとの表示設定
@@ -22,6 +23,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [leaveAlerts, setLeaveAlerts] = useState<{ name: string; remaining: number; deadline: string; overdue: boolean }[] | null>(null);
   const [ot36Alerts, setOt36Alerts] = useState<{ name: string; level: 'error' | 'warn'; texts: string[] }[] | null>(null);
+  const [punchAlerts, setPunchAlerts] = useState<{ name: string; dates: string[] }[] | null>(null);
 
   const today = todayStr();
   const weekday = WEEKDAY_LABELS[new Date(`${today}T00:00:00`).getDay()];
@@ -91,6 +93,33 @@ export default function Dashboard() {
     return () => { alive = false; };
   }, [staff, today]);
 
+  // シフトがあるのに打刻がない日。当月ぶんを描画後に裏で確認する
+  useEffect(() => {
+    if (!staff.length || !patterns.length) return;
+    let alive = true;
+    (async () => {
+      const month = today.slice(0, 7);
+      let conf, att;
+      try {
+        [conf, att] = await Promise.all([listConfirmedByMonth(month), listAttendanceMonthAll(month)]);
+      } catch { return; }
+      if (!alive) return;
+      const rows = staff
+        .filter(s => s.status === 'active')
+        .map(s => {
+          const plans = shiftPlanByDate(conf.filter(c => c.staffId === s.id), patterns);
+          const recByDate = new Map(att.filter(r => r.staffId === s.id).map(r => [r.date, r]));
+          const dates = [...plans.keys()]
+            .filter(d => isMissingPunch(recByDate.get(d), plans.get(d), d, today))
+            .sort();
+          return dates.length ? { name: `${s.lastName} ${s.firstName}`, dates } : null;
+        })
+        .filter((x): x is { name: string; dates: string[] } => x !== null);
+      setPunchAlerts(rows);
+    })();
+    return () => { alive = false; };
+  }, [staff, patterns, today]);
+
   const activeStaff = staff.filter(s => s.status === 'active');
   const staffMap = new Map(staff.map(s => [s.id, s]));
   const patternMap = new Map(patterns.map(p => [p.id, p]));
@@ -116,6 +145,25 @@ export default function Dashboard() {
             ))}
           </div>
           <Link to="/labor/leave" className="text-xs text-emerald-700 hover:underline mt-2 inline-block">有給休暇管理を開く →</Link>
+        </Card>
+      )}
+
+      {/* シフトがあるのに打刻がない日 */}
+      {punchAlerts && punchAlerts.length > 0 && (
+        <Card className="mb-4 border-amber-300 bg-amber-50">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-bold text-gray-800">シフトがあるのに打刻がない日（今月）</h2>
+            <Badge color="yellow">{punchAlerts.reduce((n, a) => n + a.dates.length, 0)}日</Badge>
+          </div>
+          <div className="space-y-1 text-sm">
+            {punchAlerts.map((a, i) => (
+              <div key={i} className="flex items-start gap-3 flex-wrap">
+                <span className="font-medium">{a.name}</span>
+                <span className="text-gray-600">{a.dates.map(d => `${Number(d.slice(8))}日`).join('、')}</span>
+              </div>
+            ))}
+          </div>
+          <Link to="/labor/attendance" className="text-xs text-emerald-700 hover:underline mt-2 inline-block">勤怠管理を開く →</Link>
         </Card>
       )}
 
