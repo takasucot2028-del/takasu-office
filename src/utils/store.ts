@@ -280,6 +280,11 @@ export function listOvertimeByMonth(month: string): OvertimeRecord[] {
   return load<OvertimeRecord>(KEY_OVERTIME).filter(r => r.date.startsWith(month));
 }
 
+export function listOvertimeFiscalYear(fiscalYear: number): OvertimeRecord[] {
+  const from = `${fiscalYear}-04-01`, to = `${fiscalYear + 1}-03-31`;
+  return load<OvertimeRecord>(KEY_OVERTIME).filter(r => r.date >= from && r.date <= to);
+}
+
 export function listOvertimeByStaff(staffId: string): OvertimeRecord[] {
   return load<OvertimeRecord>(KEY_OVERTIME).filter(r => r.staffId === staffId);
 }

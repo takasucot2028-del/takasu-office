@@ -367,6 +367,9 @@ function dispatch(action, body) {
       case 'saveMonthConfirmed':
         result = handleSaveMonthConfirmed(body.month, body.location, body.records);
         break;
+      case 'getOvertimeFiscalYear':
+        result = handleGetOvertimeFiscalYear(body.fiscalYear);
+        break;
       case 'getOvertimeMonth':
         result = handleGetOvertimeMonth(body.month);
         break;
@@ -813,6 +816,20 @@ function recordShiftChanges_(month, location, oldList, newList) {
 }
 
 // --- ハンドラー：時間外・休日勤務 ---
+/** 会計年度（4月〜翌3月）の時間外を全職員ぶん返す。36協定の判定に使う */
+function handleGetOvertimeFiscalYear(fiscalYear) {
+  const fy = Number(fiscalYear);
+  const from = fy + '-04-01';
+  const to = (fy + 1) + '-03-31';
+  const sheet = getSheet('overtime');
+  const records = dedupeById_(sheetToObjects(sheet, 'overtime').filter(function (r) {
+    const d = String(r.date);
+    return d >= from && d <= to;
+  }));
+  records.forEach(function (r) { r.appliedHours = Number(r.appliedHours) || 0; r.resultHours = Number(r.resultHours) || 0; });
+  return { success: true, data: records };
+}
+
 function handleGetOvertimeMonth(month) {
   const sheet = getSheet('overtime');
   const records = dedupeById_(sheetToObjects(sheet, 'overtime').filter(function (r) {

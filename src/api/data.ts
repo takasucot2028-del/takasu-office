@@ -493,6 +493,12 @@ export async function listOvertimeByMonth(month: string): Promise<OvertimeRecord
   return unwrap(await gas.getOvertimeMonth(month, token()), []);
 }
 
+/** 年度内の時間外（全職員）。36協定の一覧に使う */
+export async function listOvertimeFiscalYear(fiscalYear: number): Promise<OvertimeRecord[]> {
+  if (!USE_GAS) return local.listOvertimeFiscalYear(fiscalYear);
+  return unwrap(await gas.getOvertimeFiscalYear(fiscalYear, token()), []);
+}
+
 export async function listOvertimeByStaff(staffId: string): Promise<OvertimeRecord[]> {
   if (!USE_GAS) return local.listOvertimeByStaff(staffId);
   return unwrap(await gas.getOvertimeByStaff(staffId, token()), []);

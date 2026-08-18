@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageContainer, Card, Badge } from '../components/UI';
-import { getDashboardData, getDashboardCached, listAllLeave, todayStr } from '../api/data';
+import { getDashboardData, getDashboardCached, listAllLeave, listOvertimeFiscalYear, todayStr } from '../api/data';
 import type { DayAbsences, PendingSummary } from '../api/data';
-import { WORK_LOCATION_LABELS, WEEKDAY_LABELS } from '../utils/constants';
+import { WORK_LOCATION_LABELS, WEEKDAY_LABELS, currentFiscalYear } from '../utils/constants';
 import { currentObligation } from '../utils/annualLeave';
-import type { WorkLocation, Staff, ShiftPattern, ConfirmedShift, LeaveRecord } from '../types';
+import { monthlyTotals, evaluate36 } from '../utils/limit36';
+import type { WorkLocation, Staff, ShiftPattern, ConfirmedShift, LeaveRecord, OvertimeRecord } from '../types';
 
 // 未承認の種別ごとの表示設定
 const PENDING_LABEL = { overtime: '時間外', leave: '休暇', expense: '経費' } as const;
@@ -20,6 +21,7 @@ export default function Dashboard() {
   const [pending, setPending] = useState<PendingSummary>({ expenses: 0, overtime: 0, leave: 0 });
   const [loading, setLoading] = useState(true);
   const [leaveAlerts, setLeaveAlerts] = useState<{ name: string; remaining: number; deadline: string; overdue: boolean }[] | null>(null);
+  const [ot36Alerts, setOt36Alerts] = useState<{ name: string; level: 'error' | 'warn'; texts: string[] }[] | null>(null);
 
   const today = todayStr();
   const weekday = WEEKDAY_LABELS[new Date(`${today}T00:00:00`).getDay()];
@@ -62,6 +64,33 @@ export default function Dashboard() {
     return () => { alive = false; };
   }, [staff, today]);
 
+  // 36協定の上限に触れている職員。こちらも描画後に裏で取得する
+  useEffect(() => {
+    if (!staff.length) return;
+    let alive = true;
+    (async () => {
+      let all: OvertimeRecord[] = [];
+      try { all = await listOvertimeFiscalYear(currentFiscalYear()); } catch { return; }
+      if (!alive) return;
+      const month = today.slice(0, 7);
+      const rows = staff
+        .filter(s => s.status === 'active')
+        .map(s => {
+          const st = evaluate36(monthlyTotals(all.filter(r => r.staffId === s.id)), month);
+          if (st.warnings.length === 0) return null;
+          return {
+            name: `${s.lastName} ${s.firstName}`,
+            level: st.warnings.some(w => w.level === 'error') ? ('error' as const) : ('warn' as const),
+            texts: st.warnings.map(w => w.text),
+          };
+        })
+        .filter((x): x is { name: string; level: 'error' | 'warn'; texts: string[] } => x !== null)
+        .sort((a, b) => (a.level === b.level ? 0 : a.level === 'error' ? -1 : 1));
+      setOt36Alerts(rows);
+    })();
+    return () => { alive = false; };
+  }, [staff, today]);
+
   const activeStaff = staff.filter(s => s.status === 'active');
   const staffMap = new Map(staff.map(s => [s.id, s]));
   const patternMap = new Map(patterns.map(p => [p.id, p]));
@@ -87,6 +116,27 @@ export default function Dashboard() {
             ))}
           </div>
           <Link to="/labor/leave" className="text-xs text-emerald-700 hover:underline mt-2 inline-block">有給休暇管理を開く →</Link>
+        </Card>
+      )}
+
+      {/* 36協定の上限（労基法第36条） */}
+      {ot36Alerts && ot36Alerts.length > 0 && (
+        <Card className={`mb-4 ${ot36Alerts.some(a => a.level === 'error') ? 'border-red-300 bg-red-50' : 'border-amber-300 bg-amber-50'}`}>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-bold text-gray-800">36協定の上限に注意が必要な職員</h2>
+            <Badge color={ot36Alerts.some(a => a.level === 'error') ? 'red' : 'yellow'}>{ot36Alerts.length}名</Badge>
+          </div>
+          <div className="space-y-2 text-sm">
+            {ot36Alerts.map((a, i) => (
+              <div key={i}>
+                <span className="font-medium">{a.name}</span>
+                <ul className="ml-4 list-disc text-xs text-gray-600">
+                  {a.texts.map((t, j) => <li key={j} className={a.level === 'error' ? 'text-red-700' : ''}>{t}</li>)}
+                </ul>
+              </div>
+            ))}
+          </div>
+          <Link to="/labor/overtime" className="text-xs text-emerald-700 hover:underline mt-2 inline-block">時間外管理を開く →</Link>
         </Card>
       )}
 

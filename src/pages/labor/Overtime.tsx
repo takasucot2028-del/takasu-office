@@ -6,7 +6,12 @@ import {
   saveMonthOvertime, addCompUse, deleteCompUse,
   genId, todayStr,
 } from '../../api/data';
-import { WEEKDAY_LABELS, breakMinutesBetween } from '../../utils/constants';
+import { WEEKDAY_LABELS, breakMinutesBetween, fiscalYearOf, fiscalYearLabel } from '../../utils/constants';
+import {
+  monthlyTotals, evaluate36,
+  LIMIT_MONTHLY, LIMIT_YEARLY, LIMIT_YEARLY_SPECIAL, LIMIT_MONTHLY_ABSOLUTE,
+  LIMIT_MULTI_MONTH_AVG, LIMIT_OVER45_COUNT,
+} from '../../utils/limit36';
 import {
   isOvertimeTarget, overtimeKindOf, standardHoursOf, resultHoursOf,
   allowanceDetail, priorOvertimeMap, patternHours,
@@ -178,6 +183,14 @@ export default function Overtime() {
     }
   };
 
+  // 36協定の上限（allOt はその職員の全期間の記録なので追加の通信は不要）
+  const months36 = useMemo(() => monthlyTotals(allOt), [allOt]);
+  const status36 = useMemo(() => evaluate36(months36, month), [months36, month]);
+  const fyMonths36 = useMemo(() => {
+    const fy = fiscalYearOf(`${month}-01`);
+    return months36.filter(m => fiscalYearOf(`${m.month}-01`) === fy);
+  }, [months36, month]);
+
   // 代休残 = 承認済・代休指定の実績合計（保存済） - 代休取得合計
   const compGranted = allOt
     .filter(r => r.status === 'approved' && r.disposition === 'comp')
@@ -280,6 +293,59 @@ export default function Overtime() {
                 超過分 <span className="font-bold">{h1(monthOver60)}</span> は割増率 ×1.50 で計算しています。
               </p>
             )}
+          </Card>
+
+          {/* 36協定の上限（労基法第36条） */}
+          <Card className={`mb-4 ${status36.warnings.some(w => w.level === 'error') ? 'border-red-300'
+            : status36.warnings.length > 0 ? 'border-yellow-300' : ''}`}>
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+              <h2 className="font-bold text-gray-800">
+                36協定の上限 <span className="text-xs font-normal text-gray-400">（{fiscalYearLabel(fiscalYearOf(`${month}-01`))}・承認済ベース）</span>
+              </h2>
+              {status36.warnings.length === 0 && <Badge color="green">上限内</Badge>}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <Tile label={`当月 時間外／月${LIMIT_MONTHLY}h`} value={h1(status36.overtimeHours)} />
+              <Tile label={`当月 時間外＋休日／月${LIMIT_MONTHLY_ABSOLUTE}h未満`} value={h1(status36.totalHours)} />
+              <Tile label={`年度累計 時間外／年${LIMIT_YEARLY}h（上限${LIMIT_YEARLY_SPECIAL}h）`} value={h1(status36.yearOvertimeHours)} highlight />
+              <Tile label={`月${LIMIT_MONTHLY}h超の回数／年${LIMIT_OVER45_COUNT}回`} value={`${status36.over45Count}回`} />
+            </div>
+
+            {status36.warnings.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {status36.warnings.map((w, i) => (
+                  <p key={i} className={`text-sm rounded px-3 py-2 ${w.level === 'error'
+                    ? 'text-red-700 bg-red-50' : 'text-amber-700 bg-amber-50'}`}>
+                    {w.text}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-3 text-xs text-gray-500">
+              <span className="font-medium text-gray-700">当月までの平均（時間外＋休日、上限{LIMIT_MULTI_MONTH_AVG}h）：</span>
+              {status36.averages.map(a => (
+                <span key={a.months} className={`ml-2 ${a.avg > LIMIT_MULTI_MONTH_AVG ? 'text-red-600 font-bold' : ''}`}>
+                  {a.months}か月 {a.avg}h
+                </span>
+              ))}
+            </div>
+
+            {fyMonths36.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {fyMonths36.map(m => (
+                  <span key={m.month}
+                    className={`text-xs px-2 py-1 rounded border ${m.overtimeHours > LIMIT_MONTHLY
+                      ? 'bg-amber-50 border-amber-300 text-amber-800 font-medium'
+                      : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+                    {m.month}　時間外{m.overtimeHours}h{m.holidayHours > 0 ? `／休日${m.holidayHours}h` : ''}
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-gray-400 mt-2">
+              集計は会計年度（4月始まり）です。36協定の起算月が異なる場合は読み替えてください。
+            </p>
           </Card>
 
           {/* 残数など */}
