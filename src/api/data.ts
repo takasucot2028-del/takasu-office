@@ -780,6 +780,74 @@ function persistAcct(fy: number, data: AccountingData) {
     localStorage.setItem(acctKey(fy), JSON.stringify(data));
   } catch { /* 容量超過等は無視 */ }
 }
+/** 年度末のアーカイブ用に、その年度のデータを一式まとめて取得する */
+export interface YearArchive {
+  fiscalYear: number;
+  staff: Staff[];
+  attendance: AttendanceRecord[];
+  confirmed: ConfirmedShift[];
+  overtime: OvertimeRecord[];
+  leave: LeaveRecord[];
+  budgets: Budget[];
+  expenses: Expense[];
+  audit: AuditEntry[];
+}
+
+/** 会計年度（4月〜翌3月）の12か月ぶんの 'YYYY-MM' */
+export function fiscalMonths(fiscalYear: number): string[] {
+  return Array.from({ length: 12 }, (_, i) => {
+    const m = 4 + i;
+    return m <= 12
+      ? `${fiscalYear}-${String(m).padStart(2, '0')}`
+      : `${fiscalYear + 1}-${String(m - 12).padStart(2, '0')}`;
+  });
+}
+
+export async function getYearArchive(fiscalYear: number): Promise<YearArchive> {
+  const months = fiscalMonths(fiscalYear);
+  const from = `${fiscalYear}-04-01`, to = `${fiscalYear + 1}-03-31`;
+  const inYear = (d: string) => d >= from && d <= to;
+  const staff = await listStaff();
+
+  if (!USE_GAS) {
+    return {
+      fiscalYear, staff,
+      attendance: months.flatMap(m => local.listAttendanceMonthAll(m)),
+      confirmed: months.flatMap(m => local.listConfirmedByMonth(m)),
+      overtime: local.listOvertimeFiscalYear(fiscalYear),
+      leave: local.listAllLeave().filter(r => inYear(r.date)),
+      budgets: local.listBudgets(fiscalYear),
+      expenses: local.listExpenses(fiscalYear),
+      audit: local.listAuditLog(1000),
+    };
+  }
+
+  // 12か月ぶんの勤怠・確定シフトと、年度単位のデータを1リクエストにまとめる
+  const reqs: Record<string, unknown>[] = [
+    ...months.map(month => ({ action: 'getAttendanceMonthAll', month })),
+    ...months.map(month => ({ action: 'getConfirmedMonth', month })),
+    { action: 'getOvertimeFiscalYear', fiscalYear },
+    { action: 'getAllLeave' },
+    { action: 'getBudgets', fiscalYear },
+    { action: 'getExpenses', fiscalYear },
+    { action: 'getAuditLog', limit: 1000 },
+  ];
+  const r = await batchCall(reqs);
+  if (!r) throw new Error('年度データの取得に失敗しました');
+  const att = months.flatMap((_, i) => unwrap(r[i] as SubRes<AttendanceRecord[]>, []));
+  const conf = months.flatMap((_, i) => unwrap(r[12 + i] as SubRes<ConfirmedShift[]>, []));
+  return {
+    fiscalYear, staff,
+    attendance: att,
+    confirmed: conf,
+    overtime: unwrap(r[24] as SubRes<OvertimeRecord[]>, []),
+    leave: unwrap(r[25] as SubRes<LeaveRecord[]>, []).filter(x => inYear(x.date)),
+    budgets: unwrap(r[26] as SubRes<Budget[]>, []),
+    expenses: unwrap(r[27] as SubRes<Expense[]>, []),
+    audit: unwrap(r[28] as SubRes<AuditEntry[]>, []),
+  };
+}
+
 /** 給与計算用の月次データ（全職員ぶん） */
 export interface PayrollMonthData {
   staff: Staff[];

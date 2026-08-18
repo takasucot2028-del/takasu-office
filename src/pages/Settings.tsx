@@ -83,6 +83,14 @@ export default function Settings() {
         </Card>
 
         <Card className="mt-4">
+          <h2 className="font-bold text-gray-800 mb-1">年度切替・年度末処理</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            前年度予算の新年度へのコピーと、年度データのExcelアーカイブを行います。
+          </p>
+          <Link to="/labor/yearend" className="text-sm text-emerald-700 hover:underline">年度切替を開く →</Link>
+        </Card>
+
+        <Card className="mt-4">
           <h2 className="font-bold text-gray-800 mb-1">変更履歴</h2>
           <p className="text-xs text-gray-500 mb-3">
             勤怠・時間外・休暇・会計などの登録や承認が、いつ誰の操作で行われたかを確認できます。

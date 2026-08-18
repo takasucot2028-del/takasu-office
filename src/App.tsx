@@ -32,6 +32,7 @@ import StaffRegisterPrint from './pages/labor/StaffRegisterPrint';
 import WageLedgerPrint from './pages/labor/WageLedgerPrint';
 import Payroll from './pages/labor/Payroll';
 import AuditLog from './pages/labor/AuditLog';
+import YearEnd from './pages/labor/YearEnd';
 
 // 管理者専用
 function AdminGuard({ children }: { children: React.ReactNode }) {
@@ -65,6 +66,7 @@ function AppRoutes() {
         <Route path="/labor/attendance" element={<AdminGuard><Attendance /></AdminGuard>} />
         <Route path="/labor/attendance/print" element={<AdminGuard><AttendancePrint /></AdminGuard>} />
         <Route path="/labor/staff/register/print" element={<AdminGuard><StaffRegisterPrint /></AdminGuard>} />
+        <Route path="/labor/yearend" element={<AdminGuard><YearEnd /></AdminGuard>} />
         <Route path="/labor/audit" element={<AdminGuard><AuditLog /></AdminGuard>} />
         <Route path="/labor/payroll" element={<AdminGuard><Payroll /></AdminGuard>} />
         <Route path="/labor/staff/wage/print" element={<AdminGuard><WageLedgerPrint /></AdminGuard>} />
