@@ -8,6 +8,7 @@ const ADMIN_NAV = [
   { to: '/labor/attendance', label: '勤怠管理', short: '勤怠' },
   { to: '/labor/overtime', label: '時間外', short: '時間外' },
   { to: '/labor/leave', label: '有給休暇', short: '有給' },
+  { to: '/labor/payroll', label: '給与用データ', short: '給与' },
   { to: '/labor/accounting', label: '会計管理', short: '会計' },
   { to: '/labor/documents', label: '文書管理', short: '文書' },
   { to: '/settings', label: '設定', short: '設定' },

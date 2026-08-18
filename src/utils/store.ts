@@ -311,6 +311,14 @@ export function listAbsencesByDate(date: string): { leave: LeaveRecord[]; comp: 
 
 // ---- 代休取得（消化） ----
 
+export function listAttendanceMonthAll(month: string): AttendanceRecord[] {
+  return load<AttendanceRecord>(KEY_ATTENDANCE).filter(r => r.date.startsWith(month));
+}
+
+export function listCompUseMonth(month: string): CompLeaveUse[] {
+  return load<CompLeaveUse>(KEY_COMP_USE).filter(r => r.date.startsWith(month));
+}
+
 export function listCompUse(staffId: string): CompLeaveUse[] {
   return load<CompLeaveUse>(KEY_COMP_USE)
     .filter(r => r.staffId === staffId)

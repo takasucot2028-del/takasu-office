@@ -772,6 +772,51 @@ function persistAcct(fy: number, data: AccountingData) {
     localStorage.setItem(acctKey(fy), JSON.stringify(data));
   } catch { /* 容量超過等は無視 */ }
 }
+/** 給与計算用の月次データ（全職員ぶん） */
+export interface PayrollMonthData {
+  staff: Staff[];
+  attendance: AttendanceRecord[];
+  overtime: OvertimeRecord[];
+  leave: LeaveRecord[];
+  compUse: CompLeaveUse[];
+}
+
+export async function getPayrollMonthData(month: string): Promise<PayrollMonthData> {
+  const staff = await listStaff();
+  if (!USE_GAS) {
+    return {
+      staff,
+      attendance: local.listAttendanceMonthAll(month),
+      overtime: local.listOvertimeByMonth(month),
+      leave: local.listAllLeave().filter(r => r.date.startsWith(month)),
+      compUse: local.listCompUseMonth(month),
+    };
+  }
+  const r = await batchCall([
+    { action: 'getAttendanceMonthAll', month },
+    { action: 'getOvertimeMonth', month },
+    { action: 'getAllLeave' },
+    { action: 'getCompUseMonth', month },
+  ]);
+  if (r) {
+    return {
+      staff,
+      attendance: unwrap(r[0] as SubRes<AttendanceRecord[]>, []),
+      overtime: unwrap(r[1] as SubRes<OvertimeRecord[]>, []),
+      leave: unwrap(r[2] as SubRes<LeaveRecord[]>, []).filter(x => x.date.startsWith(month)),
+      compUse: unwrap(r[3] as SubRes<CompLeaveUse[]>, []),
+    };
+  }
+  // フォールバック（旧GAS: バッチ未対応）
+  const [attendance, overtime, leave, compUse] = await Promise.all([
+    unwrap(await gas.getAttendanceMonthAll(month, token()), [] as AttendanceRecord[]),
+    listOvertimeByMonth(month),
+    listAllLeave(),
+    unwrap(await gas.getCompUseMonth(month, token()), [] as CompLeaveUse[]),
+  ]);
+  return { staff, attendance, overtime, leave: leave.filter(x => x.date.startsWith(month)), compUse };
+}
+
 export async function getAccountingData(fiscalYear: number): Promise<AccountingData> {
   if (!USE_GAS) return { budgets: local.listBudgets(fiscalYear), expenses: local.listExpenses(fiscalYear) };
   const r = await batchCall([{ action: 'getBudgets', fiscalYear }, { action: 'getExpenses', fiscalYear }]);

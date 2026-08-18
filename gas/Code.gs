@@ -382,6 +382,12 @@ function dispatch(action, body) {
       case 'saveMonthOvertime':
         result = handleSaveMonthOvertime(body.staffId, body.month, body.records);
         break;
+      case 'getAttendanceMonthAll':
+        result = handleGetAttendanceMonthAll(body.month);
+        break;
+      case 'getCompUseMonth':
+        result = handleGetCompUseMonth(body.month);
+        break;
       case 'getCompUse':
         result = handleGetCompUse(body.staffId);
         break;
@@ -882,6 +888,26 @@ function handleSaveMonthOvertime(staffId, month, records) {
 }
 
 // --- ハンドラー：代休取得（消化） ---
+/** 指定月の勤怠（全職員）。給与計算用の集計に使う */
+function handleGetAttendanceMonthAll(month) {
+  const sheet = getSheet('attendance');
+  const records = sheetToObjects(sheet, 'attendance').filter(function (r) {
+    return String(r.date).slice(0, 7) === month;
+  });
+  records.forEach(function (r) { r.breakMinutes = Number(r.breakMinutes) || 0; });
+  return { success: true, data: records };
+}
+
+/** 指定月の代休取得（全職員） */
+function handleGetCompUseMonth(month) {
+  const sheet = getSheet('comp_leave_use');
+  const records = dedupeById_(sheetToObjects(sheet, 'comp_leave_use').filter(function (r) {
+    return String(r.date).slice(0, 7) === month;
+  }));
+  records.forEach(function (r) { r.hours = Number(r.hours) || 0; });
+  return { success: true, data: records };
+}
+
 function handleGetCompUse(staffId) {
   const sheet = getSheet('comp_leave_use');
   const records = sheetToObjects(sheet, 'comp_leave_use').filter(function (r) { return String(r.staffId) === String(staffId); });
