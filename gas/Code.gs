@@ -71,6 +71,10 @@ var SHEETS = {
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['location', '勤務場所'],
     ['patternId', '区分ID'], ['note', '備考'],
   ] },
+  audit: { name: '変更履歴', columns: [
+    ['id', 'ID'], ['at', '日時'], ['actor', '操作者'], ['role', '権限'],
+    ['action', '操作'], ['target', '対象'], ['summary', '内容'],
+  ] },
   shift_changes: { name: 'シフト変更履歴', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['location', '勤務場所'],
     ['before', '変更前'], ['after', '変更後'], ['changedAt', '変更日時'], ['readAt', '確認日時'],
@@ -165,9 +169,13 @@ function hashPassword(pw) {
 // --- セッション管理（CacheService・TTL 6時間）---
 var SESSION_TTL_SECONDS = 21600;
 
-function issueToken(role, staffId) {
+function issueToken(role, staffId, email) {
   const token = genId() + genId(); // 24文字
-  CacheService.getScriptCache().put('sess_' + token, JSON.stringify({ role: role, staffId: staffId || '' }), SESSION_TTL_SECONDS);
+  CacheService.getScriptCache().put(
+    'sess_' + token,
+    JSON.stringify({ role: role, staffId: staffId || '', email: email || '' }),
+    SESSION_TTL_SECONDS
+  );
   return token;
 }
 function getSession(token) {
@@ -233,6 +241,95 @@ function handleBatch(requests, token) {
 }
 
 // アクションを対応するハンドラーへ振り分ける（doPost と handleBatch が共用）
+// 変更履歴に残す操作と、その表示名・対象の種類
+var AUDIT_ACTIONS = {
+  upsertStaff:          { label: '職員情報の登録・更新', target: '職員' },
+  setStaffPassword:     { label: '職員パスワードの設定',  target: '職員' },
+  staffChangePassword:  { label: 'パスワード変更（本人）', target: '職員' },
+  saveAttendance:       { label: '勤怠の保存',           target: '勤怠' },
+  punch:                { label: '打刻',                 target: '勤怠' },
+  setMyBreak:           { label: '休憩時間の入力',        target: '勤怠' },
+  saveMonthOvertime:    { label: '時間外の保存',          target: '時間外' },
+  addMyOvertime:        { label: '時間外の申請',          target: '時間外' },
+  addCompUse:           { label: '代休取得の記録',        target: '代休' },
+  deleteCompUse:        { label: '代休取得の削除',        target: '代休' },
+  addLeave:             { label: '休暇記録の追加',        target: '休暇' },
+  deleteLeave:          { label: '休暇記録の削除',        target: '休暇' },
+  setLeaveStatus:       { label: '休暇申請の承認・却下',   target: '休暇' },
+  addMyLeaveRequest:    { label: '休暇の申請',            target: '休暇' },
+  saveConfirmedShifts:  { label: '確定シフトの保存',       target: 'シフト' },
+  saveShiftPatterns:    { label: 'シフト区分の保存',       target: 'シフト' },
+  saveMyAvailability:   { label: 'シフト希望の保存',       target: 'シフト' },
+  saveBudgets:          { label: '予算の保存',            target: '会計' },
+  addExpense:           { label: '経費の登録',            target: '会計' },
+  deleteExpense:        { label: '経費の削除',            target: '会計' },
+  setExpenseStatus:     { label: '経費申請の承認・却下',   target: '会計' },
+  addMyExpense:         { label: '経費の申請',            target: '会計' },
+  saveExpenseCategories:{ label: '費目マスタの保存',       target: '会計' },
+  saveDocuments:        { label: '文書の保存',            target: '文書' },
+};
+
+/** 操作した人の表示名（事務局はメール、従業員は氏名） */
+function actorLabel_(session) {
+  if (!session) return '不明';
+  if (session.role === 'admin') return session.email || '事務局';
+  if (session.staffId) {
+    try {
+      const s = sheetToObjects(getSheet('staff'), 'staff').filter(function (r) { return String(r.id) === String(session.staffId); })[0];
+      if (s) return s.lastName + ' ' + s.firstName;
+    } catch (err) { /* 名前が引けなくてもログは残す */ }
+    return session.staffId;
+  }
+  return session.role || '不明';
+}
+
+/** 記録の中身を短く要約する（個人情報を並べず、何をしたかが分かる程度に留める） */
+function auditSummary_(action, body) {
+  const parts = [];
+  if (body.month) parts.push(body.month);
+  if (body.date) parts.push(body.date);
+  if (body.location) parts.push(body.location);
+  if (body.fiscalYear) parts.push(body.fiscalYear + '年度');
+  if (body.status) parts.push(body.status);
+  if (body.id) parts.push('id=' + body.id);
+  const rec = body.record;
+  if (rec) {
+    if (rec.date) parts.push(rec.date);
+    if (rec.leaveType) parts.push(rec.leaveType);
+    if (rec.days) parts.push(rec.days + '日');
+    if (rec.hours) parts.push(rec.hours + 'h');
+    if (rec.amount) parts.push(rec.amount + '円');
+    if (rec.lastName) parts.push(rec.lastName + ' ' + (rec.firstName || ''));
+  }
+  if (body.records && body.records.length !== undefined) parts.push(body.records.length + '件');
+  if (body.staffId && !rec) parts.push('職員=' + body.staffId);
+  return parts.join(' / ');
+}
+
+/** 変更履歴に1行追加する。ログの失敗で本体の処理を止めない */
+function writeAudit_(action, body, session) {
+  try {
+    const conf = AUDIT_ACTIONS[action];
+    if (!conf) return;
+    const now = new Date();
+    const at = Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
+    const sheet = getSheet('audit');
+    sheet.appendRow(objectToRow('audit', {
+      id: 'aud' + now.getTime() + Math.floor(Math.random() * 1000),
+      at: at, actor: actorLabel_(session), role: session ? session.role : '',
+      action: conf.label, target: conf.target, summary: auditSummary_(action, body),
+    }));
+  } catch (err) { /* 履歴が残せなくても業務処理は継続する */ }
+}
+
+/** 変更履歴の取得（新しい順・最大件数を指定） */
+function handleGetAuditLog(limit) {
+  const max = Number(limit) || 300;
+  const records = sheetToObjects(getSheet('audit'), 'audit');
+  records.sort(function (a, b) { return String(b.at).localeCompare(String(a.at)); });
+  return { success: true, data: records.slice(0, max) };
+}
+
 function dispatch(action, body) {
   let result;
   switch (action) {
@@ -418,8 +515,15 @@ function dispatch(action, body) {
       case 'deleteLeave':
         result = handleDeleteLeave(body.id);
         break;
+      case 'getAuditLog':
+        result = handleGetAuditLog(body.limit);
+        break;
       default:
         result = { success: false, error: '不明なアクション: ' + action };
+    }
+    // 成功した書き込みだけを変更履歴に残す
+    if (result && result.success && AUDIT_ACTIONS[action]) {
+      writeAudit_(action, body, getSession(body.token));
     }
     return result;
 }
@@ -590,7 +694,7 @@ function handleAdminLogin(email, password) {
   const hash = hashPassword(password);
   const user = users.find(function (u) { return u.email === email && u.passwordHash === hash; });
   if (!user) return { success: false, error: 'メールアドレスまたはパスワードが正しくありません' };
-  return { success: true, token: issueToken('admin'), role: 'admin' };
+  return { success: true, token: issueToken('admin', '', user.email), role: 'admin' };
 }
 
 function handleChangePassword(oldPassword, newPassword) {

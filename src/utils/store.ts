@@ -3,7 +3,7 @@ import type {
   Staff, AttendanceRecord, LeaveRecord, WorkLocation,
   ShiftPattern, AvailabilityRecord, ConfirmedShift,
   OvertimeRecord, CompLeaveUse, DocumentItem,
-  ExpenseCategory, Budget, Expense, RequestStatus, ShiftChange,
+  ExpenseCategory, Budget, Expense, RequestStatus, ShiftChange, AuditEntry,
 } from '../types';
 import { ADMIN_EMAIL, ADMIN_PASSWORD, DEFAULT_SHIFT_PATTERNS, DEFAULT_EXPENSE_CATEGORIES, breakMinutesBetween } from './constants';
 
@@ -20,6 +20,7 @@ const KEY_EXP_CATEGORIES = 'tof_exp_categories';
 const KEY_BUDGETS = 'tof_budgets';
 const KEY_EXPENSES = 'tof_expenses';
 const KEY_SEEDED = 'tof_seeded';
+const KEY_AUDIT = 'tof_audit';
 
 function load<T>(key: string): T[] {
   try {
@@ -42,6 +43,30 @@ export function genId(prefix: string): string {
 export function todayStr(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// ---- 変更履歴（デモモード） ----
+
+/** デモモードの操作者。ログイン時に設定する */
+let auditActor = { actor: '事務局', role: 'admin' };
+export function setAuditActor(actor: string, role: string) {
+  auditActor = { actor, role };
+}
+
+/** 変更履歴に1件残す */
+export function writeAudit(action: string, target: string, summary: string) {
+  const d = new Date();
+  const at = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ` +
+    `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+  const all = load<AuditEntry>(KEY_AUDIT);
+  all.push({ id: genId('aud'), at, actor: auditActor.actor, role: auditActor.role, action, target, summary });
+  save(KEY_AUDIT, all.slice(-1000)); // デモなので直近1000件だけ保持する
+}
+
+export function listAuditLog(limit = 300): AuditEntry[] {
+  return load<AuditEntry>(KEY_AUDIT)
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .slice(0, limit);
 }
 
 // ---- 認証 ----
@@ -93,6 +118,7 @@ export function upsertStaff(staff: Staff): Staff {
     all.push(next);
   }
   save(KEY_STAFF, all);
+  writeAudit('職員情報の登録・更新', '職員', `${next.lastName} ${next.firstName}`);
   return next;
 }
 
@@ -111,6 +137,7 @@ export function saveMonthAttendance(staffId: string, month: string, records: Att
     r => !(r.staffId === staffId && r.date.startsWith(month))
   );
   save(KEY_ATTENDANCE, [...others, ...records]);
+  writeAudit('勤怠の保存', '勤怠', `${month} / ${records.length}件`);
 }
 
 // ---- シフト区分マスタ ----
@@ -123,6 +150,7 @@ export function listShiftPatterns(): ShiftPattern[] {
 
 export function saveShiftPatterns(patterns: ShiftPattern[]) {
   save(KEY_SHIFT_PATTERNS, patterns);
+  writeAudit('シフト区分の保存', 'シフト', `${patterns.length}件`);
 }
 
 // ---- シフト希望（○×・人単位） ----
@@ -158,6 +186,7 @@ export function saveMonthConfirmed(month: string, location: WorkLocation, record
   const others = all.filter(r => !isTarget(r));
   recordShiftChanges(location, all.filter(isTarget), records); // 変更を履歴に残す
   save(KEY_CONFIRMED, [...others, ...records]);
+  writeAudit('確定シフトの保存', 'シフト', `${month} / ${location} / ${records.length}件`);
 }
 
 // ---- シフト変更履歴（従業員への通知） ----
@@ -300,6 +329,7 @@ export function saveMonthOvertime(staffId: string, month: string, records: Overt
     r => !(r.staffId === staffId && r.date.startsWith(month))
   );
   save(KEY_OVERTIME, [...others, ...records]);
+  writeAudit('時間外の保存', '時間外', `${month} / ${records.length}件`);
 }
 
 /** 指定日の休暇（有給取得・代休取得）を全職員分まとめて返す */
@@ -329,10 +359,12 @@ export function addCompUse(record: CompLeaveUse) {
   const all = load<CompLeaveUse>(KEY_COMP_USE);
   all.push(record);
   save(KEY_COMP_USE, all);
+  writeAudit('代休取得の記録', '代休', `${record.date} / ${record.hours}h`);
 }
 
 export function deleteCompUse(id: string) {
   save(KEY_COMP_USE, load<CompLeaveUse>(KEY_COMP_USE).filter(r => r.id !== id));
+  writeAudit('代休取得の削除', '代休', `id=${id}`);
 }
 
 // ---- 文書管理 ----
@@ -374,10 +406,12 @@ export function addLeave(record: LeaveRecord) {
   const all = load<LeaveRecord>(KEY_LEAVE);
   all.push(record);
   save(KEY_LEAVE, all);
+  writeAudit('休暇記録の追加', '休暇', `${record.date} / ${record.leaveType || 'paid'} / ${record.days || 0}日${record.hours ? ' ' + record.hours + 'h' : ''}`);
 }
 
 export function deleteLeave(id: string) {
   save(KEY_LEAVE, load<LeaveRecord>(KEY_LEAVE).filter(r => r.id !== id));
+  writeAudit('休暇記録の削除', '休暇', `id=${id}`);
 }
 
 /** 休暇申請の状態を更新（承認/却下） */
@@ -385,6 +419,7 @@ export function setLeaveStatus(id: string, status: LeaveRecord['status']) {
   const all = load<LeaveRecord>(KEY_LEAVE);
   const r = all.find(x => x.id === id);
   if (r) { r.status = status; save(KEY_LEAVE, all); }
+  writeAudit('休暇申請の承認・却下', '休暇', `id=${id} / ${status}`);
 }
 
 /** 残日数 = 付与合計 - 取得合計 */
@@ -412,6 +447,7 @@ export function listBudgets(fiscalYear: number): Budget[] {
 export function saveBudgets(fiscalYear: number, records: Budget[]) {
   const others = load<Budget>(KEY_BUDGETS).filter(b => Number(b.fiscalYear) !== fiscalYear);
   save(KEY_BUDGETS, [...others, ...records]);
+  writeAudit('予算の保存', '会計', `${fiscalYear}年度 / ${records.length}件`);
 }
 
 // ---- 会計：経費 ----
@@ -429,14 +465,17 @@ export function addExpense(record: Expense) {
   const all = load<Expense>(KEY_EXPENSES);
   all.push(record);
   save(KEY_EXPENSES, all);
+  writeAudit('経費の登録', '会計', `${record.date} / ${record.amount}円 / ${record.description}`);
 }
 export function setExpenseStatus(id: string, status: RequestStatus) {
   const all = load<Expense>(KEY_EXPENSES);
   const r = all.find(x => x.id === id);
   if (r) { r.status = status; save(KEY_EXPENSES, all); }
+  writeAudit('経費申請の承認・却下', '会計', `id=${id} / ${status}`);
 }
 export function deleteExpense(id: string) {
   save(KEY_EXPENSES, load<Expense>(KEY_EXPENSES).filter(e => e.id !== id));
+  writeAudit('経費の削除', '会計', `id=${id}`);
 }
 
 // ---- デモデータ ----

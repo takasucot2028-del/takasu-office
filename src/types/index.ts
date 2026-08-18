@@ -210,6 +210,17 @@ export interface ShiftChange {
   readAt: string;             // 従業員が確認した日時（未確認は空）
 }
 
+/** 変更履歴の1件（誰がいつ何を変えたか） */
+export interface AuditEntry {
+  id: string;
+  at: string;       // 日時 YYYY-MM-DD HH:mm:ss
+  actor: string;    // 操作者（事務局はメール、従業員は氏名）
+  role: string;     // admin / staff
+  action: string;   // 操作の表示名
+  target: string;   // 対象の種類（勤怠・時間外・休暇 など）
+  summary: string;  // 内容の要約
+}
+
 /** 事業区分（区分 → 事業 → 費目 の最上位） */
 export interface ProjectDivision {
   id: string;

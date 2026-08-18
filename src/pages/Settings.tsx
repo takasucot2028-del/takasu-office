@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { PageContainer, Card, Field, Input, Button, Alert } from '../components/UI';
 import { changeAdminPassword, usingGas } from '../api/data';
 
@@ -79,6 +80,14 @@ export default function Settings() {
             </Field>
             <Button type="submit" disabled={saving}>{saving ? '変更中…' : '変更する'}</Button>
           </form>
+        </Card>
+
+        <Card className="mt-4">
+          <h2 className="font-bold text-gray-800 mb-1">変更履歴</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            勤怠・時間外・休暇・会計などの登録や承認が、いつ誰の操作で行われたかを確認できます。
+          </p>
+          <Link to="/labor/audit" className="text-sm text-emerald-700 hover:underline">変更履歴を開く →</Link>
         </Card>
       </div>
     </PageContainer>

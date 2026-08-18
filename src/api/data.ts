@@ -9,7 +9,7 @@ import type {
   Staff, AttendanceRecord, LeaveRecord,
   ShiftPattern, AvailabilityRecord, ConfirmedShift, WorkLocation,
   OvertimeRecord, CompLeaveUse, DocumentItem,
-  ExpenseCategory, Budget, Expense, ShiftChange,
+  ExpenseCategory, Budget, Expense, ShiftChange, AuditEntry,
 } from '../types';
 import { DEFAULT_SHIFT_PATTERNS, LEAVE_HOURS_PER_DAY, currentFiscalYear } from '../utils/constants';
 import * as local from '../utils/store';
@@ -134,6 +134,7 @@ export interface LoginResult { success: boolean; token?: string; error?: string 
 export async function adminLogin(email: string, password: string): Promise<LoginResult> {
   if (!USE_GAS) {
     const ok = local.verifyAdmin(email, password);
+    if (ok) local.setAuditActor(email, 'admin'); // 変更履歴に操作者を残す
     return ok
       ? { success: true, token: `demo-${Date.now()}` }
       : { success: false, error: 'メールアドレスまたはパスワードが正しくありません' };
@@ -154,6 +155,7 @@ export interface StaffLoginResult { success: boolean; token?: string; staffId?: 
 export async function staffLogin(employeeNumber: string, password: string): Promise<StaffLoginResult> {
   if (!USE_GAS) {
     const s = local.verifyStaffLogin(employeeNumber, password);
+    if (s) local.setAuditActor(`${s.lastName} ${s.firstName}`, 'staff');
     return s ? { success: true, token: `demo-${Date.now()}`, staffId: s.id, staff: s }
              : { success: false, error: '職員番号またはパスワードが正しくありません' };
   }
@@ -546,6 +548,12 @@ export async function listAbsencesByDate(date: string): Promise<DayAbsences> {
 }
 
 // === 有給休暇 ===
+/** 変更履歴（新しい順） */
+export async function listAuditLog(limit = 300): Promise<AuditEntry[]> {
+  if (!USE_GAS) return local.listAuditLog(limit);
+  return unwrap(await gas.getAuditLog(limit, token()), []);
+}
+
 /** 全職員の休暇記録。年5日取得義務の一覧に使う */
 export async function listAllLeave(): Promise<LeaveRecord[]> {
   if (!USE_GAS) return local.listAllLeave();
