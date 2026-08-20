@@ -163,7 +163,9 @@ export type LeaveType =
   | 'childNursing'  // 子の看護等休暇（第26条）
   | 'familyCare'    // 介護休暇（第25条）
   | 'jury'          // 裁判員等のための休暇（第30条）
-  | 'healthCheckup'; // 健康診断（第33条・労働時間とみなす）
+  | 'maternityHealth' // 母性健康管理のための休暇（第38条1項⑧）
+  | 'maternityLeave'  // 産前産後の休業（第38条1項⑩）
+  | 'healthCheckup';  // 健康診断（第33条・労働時間とみなす）
 
 /** 有給休暇記録（付与または取得）。取得は日単位・時間単位のどちらも可（1日=7.5時間） */
 export interface LeaveRecord {

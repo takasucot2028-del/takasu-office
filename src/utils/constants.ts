@@ -108,8 +108,8 @@ export const SPECIAL_LEAVE_TYPES: SpecialLeaveDef[] = [
     note: '心身の疲労回復のための有給休暇です。毎年度3日間。所定休日（第18条）は3日間に含みません（勤務日だけを日数に数えてください）。当該年度内に取得する必要があり、翌年度への繰越はできません。',
   },
   {
-    id: 'fertility', name: '不妊治療休暇', article: '第27条', unit: 'both', annualDays: 5, paid: true,
-    note: '年5日が限度です。長期の休業（休業開始日の属する事業年度を含む5事業年度で最長1年間）を希望する場合は事務局にご相談ください。',
+    id: 'fertility', name: '不妊治療休暇', article: '第27条', unit: 'both', annualDays: 5, paid: false,
+    note: '年5日が限度です。第38条1項に有給として列挙されていないため、同条2項により無給です。長期の休業（休業開始日の属する事業年度を含む5事業年度で最長1年間）を希望する場合は事務局にご相談ください。',
   },
   {
     id: 'childNursing', name: '子の看護等休暇', article: '第26条', unit: 'both', annualDays: 0, paid: true,
@@ -117,8 +117,8 @@ export const SPECIAL_LEAVE_TYPES: SpecialLeaveDef[] = [
     note: '小学校卒業までの子を養育する職員が対象です。上限は1年間（4/1〜3/31）で、対象の子が1人なら5日、2人以上なら10日です（人数は職員名簿の設定を使います）。1日単位でも1時間単位でも取得できます。時間単位は始業から連続・終業まで連続のほか、就業時間の途中に取得してその後就業する（中抜け）こともできます。有給です。',
   },
   {
-    id: 'familyCare', name: '介護休暇', article: '第25条', unit: 'both', annualDays: 0, paid: true,
-    note: '育児・介護休業法に基づく休暇です。詳細は「育児・介護休業等に関する規則」によります。',
+    id: 'familyCare', name: '介護休暇', article: '第25条', unit: 'both', annualDays: 0, paid: false,
+    note: '育児・介護休業法に基づく休暇です。詳細は「育児・介護休業等に関する規則」によります。第38条2項により無給です。',
   },
   {
     id: 'childcareTime', name: '育児時間', article: '第24条1項', unit: 'hour', annualDays: 0, paid: true,
@@ -131,6 +131,14 @@ export const SPECIAL_LEAVE_TYPES: SpecialLeaveDef[] = [
   {
     id: 'jury', name: '裁判員等のための休暇', article: '第30条', unit: 'both', annualDays: 0, paid: true,
     note: '裁判員・補充裁判員は必要な日数、裁判員候補者は必要な時間を取得できます。',
+  },
+  {
+    id: 'maternityHealth', name: '母性健康管理のための休暇', article: '', unit: 'both', annualDays: 0, paid: true,
+    note: '妊娠中・出産後の女性職員が、保健指導または健康診査を受けるための休暇です。第38条1項により有給です。',
+  },
+  {
+    id: 'maternityLeave', name: '産前産後の休業', article: '', unit: 'day', annualDays: 0, paid: true,
+    note: '産前産後の休業期間です。第38条1項により有給です。期間が長くなるため、取得予定が決まった時点で事務局にご相談ください。',
   },
   {
     id: 'healthCheckup', name: '健康診断', article: '第33条', unit: 'both', annualDays: 0, paid: true,
