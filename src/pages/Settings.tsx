@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageContainer, Card, Field, Input, Button, Alert } from '../components/UI';
+import { getPrefs, setPref } from '../utils/prefs';
 import { changeAdminPassword, usingGas } from '../api/data';
 
 export default function Settings() {
@@ -10,6 +11,7 @@ export default function Settings() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showLeaveObligation, setShowLeaveObligation] = useState(() => getPrefs().showLeaveObligation);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,6 +82,25 @@ export default function Settings() {
             </Field>
             <Button type="submit" disabled={saving}>{saving ? '変更中…' : '変更する'}</Button>
           </form>
+        </Card>
+
+        <Card className="mt-4">
+          <h2 className="font-bold text-gray-800 mb-1">ダッシュボードの表示</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            この端末での表示の設定です。ほかのパソコンやスマホには反映されません。
+          </p>
+          <label className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+            <input type="checkbox" className="w-4 h-4 mt-1"
+              checked={showLeaveObligation}
+              onChange={e => { setShowLeaveObligation(e.target.checked); setPref('showLeaveObligation', e.target.checked); }} />
+            <span>
+              「年5日の年休取得が未達の職員」を表示する
+              <span className="block text-xs text-gray-500">
+                法令上は年5日の取得が必要ですが、ダッシュボードに出す必要がなければ外してください。
+                有給休暇の画面では職員ごとの達成状況を引き続き確認できます。
+              </span>
+            </span>
+          </label>
         </Card>
 
         <Card className="mt-4">

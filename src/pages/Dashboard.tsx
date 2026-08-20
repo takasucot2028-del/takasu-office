@@ -6,6 +6,7 @@ import type { DayAbsences, PendingSummary } from '../api/data';
 import { WORK_LOCATION_LABELS, WEEKDAY_LABELS, currentFiscalYear } from '../utils/constants';
 import { currentObligation } from '../utils/annualLeave';
 import { monthlyTotals, evaluate36 } from '../utils/limit36';
+import { getPrefs } from '../utils/prefs';
 import { shiftPlanByDate, isMissingPunch } from '../utils/shiftPlan';
 import type { WorkLocation, Staff, ShiftPattern, ConfirmedShift, LeaveRecord, OvertimeRecord } from '../types';
 
@@ -44,9 +45,10 @@ export default function Dashboard() {
     return () => { alive = false; };
   }, [today]);
 
-  // 年5日取得義務の未達者。主要表示の妨げにならないよう、描画後に裏で取得する
+  // 年5日取得義務の未達者。主要表示の妨げにならないよう、描画後に裏で取得する。
+  // 表示しない設定のときは取得自体を行わない。
   useEffect(() => {
-    if (!staff.length) return;
+    if (!staff.length || !getPrefs().showLeaveObligation) return;
     let alive = true;
     (async () => {
       let all: LeaveRecord[] = [];
