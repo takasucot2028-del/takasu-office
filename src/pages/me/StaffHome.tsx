@@ -222,6 +222,7 @@ export default function StaffHome() {
       {/* メニュー */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
         <MenuLink to="/me/attendance" label="出勤簿" desc="自分の勤怠の確認・出力" />
+        <MenuLink to="/me/schedule" label="シフト表" desc="確定したシフトを確認" />
         <MenuLink to="/me/shifts" label="シフト希望" desc="勤務できる日を申請" />
         <MenuLink to="/me/overtime" label="時間外申請" desc="残業・休日勤務を申請" />
         <MenuLink to="/me/leave" label="休暇申請" desc="有給の申請・残の確認" />

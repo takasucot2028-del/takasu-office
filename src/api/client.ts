@@ -10,6 +10,11 @@ import type {
 } from '../types';
 
 /** 本日の勤務・休暇（従業員も閲覧可。氏名・時間のみ、個人情報は含まない） */
+/** 月の確定シフト表（氏名と区分のみ。従業員も閲覧できる） */
+export interface ShiftBoardStaff { id: string; name: string; kana: string; workLocation: '' | WorkLocation | 'both' }
+export interface ShiftBoardShift { staffId: string; date: string; location: WorkLocation; patternId: string }
+export interface ShiftBoard { staff: ShiftBoardStaff[]; shifts: ShiftBoardShift[] }
+
 export interface TodayWorkShift {
   location: WorkLocation; staffName: string; patternName: string; startTime: string; endTime: string; order: number;
 }
@@ -214,6 +219,9 @@ export const saveMonthConfirmed = (
 // === 時間外・休日勤務 ===
 export const getOvertimeMonth = (month: string, token: string) =>
   request<OvertimeRecord[]>('getOvertimeMonth', { month, token });
+
+export const getShiftBoard = (month: string, token: string) =>
+  request<ShiftBoard>('getShiftBoard', { month, token });
 
 export const getMyConfirmed = (month: string, token: string) =>
   request<ConfirmedShift[]>('getMyConfirmed', { month, token });

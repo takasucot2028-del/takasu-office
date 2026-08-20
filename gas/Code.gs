@@ -196,7 +196,7 @@ var STAFF_ACTIONS = {
   getExpenseContext: true, getMyExpenses: true, addMyExpense: true,
 };
 // 認証済みなら role を問わず許可（事務局・従業員の両方が閲覧するもの）
-var AUTHED_ACTIONS = { getDocuments: true, getTodayWork: true, getShiftPatterns: true };
+var AUTHED_ACTIONS = { getDocuments: true, getTodayWork: true, getShiftPatterns: true, getShiftBoard: true };
 function enforceAuth(action, body) {
   if (PUBLIC_ACTIONS[action]) return;
   const session = getSession(body.token);
@@ -499,6 +499,9 @@ function dispatch(action, body) {
         break;
       case 'getAbsencesByDate':
         result = handleGetAbsencesByDate(body.date);
+        break;
+      case 'getShiftBoard':
+        result = handleGetShiftBoard(body.month);
         break;
       case 'getTodayWork':
         result = handleGetTodayWork(body.date);
@@ -1097,6 +1100,31 @@ function handleGetPendingSummary() {
 }
 
 // 従業員も閲覧できる「本日の勤務・休暇」。氏名・シフト時間・休暇のみ返す（個人情報は含めない）。
+/**
+ * 月の確定シフト表（従業員も閲覧可）。
+ * 掲示するシフト表と同じ内容にとどめ、氏名と区分だけを返す（個人情報は含めない）。
+ */
+function handleGetShiftBoard(month) {
+  var m = String(month);
+  var staff = sheetToObjects(getSheet('staff'), 'staff')
+    .filter(function (s) { return String(s.status) === 'active'; })
+    .map(function (s) {
+      return {
+        id: s.id,
+        name: ((s.lastName || '') + ' ' + (s.firstName || '')).trim(),
+        kana: (s.lastKana || ''),
+        workLocation: s.workLocation || '',
+      };
+    });
+  staff.sort(function (a, b) { return String(a.kana).localeCompare(String(b.kana), 'ja'); });
+  var shifts = sheetToObjects(getSheet('shifts_confirmed'), 'shifts_confirmed')
+    .filter(function (r) { return String(r.date).slice(0, 7) === m; })
+    .map(function (r) {
+      return { staffId: r.staffId, date: r.date, location: r.location, patternId: r.patternId };
+    });
+  return { success: true, data: { staff: staff, shifts: shifts } };
+}
+
 function handleGetTodayWork(date) {
   var d = String(date);
   var nameOf = {};

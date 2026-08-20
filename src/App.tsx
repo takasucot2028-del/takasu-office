@@ -32,6 +32,7 @@ import StaffRegisterPrint from './pages/labor/StaffRegisterPrint';
 import WageLedgerPrint from './pages/labor/WageLedgerPrint';
 import Payroll from './pages/labor/Payroll';
 import AuditLog from './pages/labor/AuditLog';
+import StaffSchedule from './pages/me/StaffSchedule';
 import YearEnd from './pages/labor/YearEnd';
 
 // 管理者専用
@@ -87,6 +88,7 @@ function AppRoutes() {
         <Route path="/me/documents" element={<StaffGuard><StaffDocuments /></StaffGuard>} />
         <Route path="/me/expense" element={<StaffGuard><StaffExpense /></StaffGuard>} />
         <Route path="/me/attendance" element={<StaffGuard><StaffAttendance /></StaffGuard>} />
+        <Route path="/me/schedule" element={<StaffGuard><StaffSchedule /></StaffGuard>} />
         <Route path="/me/attendance/print" element={<StaffGuard><AttendancePrint /></StaffGuard>} />
         <Route path="/me/settings" element={<StaffGuard><StaffSettings /></StaffGuard>} />
       </Routes>

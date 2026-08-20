@@ -14,8 +14,8 @@ import type {
 import { DEFAULT_SHIFT_PATTERNS, LEAVE_HOURS_PER_DAY, currentFiscalYear } from '../utils/constants';
 import * as local from '../utils/store';
 import * as gas from './client';
-import type { ExpenseContext, TodayWork, PendingSummary, PendingItem } from './client';
-export type { TodayWork, PendingSummary, PendingItem } from './client';
+import type { ExpenseContext, TodayWork, PendingSummary, PendingItem, ShiftBoard } from './client';
+export type { TodayWork, PendingSummary, PendingItem, ShiftBoard, ShiftBoardStaff, ShiftBoardShift } from './client';
 
 const USE_GAS = !!import.meta.env.VITE_GAS_URL;
 
@@ -499,6 +499,19 @@ export async function listOvertimeByMonth(month: string): Promise<OvertimeRecord
 export async function listAttendanceMonthAll(month: string): Promise<AttendanceRecord[]> {
   if (!USE_GAS) return local.listAttendanceMonthAll(month);
   return unwrap(await gas.getAttendanceMonthAll(month, token()), []);
+}
+
+/** 月の確定シフト表（従業員も閲覧できる）。区分マスタと一緒に使う */
+export async function getShiftBoard(month: string): Promise<ShiftBoard> {
+  if (!USE_GAS) {
+    const staff = local.listStaff()
+      .filter(s => s.status === 'active')
+      .map(s => ({ id: s.id, name: `${s.lastName} ${s.firstName}`, kana: s.lastKana || '', workLocation: s.workLocation }));
+    const shifts = local.listConfirmedByMonth(month)
+      .map(r => ({ staffId: r.staffId, date: r.date, location: r.location, patternId: r.patternId }));
+    return { staff, shifts };
+  }
+  return unwrap(await gas.getShiftBoard(month, token()), { staff: [], shifts: [] });
 }
 
 /** 自分の確定シフト（従業員用）。出勤簿でシフト予定と実績を見比べるのに使う */
