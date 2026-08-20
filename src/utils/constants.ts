@@ -80,6 +80,7 @@ export interface SpecialLeaveDef {
   annualDays: number;          // 年度（4/1〜3/31）あたりの上限日数。0＝上限なし（職員ごとに決まるものを含む）
   paid: boolean;               // 全期間が有給か（就業規則で無給と定めるものは false）
   paidDays?: number;           // paid:false のとき、年度あたり有給となる日数の限度（超過分は無給）。未設定＝全期間無給
+  asWorkingTime?: boolean;     // 休業ではなく「労働時間とみなす」もの（健康診断など）
   note: string;                // 画面に出す補足
   needsSubReason?: boolean;    // 事由の選択が必要か（慶弔休暇・子の看護等休暇）
 }
@@ -131,6 +132,11 @@ export const SPECIAL_LEAVE_TYPES: SpecialLeaveDef[] = [
     id: 'jury', name: '裁判員等のための休暇', article: '第30条', unit: 'both', annualDays: 0, paid: true,
     note: '裁判員・補充裁判員は必要な日数、裁判員候補者は必要な時間を取得できます。',
   },
+  {
+    id: 'healthCheckup', name: '健康診断', article: '第33条', unit: 'both', annualDays: 0, paid: true,
+    asWorkingTime: true,
+    note: '毎年1回の定期健康診断です。受診に要する時間（移動時間を含む）は原則として労働時間とみなし、通常の賃金を支払います。正当な理由なく受診を拒むことはできません。勤務時間中に受診した場合は、その時間も含めて勤怠に出退勤を記録してください（この申請は受診の記録・把握のためのものです）。',
+  },
 ];
 
 /** 子の看護等休暇の上限日数（第26条2項）。対象の子が1人=5日、2人以上=10日 */
@@ -169,6 +175,7 @@ export function specialLeavePaidRemain(
 
 /** 支払いの扱いを1行で説明する（画面のバッジ用） */
 export function paymentLabel(def: SpecialLeaveDef): string {
+  if (def.asWorkingTime) return '労働時間として扱う（通常の賃金）';
   if (def.paid) return '有給';
   if (def.paidDays) return `年${def.paidDays}日まで有給・超過分は無給`;
   return '無給';

@@ -49,6 +49,7 @@ interface Row {
   paidLeaveDays: number;   // 年次有給（日）
   paidLeaveHours: number;  // 年次有給（時間）
   specialPaidDays: number; // 特別休暇のうち有給
+  workTimeDays: number;    // 健康診断など「労働時間とみなす」もの
   specialUnpaidDays: number; // 特別休暇のうち無給（給与から控除する分）
   unpaidNote: string;      // 無給分の内訳
 }
@@ -92,7 +93,7 @@ export default function Payroll() {
       }
 
       // 休暇。特別休暇は有給／無給に分ける（病気休暇は年5日までが有給）
-      let paidDays = 0, paidHours = 0, spPaid = 0, spUnpaid = 0;
+      let paidDays = 0, paidHours = 0, spPaid = 0, spUnpaid = 0, workTime = 0;
       const unpaidParts: string[] = [];
       for (const r of lv) {
         const type = r.leaveType || 'paid';
@@ -100,6 +101,8 @@ export default function Payroll() {
         if (type === 'paid') { paidDays += days; paidHours += hours; continue; }
         const def = specialLeaveDef(type);
         const asDays = days + hours / LEAVE_HOURS_PER_DAY;
+        // 健康診断などは休業ではなく労働時間とみなすため、休暇とは分けて集計する
+        if (def?.asWorkingTime) { workTime += asDays; continue; }
         if (!def || def.paid) { spPaid += asDays; continue; }
         if (!def.paidDays) { spUnpaid += asDays; unpaidParts.push(`${def.name} ${h1(asDays)}日`); continue; }
         // 年度内の使用状況から、この記録が有給枠に収まるかを判定する
@@ -124,7 +127,7 @@ export default function Payroll() {
         compGranted: h1(compGranted),
         compUsed: h1(comp.reduce((t, r) => t + (Number(r.hours) || 0), 0)),
         paidLeaveDays: h1(paidDays), paidLeaveHours: h1(paidHours),
-        specialPaidDays: h1(spPaid), specialUnpaidDays: h1(spUnpaid),
+        specialPaidDays: h1(spPaid), specialUnpaidDays: h1(spUnpaid), workTimeDays: h1(workTime),
         unpaidNote: unpaidParts.join('、'),
       };
     });
@@ -136,7 +139,7 @@ export default function Payroll() {
       '出勤日数', '実働時間', '深夜労働時間', '欠勤日数',
       '時間外(×1.20)', '時間外(×1.50)', '休日労働(×1.35)', '時間外手当',
       '代休付与', '代休消化',
-      '年次有給(日)', '年次有給(時間)', '特別休暇 有給(日)', '特別休暇 無給(日)', '無給の内訳',
+      '年次有給(日)', '年次有給(時間)', '特別休暇 有給(日)', '特別休暇 無給(日)', '無給の内訳', '健康診断等(労働時間扱い・日)',
     ];
     const body = rows.map(r => [
       r.staff.employeeNumber, `${r.staff.lastName} ${r.staff.firstName}`,
@@ -144,14 +147,14 @@ export default function Payroll() {
       r.workDays, r.workHours, r.nightHours, r.absentDays,
       r.otNormalHours, r.otOver60Hours, r.holidayHours, r.allowance,
       r.compGranted, r.compUsed,
-      r.paidLeaveDays, r.paidLeaveHours, r.specialPaidDays, r.specialUnpaidDays, r.unpaidNote,
+      r.paidLeaveDays, r.paidLeaveHours, r.specialPaidDays, r.specialUnpaidDays, r.unpaidNote, r.workTimeDays,
     ]);
     const ws = XLSX.utils.aoa_to_sheet([[`給与計算用データ　${month}`], [], header, ...body]);
     ws['!cols'] = [{ wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 8 },
       { wch: 9 }, { wch: 9 }, { wch: 11 }, { wch: 9 },
       { wch: 12 }, { wch: 12 }, { wch: 13 }, { wch: 11 },
       { wch: 9 }, { wch: 9 },
-      { wch: 12 }, { wch: 13 }, { wch: 15 }, { wch: 15 }, { wch: 24 }];
+      { wch: 12 }, { wch: 13 }, { wch: 15 }, { wch: 15 }, { wch: 24 }, { wch: 22 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, month);
     XLSX.writeFile(wb, `給与計算用データ_${month}.xlsx`);
@@ -182,6 +185,7 @@ export default function Payroll() {
         <p className="text-xs text-gray-400">
           勤怠（実働・深夜）と承認済みの時間外実績、承認済みの休暇から集計しています。
           代休にした時間外は手当に含めず「代休付与」に計上します。基本給・社会保険料などは給与計算側で扱ってください。
+          健康診断（第33条）は休業ではなく労働時間とみなすため、特別休暇とは分けて「健康診断等」に計上しています。
         </p>
       </Card>
 
@@ -199,12 +203,12 @@ export default function Payroll() {
               <Th>出勤日数</Th><Th>実働</Th><Th>深夜</Th><Th>欠勤</Th>
               <Th>時間外×1.20</Th><Th>時間外×1.50</Th><Th>休日×1.35</Th><Th>時間外手当</Th>
               <Th>代休付与</Th><Th>代休消化</Th>
-              <Th>年次有給</Th><Th>特別休暇(有給)</Th><Th>特別休暇(無給)</Th>
+              <Th>年次有給</Th><Th>特別休暇(有給)</Th><Th>特別休暇(無給)</Th><Th>健康診断等</Th>
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><Td className="text-center text-gray-400 py-8" colSpan={15}>読み込み中…</Td></tr>}
-            {!loading && rows.length === 0 && <tr><Td className="text-center text-gray-400 py-8" colSpan={15}>在職職員がいません</Td></tr>}
+            {loading && <tr><Td className="text-center text-gray-400 py-8" colSpan={16}>読み込み中…</Td></tr>}
+            {!loading && rows.length === 0 && <tr><Td className="text-center text-gray-400 py-8" colSpan={16}>在職職員がいません</Td></tr>}
             {!loading && rows.map(r => (
               <tr key={r.staff.id}>
                 <Td className="whitespace-nowrap font-medium">{r.staff.lastName} {r.staff.firstName}</Td>
@@ -229,6 +233,7 @@ export default function Payroll() {
                     <span className="text-amber-700 font-medium" title={r.unpaidNote}>{r.specialUnpaidDays}</span>
                   ) : ''}
                 </Td>
+                <Td className="text-right">{r.workTimeDays || ''}</Td>
               </tr>
             ))}
           </tbody>

@@ -162,7 +162,8 @@ export type LeaveType =
   | 'menstrual'     // 生理休暇（第24条2項）
   | 'childNursing'  // 子の看護等休暇（第26条）
   | 'familyCare'    // 介護休暇（第25条）
-  | 'jury';         // 裁判員等のための休暇（第30条）
+  | 'jury'          // 裁判員等のための休暇（第30条）
+  | 'healthCheckup'; // 健康診断（第33条・労働時間とみなす）
 
 /** 有給休暇記録（付与または取得）。取得は日単位・時間単位のどちらも可（1日=7.5時間） */
 export interface LeaveRecord {
