@@ -160,6 +160,21 @@ export default function Shifts() {
       });
     }
   };
+  /**
+   * 希望入力で「勤務不可」を切り替える。
+   * 勤務不可にすると区分の希望は外れる（従業員側の申請と同じ扱い）。
+   */
+  const toggleUnavailable = (staffId: string, date: string) => {
+    const k = aKey(staffId, date);
+    setError('');
+    setReqMap(prev => {
+      const next = { ...prev };
+      if ((prev[k] || []).includes(UNAVAILABLE_PATTERN_ID)) delete next[k];
+      else next[k] = [UNAVAILABLE_PATTERN_ID];
+      return next;
+    });
+  };
+
   const clearCell = (staffId: string, date: string) => {
     if (mode === 'request') {
       const k = aKey(staffId, date);
@@ -303,7 +318,8 @@ export default function Shifts() {
     for (const s of staffOfLoc) {
       const row: (string | number)[] = [`${s.lastName} ${s.firstName}`];
       for (const date of days) {
-        row.push(names(mode === 'request' ? reqIds(s.id, date) : confIds(s.id, date)));
+        if (mode === 'request' && isUnavailable(s.id, date)) row.push('×');
+        else row.push(names(mode === 'request' ? reqIds(s.id, date) : confIds(s.id, date)));
       }
       if (mode === 'confirm') { const t = staffTotals(s.id); row.push(t.daysCount, t.hours); }
       rows.push(row);
@@ -361,9 +377,9 @@ export default function Shifts() {
         {/* 凡例 */}
         <div className="mt-3 text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
           {mode === 'request'
-            ? <span>セルをクリックで希望の区分を選択（複数可・空欄＝希望なし）</span>
+            ? <span>セルをクリックで希望の区分または<span className="text-red-600">勤務不可</span>を選択（区分は複数可・空欄＝希望なし）</span>
             : <span>セルをクリックで区分を割り当て（複数可）。希望がある日は<span className="text-amber-600"> 黄色 </span>で表示</span>}
-          <span>本人が勤務不可の日は<span className="text-red-600"> 赤（×） </span>で表示</span>
+          <span>勤務不可の日は<span className="text-red-600"> 赤（×） </span>で表示</span>
           {validPatterns.map(p => (
             <span key={p.id} className="text-gray-600">{p.name}: {p.startTime}〜{p.endTime}</span>
           ))}
@@ -512,7 +528,7 @@ export default function Shifts() {
                         <td key={date}
                           onClick={e => setMenu({ staffId: s.id, date, x: e.clientX, y: e.clientY })}
                           className={`${cellBase} ${bg}`}
-                          title={ng ? '本人が「勤務不可」で申請しています' : undefined}>
+                          title={ng ? '「勤務不可」の日です' : undefined}>
                           {ng && ids.length === 0
                             ? <span className="text-red-600 font-bold leading-tight">×</span>
                             : <span className="font-medium text-gray-800 leading-tight px-0.5">{names(ids)}</span>}
@@ -562,12 +578,23 @@ export default function Shifts() {
             <div className="text-xs text-gray-500 mb-1 px-1">
               {menuStaff.lastName} {menuStaff.firstName}・{Number(menu.date.slice(5, 7))}/{Number(menu.date.slice(8))}
             </div>
-            {isUnavailable(menu.staffId, menu.date) && (
-              <div className="text-xs text-red-700 bg-red-50 rounded px-1.5 py-1 mb-1 font-medium">本人が「勤務不可」で申請しています</div>
+            {mode === 'confirm' && isUnavailable(menu.staffId, menu.date) && (
+              <div className="text-xs text-red-700 bg-red-50 rounded px-1.5 py-1 mb-1 font-medium">「勤務不可」で申請されています</div>
             )}
             {mode === 'confirm' && !isUnavailable(menu.staffId, menu.date) && (
               <div className="text-xs text-amber-700 bg-amber-50 rounded px-1.5 py-1 mb-1">希望: {menuReqNames || 'なし'}</div>
             )}
+            {mode === 'request' && (() => {
+              const ng = isUnavailable(menu.staffId, menu.date);
+              return (
+                <button onClick={() => toggleUnavailable(menu.staffId, menu.date)}
+                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-sm mb-1 ${ng
+                    ? 'bg-red-600 text-white' : 'bg-red-50 text-red-700 hover:bg-red-100'}`}>
+                  <span>{ng ? '✓ ' : ''}勤務不可</span>
+                  <span className={`text-xs ${ng ? 'text-red-100' : 'text-red-400'}`}>×</span>
+                </button>
+              );
+            })()}
             <div className="flex flex-col gap-1">
               {validPatterns.map(p => {
                 const on = isOn(menu.staffId, menu.date, p.id);
