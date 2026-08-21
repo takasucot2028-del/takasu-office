@@ -101,7 +101,6 @@ export function clearDataCache() { _cache.clear(); persistClear(); }
  * 画面を開いたままだと全ての通信が「認証が必要です」で失敗する。
  * 空表示のまま放置せず、ログイン画面に戻せるように通知する。
  */
-const AUTH_ERROR = '認証が必要です';
 let _authExpired = false;
 type AuthListener = () => void;
 const _authListeners = new Set<AuthListener>();
@@ -112,12 +111,22 @@ export function onSessionExpired(fn: AuthListener): () => void {
   return () => { _authListeners.delete(fn); };
 }
 
-function noteAuthError(error?: string) {
-  if (!error || error.indexOf(AUTH_ERROR) < 0) return;
-  if (_authExpired) return;   // 何度も通知しない
+/**
+ * 認証エラーを受けたときの判定。
+ * 誤ってログアウトさせないよう、次の場合だけセッション切れとみなす。
+ *   ・いま保持しているトークンで失敗した（古い通信の残りではない）
+ *   ・そもそもログイン済みである
+ */
+function handleAuthError(info: { action: string; tokenUsed: string }) {
+  const current = token();
+  if (!current) return;                    // 未ログイン。ログイン画面のままでよい
+  if (info.tokenUsed !== current) return;  // ログイン前に投げた通信の遅れた応答
+  if (_authExpired) return;                // 何度も通知しない
   _authExpired = true;
+  console.warn('セッションが無効になったため、ログイン画面に戻ります（' + info.action + '）');
   _authListeners.forEach(fn => { try { fn(); } catch { /* noop */ } });
 }
+gas.setAuthErrorHandler(handleAuthError);
 
 /** ログインし直したときに検知状態を戻す */
 export function resetSessionExpired() { _authExpired = false; }
@@ -125,7 +134,7 @@ export function resetSessionExpired() { _authExpired = false; }
 // ApiResponse から data を取り出す。失敗時は fallback を返す。
 function unwrap<T>(res: { success: boolean; data?: T; error?: string }, fallback: T): T {
   if (res.success && res.data !== undefined) return res.data;
-  if (!res.success) { console.error('API エラー:', res.error); noteAuthError(res.error); }
+  if (!res.success) console.error('API エラー:', res.error);
   return fallback;
 }
 
@@ -637,11 +646,16 @@ export async function deleteLeave(id: string): Promise<void> {
 type SubRes<T> = { success: boolean; data?: T; error?: string };
 // バッチ実行。GASがバッチ未対応（旧デプロイ）や失敗時は null を返し、呼び出し側が個別取得にフォールバックする。
 async function batchCall(requests: Record<string, unknown>[]): Promise<SubRes<unknown>[] | null> {
-  const res = await gas.batch(requests, token());
-  if (!res.success) noteAuthError(res.error);
+  const used = token();
+  const res = await gas.batch(requests, used);
   if (res.success && Array.isArray(res.data)) {
     const list = res.data as SubRes<unknown>[];
-    list.forEach(sub => { if (sub && !sub.success) noteAuthError(sub.error); });
+    // バッチ内の個別の失敗も認証切れの判定に使う
+    list.forEach((sub, i) => {
+      if (sub && !sub.success && sub.error && sub.error.indexOf('認証が必要です') >= 0) {
+        handleAuthError({ action: String(requests[i]?.action ?? 'batch'), tokenUsed: used });
+      }
+    });
     return list;
   }
   return null;

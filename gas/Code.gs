@@ -142,6 +142,32 @@ function diagnose() {
   return text;
 }
 
+/**
+ * 保守用。ログイン情報の保存・読み出しが正しく動くかを確認する。
+ * 「認証が必要です」が続く場合にGASエディタで実行して、実行ログを確認する。
+ */
+function testSession() {
+  const out = [];
+  const t = issueToken('admin', '', 'test@example.com');
+  out.push('発行したトークン: ' + t.slice(0, 8) + '…');
+  const fromCache = CacheService.getScriptCache().get(SESSION_PREFIX + t);
+  out.push('キャッシュから読めるか: ' + (fromCache ? 'はい' : '★いいえ（CacheServiceが使えていません）'));
+  let fromStore = null;
+  try { fromStore = sessionStore_().getProperty(SESSION_PREFIX + t); } catch (err) { out.push('保存領域エラー: ' + err.message); }
+  out.push('保存領域から読めるか: ' + (fromStore ? 'はい' : '★いいえ'));
+  const sess = getSession(t);
+  out.push('セッションとして復元できるか: ' + (sess ? 'はい（role=' + sess.role + '）' : '★いいえ'));
+  // キャッシュだけ消して、保存領域から復元できるかを確認する
+  CacheService.getScriptCache().remove(SESSION_PREFIX + t);
+  const recovered = getSession(t);
+  out.push('キャッシュが消えても復元できるか: ' + (recovered ? 'はい' : '★いいえ'));
+  revokeToken_(t);
+  out.push('後片付け完了');
+  const text = out.join('\n');
+  Logger.log(text);
+  return text;
+}
+
 function labelKeyMap_(key) {
   const map = {};
   sheetConf(key).columns.forEach(function (c) { map[String(c[1])] = c[0]; });
@@ -286,20 +312,68 @@ function hashPassword(pw) {
 // --- セッション管理（CacheService・TTL 6時間）---
 var SESSION_TTL_SECONDS = 21600;
 
+/**
+ * ログイン情報の保存。
+ * CacheService だけだと、スクリプトを再デプロイした時点で全員のログインが
+ * 無効になる（キャッシュが消えるため）。同じ内容を PropertiesService にも
+ * 置いて、キャッシュが無い場合はそちらから復元する。
+ */
+var SESSION_PREFIX = 'sess_';
+
+function sessionStore_() { return PropertiesService.getScriptProperties(); }
+
 function issueToken(role, staffId, email) {
   const token = genId() + genId(); // 24文字
-  CacheService.getScriptCache().put(
-    'sess_' + token,
-    JSON.stringify({ role: role, staffId: staffId || '', email: email || '' }),
-    SESSION_TTL_SECONDS
-  );
+  const payload = {
+    role: role, staffId: staffId || '', email: email || '',
+    exp: Date.now() + SESSION_TTL_SECONDS * 1000,
+  };
+  const raw = JSON.stringify(payload);
+  CacheService.getScriptCache().put(SESSION_PREFIX + token, raw, SESSION_TTL_SECONDS);
+  try {
+    sessionStore_().setProperty(SESSION_PREFIX + token, raw);
+    cleanupSessions_();
+  } catch (err) { /* 保存できなくてもキャッシュだけで動作する */ }
   return token;
+}
+
+/** 期限切れのログイン情報を片付ける（保存領域が増え続けないように） */
+function cleanupSessions_() {
+  try {
+    const store = sessionStore_();
+    const all = store.getProperties();
+    const now = Date.now();
+    Object.keys(all).forEach(function (k) {
+      if (k.indexOf(SESSION_PREFIX) !== 0) return;
+      try {
+        const v = JSON.parse(all[k]);
+        if (!v.exp || v.exp < now) store.deleteProperty(k);
+      } catch (err) { store.deleteProperty(k); }
+    });
+  } catch (err) { /* noop */ }
+}
+
+/** ログアウト等でログイン情報を破棄する */
+function revokeToken_(token) {
+  if (!token) return;
+  try { CacheService.getScriptCache().remove(SESSION_PREFIX + token); } catch (err) { /* noop */ }
+  try { sessionStore_().deleteProperty(SESSION_PREFIX + token); } catch (err) { /* noop */ }
 }
 function getSession(token) {
   if (!token) return null;
-  const raw = CacheService.getScriptCache().get('sess_' + token);
-  if (!raw) return null;
-  try { return JSON.parse(raw); } catch (err) { return null; }
+  const key = SESSION_PREFIX + token;
+  const cache = CacheService.getScriptCache();
+  let raw = cache.get(key);
+  if (!raw) {
+    // キャッシュが消えている場合は保存領域から復元する（再デプロイ後など）
+    try { raw = sessionStore_().getProperty(key); } catch (err) { raw = null; }
+    if (!raw) return null;
+    try { cache.put(key, raw, SESSION_TTL_SECONDS); } catch (err) { /* noop */ }
+  }
+  let v;
+  try { v = JSON.parse(raw); } catch (err) { return null; }
+  if (v.exp && v.exp < Date.now()) { revokeToken_(token); return null; }
+  return v;
 }
 
 // 認可: 公開＝ログイン系。従業員アクションは role=staff（自分のデータのみ）。それ以外は管理者専用。

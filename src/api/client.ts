@@ -63,6 +63,18 @@ const IDEMPOTENT_ADDS = new Set([
 const isRetryable = (action: string) =>
   /^(get|save|upsert|set|delete)/.test(action) || IDEMPOTENT_ADDS.has(action) || action === 'batch' || /Login$/.test(action);
 
+/** 認証エラーの通知先（data.ts が登録する） */
+let _onAuthError: ((info: { action: string; tokenUsed: string }) => void) | null = null;
+export function setAuthErrorHandler(fn: (info: { action: string; tokenUsed: string }) => void) {
+  _onAuthError = fn;
+}
+function reportAuthError(action: string, payload: Record<string, unknown> | undefined, error?: string) {
+  if (!error || error.indexOf('認証が必要です') < 0) return;
+  const tokenUsed = String((payload && payload.token) || '');
+  console.warn('[認証エラー] action=' + action + ' token=' + (tokenUsed ? tokenUsed.slice(0, 6) + '…' : '(空)'));
+  if (_onAuthError) _onAuthError({ action, tokenUsed });
+}
+
 async function request<T>(action: string, payload?: Record<string, unknown>): Promise<ApiResponse<T>> {
   if (!API_BASE) {
     console.warn('GAS URLが未設定です。デモモードで動作します。');
@@ -80,7 +92,9 @@ async function request<T>(action: string, payload?: Record<string, unknown>): Pr
       });
       const text = await res.text();
       try {
-        return JSON.parse(text); // 正常応答（成功/失敗どちらも即返す。業務エラーは再試行しない）
+        const json = JSON.parse(text) as ApiResponse<T>; // 正常応答（成功/失敗どちらも即返す）
+        if (!json.success) reportAuthError(action, payload, json.error);
+        return json;
       } catch {
         console.error(`GAS応答がJSONではありません [${action}] status=${res.status} (試行${i + 1}/${attempts}):`, text.slice(0, 300));
         const snippet = text.replace(/\s+/g, ' ').trim().slice(0, 120);

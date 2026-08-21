@@ -9,7 +9,11 @@ type Tab = 'staff' | 'admin';
 export default function Login() {
   const { login, isLoggedIn, isAdmin, expired } = useAuth();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<Tab>('staff');
+  const [tab, setTab] = useState<Tab>(() => {
+    // 前回ログインした種別を開く。事務局の人が従業員タブで悩まないようにする
+    const last = localStorage.getItem('tof_last_role');
+    return last === 'admin' ? 'admin' : 'staff';
+  });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -28,6 +32,7 @@ export default function Login() {
     try {
       const res = await staffLogin(empNo, empPw);
       if (res.success && res.token && res.staffId) {
+        localStorage.setItem('tof_last_role', 'staff');
         login(res.token, 'staff', res.staffId);
         navigate('/me');
       } else setError(res.error || 'ログインできませんでした');
@@ -42,6 +47,7 @@ export default function Login() {
     try {
       const res = await adminLogin(email, adminPw);
       if (res.success && res.token) {
+        localStorage.setItem('tof_last_role', 'admin');
         login(res.token, 'admin');
         navigate('/dashboard');
       } else setError(res.error || 'ログインできませんでした');
