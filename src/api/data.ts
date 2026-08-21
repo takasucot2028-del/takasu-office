@@ -634,6 +634,18 @@ function refFromPersist(): ReferenceData | null {
   return null;
 }
 let _refInflight: Promise<ReferenceData> | null = null;
+/**
+ * サブリクエストの結果を取り出す。
+ * 失敗した場合は空データで上書きせず、前回の値を使い続ける。
+ * （通信エラーのときに「職員0名」を保存してしまい、復旧後も空のままになるのを防ぐ）
+ */
+function subOrKeep<T>(res: SubRes<T> | undefined, key: string, fallback: T): { value: T; fresh: boolean } {
+  if (res && res.success && res.data !== undefined) return { value: res.data, fresh: true };
+  const kept = (_cache.get(key)?.v ?? persistRead(key)?.v) as T | undefined;
+  if (kept !== undefined) return { value: kept, fresh: false };
+  return { value: fallback, fresh: false };
+}
+
 function loadReference(): Promise<ReferenceData> {
   if (_refInflight) return _refInflight;      // 同時呼び出しは1リクエストに集約
   _refInflight = (async (): Promise<ReferenceData> => {
@@ -643,13 +655,20 @@ function loadReference(): Promise<ReferenceData> {
       }
       const r = await batchCall([{ action: 'getStaff' }, { action: 'getShiftPatterns' }, { action: 'getExpenseCategories' }]);
       if (r) {
-        const staff = unwrap(r[0] as SubRes<Staff[]>, [])
-          .slice().sort((a, b) => (a.lastKana || '').localeCompare(b.lastKana || '', 'ja'));
+        const staffRes = subOrKeep(r[0] as SubRes<Staff[]>, 'staff', []);
+        const staff = staffRes.value.slice().sort((a, b) => (a.lastKana || '').localeCompare(b.lastKana || '', 'ja'));
         const patList = unwrap(r[1] as SubRes<ShiftPattern[]>, []);
         const patterns = resolvePatterns(patList);
-        const catList = unwrap(r[2] as SubRes<ExpenseCategory[]>, []);
-        const categories = catList.length ? catList : local.listExpenseCategories();
-        cacheSet('staff', staff); cacheSet('patterns', patterns); cacheSet('categories', categories);
+        const catRes = subOrKeep(r[2] as SubRes<ExpenseCategory[]>, 'categories', []);
+        const categories = catRes.value.length ? catRes.value : local.listExpenseCategories();
+        // 取得できたものだけを保存する（失敗したものは前回の値を残す）
+        if (staffRes.fresh) cacheSet('staff', staff);
+        cacheSet('patterns', patterns);
+        if (catRes.fresh) cacheSet('categories', categories);
+        if (!staffRes.fresh) {
+          const err = (r[0] as SubRes<Staff[]> | undefined)?.error;
+          console.warn('職員一覧の取得に失敗したため、前回の内容を表示しています', err || '');
+        }
         return { staff, patterns, categories };
       }
       // バッチ未対応時は個別取得（各memoが個別にキャッシュ）
@@ -734,12 +753,15 @@ export async function getDashboardData(date: string): Promise<DashboardData> {
     if (cached) {
       staff = cached.staff; patterns = cached.patterns; base = 0;
     } else {
-      staff = unwrap(r[0] as SubRes<Staff[]>, []).slice().sort((a, b) => (a.lastKana || '').localeCompare(b.lastKana || '', 'ja'));
+      // 取得に失敗したものは空で上書きせず、前回の値を残す
+      const staffRes = subOrKeep(r[0] as SubRes<Staff[]>, 'staff', []);
+      staff = staffRes.value.slice().sort((a, b) => (a.lastKana || '').localeCompare(b.lastKana || '', 'ja'));
       const patList = unwrap(r[1] as SubRes<ShiftPattern[]>, []);
       patterns = resolvePatterns(patList);
-      const catList = unwrap(r[2] as SubRes<ExpenseCategory[]>, []);
-      cacheSet('staff', staff); cacheSet('patterns', patterns);
-      cacheSet('categories', catList.length ? catList : local.listExpenseCategories());
+      const catRes = subOrKeep(r[2] as SubRes<ExpenseCategory[]>, 'categories', []);
+      if (staffRes.fresh) cacheSet('staff', staff);
+      cacheSet('patterns', patterns);
+      if (catRes.fresh) cacheSet('categories', catRes.value.length ? catRes.value : local.listExpenseCategories());
       base = 3;
     }
     const confirmed = unwrap(r[base] as SubRes<ConfirmedShift[]>, []).filter(x => x.date === date);

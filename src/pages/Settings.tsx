@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageContainer, Card, Field, Input, Button, Alert } from '../components/UI';
 import { getPrefs, setPref } from '../utils/prefs';
-import { changeAdminPassword, usingGas } from '../api/data';
+import { changeAdminPassword, usingGas, clearDataCache } from '../api/data';
 
 export default function Settings() {
   const [oldPassword, setOldPassword] = useState('');
@@ -101,6 +101,20 @@ export default function Settings() {
               </span>
             </span>
           </label>
+        </Card>
+
+        <Card className="mt-4">
+          <h2 className="font-bold text-gray-800 mb-1">表示がおかしいとき</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            職員名簿やシフトが空のまま表示される場合は、この端末に保存された表示用データを消して読み込み直します。
+            スプレッドシートのデータは消えません。
+          </p>
+          <Button variant="secondary" onClick={() => {
+            clearDataCache();
+            window.location.reload();
+          }}>
+            保存データを消して再読み込み
+          </Button>
         </Card>
 
         <Card className="mt-4">
