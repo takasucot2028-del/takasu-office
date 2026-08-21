@@ -88,6 +88,108 @@ function sheetConf(key) {
 }
 function colKeys(key) { return sheetConf(key).columns.map(function (c) { return c[0]; }); }
 function colLabels(key) { return sheetConf(key).columns.map(function (c) { return c[1]; }); }
+/** 見出しラベル → フィールド名 */
+/**
+ * 保守用の自己診断。GASエディタで実行し、実行ログを確認する。
+ * 接続先のスプレッドシート、各シートの件数、見出しのズレを一覧で出す。
+ */
+function diagnose() {
+  const out = [];
+  let ss;
+  try {
+    const id = getSpreadsheetId();
+    out.push('スプレッドシートID: ' + id);
+    ss = SpreadsheetApp.openById(id);
+    out.push('ファイル名: ' + ss.getName());
+    out.push('URL: ' + ss.getUrl());
+  } catch (err) {
+    out.push('★ スプレッドシートを開けません: ' + err.message);
+    Logger.log(out.join('\n'));
+    return out.join('\n');
+  }
+  out.push('');
+  out.push('シート名 / データ件数 / 状態');
+  out.push('------------------------------------------');
+  Object.keys(SHEETS).forEach(function (key) {
+    const conf = SHEETS[key];
+    const sheet = ss.getSheetByName(conf.name);
+    if (!sheet) { out.push(conf.name + ' … ★ シートがありません'); return; }
+    const rows = Math.max(0, sheet.getLastRow() - 1);
+    const lastCol = sheet.getLastColumn();
+    const header = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String) : [];
+    const labels = colLabels(key);
+    const missing = labels.filter(function (l) { return header.indexOf(l) < 0; });
+    const extra = header.filter(function (h) { return h && labels.indexOf(h) < 0; });
+    let state = 'OK';
+    if (header.join('').trim() === '') state = '★ 見出しが空';
+    else if (missing.length) state = '不足列あり（次回アクセス時に自動追加）: ' + missing.join('、');
+    if (extra.length) state += ' ／ コードに無い列: ' + extra.join('、');
+    out.push(conf.name + ' … ' + rows + '件 … ' + state);
+  });
+  out.push('');
+  const staffSheet = ss.getSheetByName(SHEETS.staff.name);
+  if (staffSheet) {
+    const list = sheetToObjects(staffSheet, 'staff');
+    const active = list.filter(function (x) { return String(x.status) === 'active'; });
+    out.push('職員: 全' + list.length + '件／在職 ' + active.length + '件');
+    out.push('在職の氏名: ' + active.map(function (x) { return x.lastName + ' ' + x.firstName; }).join('、'));
+    if (list.length > 0 && active.length === 0) {
+      out.push('★ 在職の職員が0件です。「在職状況」列が active になっているか確認してください。');
+    }
+  }
+  const text = out.join('\n');
+  Logger.log(text);
+  return text;
+}
+
+function labelKeyMap_(key) {
+  const map = {};
+  sheetConf(key).columns.forEach(function (c) { map[String(c[1])] = c[0]; });
+  return map;
+}
+
+// 実行中のヘッダー確認結果（同じリクエスト内での重複読み取りを避ける）
+var _headerCache = {};
+
+/**
+ * シートの1行目を正として、コードにある列で不足しているものを右端に追加する。
+ * 列の順番はシート側に合わせるため、途中に列を足しても既存データがずれない。
+ * 戻り値は列ごとのフィールド名の配列（コードに無い列は null）。
+ */
+function ensureHeader_(sheet, key) {
+  const cacheKey = sheet.getSheetName();
+  if (_headerCache[cacheKey]) return _headerCache[cacheKey];
+
+  const labels = colLabels(key);
+  const lastCol = sheet.getLastColumn();
+  let header = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String) : [];
+
+  // 見出しが空のシートは、コードの定義をそのまま書き込む
+  if (header.join('').trim() === '') {
+    if (sheet.getMaxColumns() < labels.length) {
+      sheet.insertColumnsAfter(Math.max(sheet.getMaxColumns(), 1), labels.length - sheet.getMaxColumns());
+    }
+    sheet.getRange(1, 1, 1, labels.length).setValues([labels]);
+    header = labels.slice();
+  } else {
+    // 不足している列だけを右端に追加する
+    const missing = labels.filter(function (l) { return header.indexOf(l) < 0; });
+    if (missing.length) {
+      const need = header.length + missing.length;
+      if (sheet.getMaxColumns() < need) {
+        sheet.insertColumnsAfter(sheet.getMaxColumns(), need - sheet.getMaxColumns());
+      }
+      sheet.getRange(1, header.length + 1, 1, missing.length).setValues([missing]);
+      header = header.concat(missing);
+    }
+  }
+
+  const map = labelKeyMap_(key);
+  const order = header.map(function (l) { return map[l] || null; });
+  _headerCache[cacheKey] = order;
+  return order;
+}
+
 function colNum(key, fieldKey) {
   const idx = colKeys(key).indexOf(fieldKey);
   return idx < 0 ? -1 : idx + 1;
@@ -106,6 +208,7 @@ function getSheet(key) {
     sheet.getRange(1, 1, 1, labels.length).setValues([labels]);
     sheet.setFrozenRows(1);
   }
+  ensureHeader_(sheet, key); // 見出しが古いシートには不足列を追加する
   return sheet;
 }
 
@@ -314,7 +417,7 @@ function writeAudit_(action, body, session) {
     const now = new Date();
     const at = Utilities.formatDate(now, 'Asia/Tokyo', 'yyyy-MM-dd HH:mm:ss');
     const sheet = getSheet('audit');
-    sheet.appendRow(objectToRow('audit', {
+    sheet.appendRow(objectToRowForSheet_(sheet, 'audit', {
       id: 'aud' + now.getTime() + Math.floor(Math.random() * 1000),
       at: at, actor: actorLabel_(session), role: session ? session.role : '',
       action: conf.label, target: conf.target, summary: auditSummary_(action, body),
@@ -548,11 +651,15 @@ function genId() {
 function sheetToObjects(sheet, key) {
   const data = sheet.getDataRange().getValues();
   if (data.length <= 1) return [];
-  const keys = colKeys(key);
+  // シートの見出し行を正として読む（列を途中に足してもずれない）
+  const keys = ensureHeader_(sheet, key);
   const tz = Session.getScriptTimeZone();
   return data.slice(1).map(function (row) {
     const obj = {};
+    // コードに無い列（null）は読み飛ばす
+    colKeys(key).forEach(function (k) { obj[k] = ''; });
     keys.forEach(function (k, i) {
+      if (!k) return;
       const v = row[i];
       // Date 型で入っていた場合、時刻のみ（Sheetsの基準日 1899-12-30）は HH:mm、
       // それ以外は yyyy-MM-dd に戻す（通常はテキスト書式のため文字列で入る）。
@@ -682,7 +789,7 @@ function replaceSheetRows_(sheetKey, rows) {
 function appendUnique_(sheetKey, record) {
   const sheet = getSheet(sheetKey);
   if (findRowIndex(sheet, 0, record.id) >= 0) return; // 既に登録済み（リトライ）→追加しない
-  sheet.appendRow(objectToRow(sheetKey, record));
+  sheet.appendRow(objectToRowForSheet_(sheet, sheetKey, record));
 }
 
 // オブジェクトを列順の行配列へ変換
@@ -691,6 +798,21 @@ function objectToRow(key, obj) {
     const v = obj[k];
     return (v === undefined || v === null) ? '' : v;
   });
+}
+
+/** シートの見出し順に合わせた1行分の配列（既存シートへの追記・更新に使う） */
+function objectToRowForSheet_(sheet, key, obj) {
+  return ensureHeader_(sheet, key).map(function (k) {
+    if (!k) return '';
+    const v = obj[k];
+    return (v === undefined || v === null) ? '' : v;
+  });
+}
+
+/** シートの見出し順での列番号（1始まり。無い場合は -1） */
+function colNumForSheet_(sheet, key, fieldKey) {
+  const idx = ensureHeader_(sheet, key).indexOf(fieldKey);
+  return idx < 0 ? -1 : idx + 1;
 }
 
 // --- ハンドラー：認証 ---
@@ -748,13 +870,13 @@ function handleUpsertStaff(staff) {
   if (rowIndex < 0) {
     next.createdAt = staff.createdAt || now;
     next.passwordHash = ''; // 新規はパスワード未設定
-    sheet.appendRow(objectToRow('staff', next));
+    sheet.appendRow(objectToRowForSheet_(sheet, 'staff', next));
   } else {
     // createdAt と パスワードハッシュ は既存値を保持（フォームからは送られないため）
-    const existingCreated = sheet.getRange(rowIndex, colNum('staff', 'createdAt')).getValue();
+    const existingCreated = sheet.getRange(rowIndex, colNumForSheet_(sheet, 'staff', 'createdAt')).getValue();
     next.createdAt = existingCreated || staff.createdAt || now;
-    next.passwordHash = sheet.getRange(rowIndex, colNum('staff', 'passwordHash')).getValue();
-    const row = objectToRow('staff', next);
+    next.passwordHash = sheet.getRange(rowIndex, colNumForSheet_(sheet, 'staff', 'passwordHash')).getValue();
+    const row = objectToRowForSheet_(sheet, 'staff', next);
     sheet.getRange(rowIndex, 1, 1, row.length).setValues([row]);
   }
   delete next.passwordHash;
@@ -769,7 +891,7 @@ function handleSetStaffPassword(staffId, password) {
   const sheet = getSheet('staff');
   const rowIndex = findRowIndex(sheet, 0, staffId);
   if (rowIndex < 0) return { success: false, error: '職員が見つかりません' };
-  sheet.getRange(rowIndex, colNum('staff', 'passwordHash')).setValue(hashPassword(password));
+  sheet.getRange(rowIndex, colNumForSheet_(sheet, 'staff', 'passwordHash')).setValue(hashPassword(password));
   return { success: true };
 }
 
@@ -1613,6 +1735,6 @@ function handleStaffChangePassword(session, oldPassword, newPassword) {
   }
   const sheet = getSheet('staff');
   const rowIndex = findRowIndex(sheet, 0, staff.id);
-  sheet.getRange(rowIndex, colNum('staff', 'passwordHash')).setValue(hashPassword(newPassword));
+  sheet.getRange(rowIndex, colNumForSheet_(sheet, 'staff', 'passwordHash')).setValue(hashPassword(newPassword));
   return { success: true };
 }
