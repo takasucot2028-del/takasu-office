@@ -95,10 +95,37 @@ function cacheFresh(key: string): boolean { const c = _cache.get(key); return !!
 /** キャッシュ全消去（ログイン/ログアウト時に呼ぶ。端末保存分も消す） */
 export function clearDataCache() { _cache.clear(); persistClear(); }
 
+/**
+ * セッション切れの検知。
+ * GASを再デプロイするとサーバー側のログイン情報が消えるため、
+ * 画面を開いたままだと全ての通信が「認証が必要です」で失敗する。
+ * 空表示のまま放置せず、ログイン画面に戻せるように通知する。
+ */
+const AUTH_ERROR = '認証が必要です';
+let _authExpired = false;
+type AuthListener = () => void;
+const _authListeners = new Set<AuthListener>();
+
+/** セッション切れを受け取る（AuthContext が購読する） */
+export function onSessionExpired(fn: AuthListener): () => void {
+  _authListeners.add(fn);
+  return () => { _authListeners.delete(fn); };
+}
+
+function noteAuthError(error?: string) {
+  if (!error || error.indexOf(AUTH_ERROR) < 0) return;
+  if (_authExpired) return;   // 何度も通知しない
+  _authExpired = true;
+  _authListeners.forEach(fn => { try { fn(); } catch { /* noop */ } });
+}
+
+/** ログインし直したときに検知状態を戻す */
+export function resetSessionExpired() { _authExpired = false; }
+
 // ApiResponse から data を取り出す。失敗時は fallback を返す。
 function unwrap<T>(res: { success: boolean; data?: T; error?: string }, fallback: T): T {
   if (res.success && res.data !== undefined) return res.data;
-  if (!res.success) console.error('API エラー:', res.error);
+  if (!res.success) { console.error('API エラー:', res.error); noteAuthError(res.error); }
   return fallback;
 }
 
@@ -611,7 +638,13 @@ type SubRes<T> = { success: boolean; data?: T; error?: string };
 // バッチ実行。GASがバッチ未対応（旧デプロイ）や失敗時は null を返し、呼び出し側が個別取得にフォールバックする。
 async function batchCall(requests: Record<string, unknown>[]): Promise<SubRes<unknown>[] | null> {
   const res = await gas.batch(requests, token());
-  return (res.success && Array.isArray(res.data)) ? (res.data as SubRes<unknown>[]) : null;
+  if (!res.success) noteAuthError(res.error);
+  if (res.success && Array.isArray(res.data)) {
+    const list = res.data as SubRes<unknown>[];
+    list.forEach(sub => { if (sub && !sub.success) noteAuthError(sub.error); });
+    return list;
+  }
+  return null;
 }
 
 // --- 基礎データ（職員・区分・費目）を1リクエストで取得しキャッシュに載せる ---

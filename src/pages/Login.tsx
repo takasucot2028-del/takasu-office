@@ -7,7 +7,7 @@ import { adminLogin, staffLogin, usingGas } from '../api/data';
 type Tab = 'staff' | 'admin';
 
 export default function Login() {
-  const { login, isLoggedIn, isAdmin } = useAuth();
+  const { login, isLoggedIn, isAdmin, expired } = useAuth();
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('staff');
   const [error, setError] = useState('');
@@ -67,6 +67,9 @@ export default function Login() {
         </div>
 
         <Card>
+          {expired && !error && (
+            <Alert type="info">ログインの有効期限が切れました。お手数ですが、もう一度ログインしてください。</Alert>
+          )}
           {error && <Alert type="error">{error}</Alert>}
           {tab === 'staff' ? (
             <form onSubmit={handleStaff}>
