@@ -14,7 +14,7 @@ import {
 } from '../../utils/limit36';
 import {
   isOvertimeTarget, overtimeKindOf, standardHoursOf, resultHoursOf,
-  allowanceDetail, priorOvertimeMap, patternHours,
+  allowanceDetail, compPremiumDetail, compDeadlineOf, priorOvertimeMap, patternHours,
   OVERTIME_MONTHLY_THRESHOLD,
   OVERTIME_STATUS_LABELS, OVERTIME_KIND_LABELS,
 } from '../../utils/overtime';
@@ -130,15 +130,22 @@ export default function Overtime() {
     [staff, records, attMap, shiftMap]
   );
 
-  // 1レコードの計算（実働・基準・実績・手当額）。手当は月60時間超の割増を反映する。
+  /**
+   * 1レコードの計算（実働・基準・実績・支給額）。
+   * 手当は月60時間超の割増を反映する。代休にした分は、賃金の本体を代休に振り替え、
+   * 割増部分だけを支給する（就業規則 第20条2項）。
+   */
   const calc = (r: OvertimeRecord) => {
-    if (!staff) return { kind: r.kind, worked: 0, standard: 0, result: 0, amount: 0, over60Hours: 0 };
+    if (!staff) return { kind: r.kind, worked: 0, standard: 0, result: 0, amount: 0, over60Hours: 0, premium: 0 };
     const kind = overtimeKindOf(staff, r.date);
     const worked = attMap[r.date] || 0;
     const standard = standardHoursOf(staff, r.date, shiftMap[r.date] || 0);
     const result = resultHoursOf(worked, standard);
-    const d = allowanceDetail(result, staff.hourlyWage || 0, kind, priorMap.get(r.id) ?? 0);
-    return { kind, worked, standard, result, amount: d.amount, over60Hours: d.over60Hours };
+    const wage = staff.hourlyWage || 0;
+    const prior = priorMap.get(r.id) ?? 0;
+    const d = allowanceDetail(result, wage, kind, prior);
+    const p = compPremiumDetail(result, wage, kind, prior);
+    return { kind, worked, standard, result, amount: d.amount, over60Hours: d.over60Hours, premium: p.amount };
   };
 
   const setRec = (id: string, patch: Partial<OvertimeRecord>) =>
@@ -202,6 +209,10 @@ export default function Overtime() {
   const monthAllowance = records
     .filter(r => r.status === 'approved' && r.disposition === 'allowance')
     .reduce((s, r) => s + calc(r).amount, 0);
+  // 代休にした分の割増部分（第20条2項）
+  const monthCompPremium = records
+    .filter(r => r.status === 'approved' && r.disposition === 'comp')
+    .reduce((s, r) => s + calc(r).premium, 0);
   const monthComp = records
     .filter(r => r.status === 'approved' && r.disposition === 'comp')
     .reduce((s, r) => s + calc(r).result, 0);
@@ -264,7 +275,7 @@ export default function Overtime() {
         </div>
         <p className="mt-2 text-xs text-gray-500">
           実働は「勤怠管理」の出退勤から自動集計。実績時間＝実働−基準（常勤=7.5時間／パート=シフト予定、常勤の土日祝は休日勤務で実働全部）。
-          手当＝時給×割増（時間外×1.20／<span className="font-medium">当月の時間外が60時間を超えた分は×1.50</span>／休日×1.35）。
+          手当＝時給×割増（時間外×1.25／<span className="font-medium">当月の時間外が60時間を超えた分は×1.50</span>／休日×1.35）。
         </p>
       </Card>
 
@@ -285,6 +296,7 @@ export default function Overtime() {
               <Tile label="時間外手当 時間" value={h1(monthAllowanceHours)} />
               <Tile label="時間外手当 金額" value={yen(monthAllowance)} highlight />
               <Tile label="代休付与" value={h1(monthComp)} />
+              <Tile label="代休分の割増（第20条2項）" value={yen(monthCompPremium)} />
               <Tile label="当月 代休消化" value={h1(monthCompUsed)} />
             </div>
             {monthOver60 > 0 && (
@@ -424,7 +436,13 @@ export default function Overtime() {
                       </Td>
                       <Td className="whitespace-nowrap">
                         {r.disposition === 'allowance' ? <span className="font-medium">{yen(c.amount)}</span>
-                          : r.disposition === 'comp' ? <span className="text-gray-600">代休 {h1(c.result)}</span>
+                          : r.disposition === 'comp' ? (
+                            <span className="text-gray-600">
+                              代休 {h1(c.result)}
+                              <span className="block text-xs text-emerald-700">割増 {yen(c.premium)}</span>
+                              <span className="block text-xs text-gray-400">期限 {compDeadlineOf(r.date)}</span>
+                            </span>
+                          )
                           : <span className="text-gray-300">—</span>}
                       </Td>
                       <Td><Button variant="ghost" size="sm" onClick={() => removeRec(r.id)}>削除</Button></Td>

@@ -69,7 +69,7 @@ export const DEFAULT_SHIFT_PATTERNS: ShiftPattern[] = [
 // ==== 有給休暇の標準付与 ====
 export const LEAVE_HOURS_PER_DAY = 7.5;      // 1日の勤務時間（時間単位取得の換算に使用）
 
-// ==== 特別休暇（就業規則 第24〜31条）====
+// ==== 特別休暇（就業規則 第23〜33条）====
 
 /** 特別休暇の種類の定義 */
 export interface SpecialLeaveDef {
@@ -86,7 +86,7 @@ export interface SpecialLeaveDef {
 }
 
 /**
- * 特別休暇（第24〜31条）の対象かどうか。
+ * 特別休暇（第23〜33条）の対象かどうか。
  * 特別休暇は常勤職員のみに付与する。パート・指導員・業務委託は年次有給休暇のみ。
  */
 export function canUseSpecialLeave(staff: Pick<Staff, 'employmentType'>): boolean {
@@ -112,20 +112,20 @@ export const SPECIAL_LEAVE_TYPES: SpecialLeaveDef[] = [
     note: '年5日が限度です。第38条1項に有給として列挙されていないため、同条2項により無給です。長期の休業（休業開始日の属する事業年度を含む5事業年度で最長1年間）を希望する場合は事務局にご相談ください。',
   },
   {
-    id: 'childNursing', name: '子の看護等休暇', article: '第26条', unit: 'both', annualDays: 0, paid: true,
+    id: 'childNursing', name: '子の看護等休暇', article: '第27条', unit: 'both', annualDays: 0, paid: true,
     needsSubReason: true,
     note: '小学校卒業までの子を養育する職員が対象です。上限は1年間（4/1〜3/31）で、対象の子が1人なら5日、2人以上なら10日です（人数は職員名簿の設定を使います）。1日単位でも1時間単位でも取得できます。時間単位は始業から連続・終業まで連続のほか、就業時間の途中に取得してその後就業する（中抜け）こともできます。有給です。',
   },
   {
-    id: 'familyCare', name: '介護休暇', article: '第25条', unit: 'both', annualDays: 0, paid: false,
+    id: 'familyCare', name: '介護休暇', article: '第26条', unit: 'both', annualDays: 0, paid: false,
     note: '育児・介護休業法に基づく休暇です。詳細は「育児・介護休業等に関する規則」によります。第38条2項により無給です。',
   },
   {
-    id: 'childcareTime', name: '育児時間', article: '第24条1項', unit: 'hour', annualDays: 0, paid: true,
+    id: 'childcareTime', name: '育児時間', article: '第25条1項', unit: 'hour', annualDays: 0, paid: true,
     note: '1歳に満たない子を養育する女性職員が対象です。休憩時間のほか、1日2回・1回30分を取得できます。',
   },
   {
-    id: 'menstrual', name: '生理休暇', article: '第24条2項', unit: 'both', annualDays: 0, paid: true,
+    id: 'menstrual', name: '生理休暇', article: '第25条2項', unit: 'both', annualDays: 0, paid: true,
     note: '就業が著しく困難な場合に、必要な期間取得できます。',
   },
   {
@@ -133,12 +133,12 @@ export const SPECIAL_LEAVE_TYPES: SpecialLeaveDef[] = [
     note: '裁判員・補充裁判員は必要な日数、裁判員候補者は必要な時間を取得できます。',
   },
   {
-    id: 'maternityHealth', name: '母性健康管理のための休暇', article: '', unit: 'both', annualDays: 0, paid: true,
-    note: '妊娠中・出産後の女性職員が、保健指導または健康診査を受けるための休暇です。第38条1項により有給です。',
+    id: 'maternityHealth', name: '母性健康管理のための休暇', article: '第24条', unit: 'both', annualDays: 0, paid: true,
+    note: '妊娠中・出産後1年を経過しない女性職員が、保健指導または健康診査を受けるための休暇です（産前は妊娠23週まで4週に1回、24〜35週は2週に1回、36週から出産までは1週に1回。産後1年以内は医師等の指示による）。第38条1項により有給です。',
   },
   {
-    id: 'maternityLeave', name: '産前産後の休業', article: '', unit: 'day', annualDays: 0, paid: true,
-    note: '産前産後の休業期間です。第38条1項により有給です。期間が長くなるため、取得予定が決まった時点で事務局にご相談ください。',
+    id: 'maternityLeave', name: '産前産後の休業', article: '第23条', unit: 'day', annualDays: 0, paid: false,
+    note: '出産予定日の8週間前（多胎妊娠は14週間前）から、産後8週間までの休業です。第38条2項により無給です（健康保険の出産手当金の対象になります）。期間が長くなるため、予定が決まった時点で事務局にご相談ください。',
   },
   {
     id: 'healthCheckup', name: '健康診断', article: '第33条', unit: 'both', annualDays: 0, paid: true,
@@ -196,10 +196,22 @@ export interface SubReason { id: string; name: string; days?: number }
 export const CONDOLENCE_REASONS: SubReason[] = [
   { id: 'marriage', name: '本人が結婚したとき', days: 5 },
   { id: 'birth', name: '妻が出産したとき', days: 3 },
-  { id: 'death1', name: '配偶者、子又は父母が死亡したとき', days: 10 },
-  { id: 'death2', name: '一親等の姻族（配偶者の父母）が死亡したとき', days: 7 },
-  { id: 'death3', name: '一親等の直系尊属（子）が死亡したとき', days: 5 },
-  { id: 'death4', name: '兄弟姉妹、祖父母、配偶者の父母又は兄弟姉妹が死亡したとき', days: 3 },
+  { id: 'death_spouse', name: '忌引：配偶者（内縁関係を含む）', days: 10 },
+  { id: 'death_parent', name: '忌引：父母（血族1親等の直系尊属）', days: 7 },
+  { id: 'death_child', name: '忌引：子（血族1親等の直系卑属）', days: 5 },
+  { id: 'death_r3', name: '忌引：祖父母・兄弟姉妹・配偶者の父母', days: 3 },
+  { id: 'death_r2', name: '忌引：孫・伯叔父母・配偶者の祖父母・配偶者の兄弟姉妹・配偶者の伯叔父母など', days: 2 },
+];
+
+/**
+ * 改正前（R8.3.31まで）の慶弔休暇の事由。
+ * 過去の記録の表示に使うだけで、新しい申請の選択肢には出さない。
+ */
+const LEGACY_CONDOLENCE_REASONS: SubReason[] = [
+  { id: 'death1', name: '配偶者、子又は父母が死亡したとき（旧規定）', days: 10 },
+  { id: 'death2', name: '一親等の姻族（配偶者の父母）が死亡したとき（旧規定）', days: 7 },
+  { id: 'death3', name: '一親等の直系尊属（子）が死亡したとき（旧規定）', days: 5 },
+  { id: 'death4', name: '兄弟姉妹、祖父母、配偶者の父母又は兄弟姉妹が死亡したとき（旧規定）', days: 3 },
 ];
 
 /** 子の看護等休暇の事由（第26条1項）。日数は事由では決まらない */
@@ -251,7 +263,8 @@ export function specialLeaveUsedDays(
 /** 事由の表示名（慶弔休暇・子の看護等休暇のどちらでも引ける） */
 export function subReasonLabel(id?: string): string {
   if (!id) return '';
-  return [...CONDOLENCE_REASONS, ...CHILD_NURSING_REASONS].find(r => r.id === id)?.name ?? '';
+  const all = [...CONDOLENCE_REASONS, ...CHILD_NURSING_REASONS, ...LEGACY_CONDOLENCE_REASONS];
+  return all.find(r => r.id === id)?.name ?? '';
 }
 export const FULLTIME_LEAVE_DAYS = 10;       // 常勤の標準付与日数
 export const PARTTIME_LEAVE_DAYS = 5;        // パートの標準付与日数

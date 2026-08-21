@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getStaff, listAttendanceRange, listOvertimeByStaff, todayStr } from '../../api/data';
 import { EMPLOYMENT_TYPE_LABELS, GENDER_LABELS, fiscalYearLabel, currentFiscalYear } from '../../utils/constants';
-import { allowanceDetail, priorOvertimeMap } from '../../utils/overtime';
+import { allowanceDetail, compPremiumDetail, priorOvertimeMap } from '../../utils/overtime';
 import type { Staff, AttendanceRecord } from '../../types';
 
 const parseHM = (hm: string): number | null => {
@@ -96,8 +96,12 @@ export default function WageLedgerPrint() {
         // 月60時間超の割増を月内の日付順に反映する
         const prior = priorOvertimeMap(o, r => r.kind, r => Number(r.resultHours) || 0);
         const allowance = o.reduce((sum, r) => {
-          if (r.disposition === 'comp') return sum; // 代休にしたものは手当を払わない
-          const d = allowanceDetail(Number(r.resultHours) || 0, s?.hourlyWage || 0, r.kind, prior.get(r.id) ?? 0);
+          const hrs = Number(r.resultHours) || 0;
+          const wage = s?.hourlyWage || 0;
+          // 代休にしたものは割増部分のみ支給する（就業規則 第20条2項）
+          const d = r.disposition === 'comp'
+            ? compPremiumDetail(hrs, wage, r.kind, prior.get(r.id) ?? 0)
+            : allowanceDetail(hrs, wage, r.kind, prior.get(r.id) ?? 0);
           return sum + d.amount;
         }, 0);
         return {
@@ -216,7 +220,7 @@ export default function WageLedgerPrint() {
 
           <p className="text-xs text-gray-500 mt-2">
             労働日数・労働時間数・深夜労働は勤怠の記録から、時間外・休日労働と時間外手当は承認済みの時間外実績から集計しています
-            （代休にした分は手当に含めていません）。基本給・その他手当・控除額は給与計算の情報のため、色のついた欄に記入してください。
+            （代休にした分は第20条2項により割増部分のみ含めています）。基本給・その他手当・控除額は給与計算の情報のため、色のついた欄に記入してください。
           </p>
           <p className="text-xs text-gray-400 mt-1">作成日: {todayStr()}</p>
         </section>

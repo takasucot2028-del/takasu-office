@@ -3,10 +3,25 @@ import type { Staff, ShiftPattern, OvertimeKind, OvertimeStatus, OvertimeDisposi
 import { isClosedDay } from './holidays';
 
 export const FULLTIME_STANDARD_HOURS = 7.5;   // 常勤の1日の所定（これを超えた分が時間外）
-export const OVERTIME_RATE = 1.20;            // 時間外の割増（×1.20）
+// 割増率（就業規則 第36条。時間外25%・月60時間超50%・休日35%・深夜25%）
+export const OVERTIME_RATE = 1.25;            // 時間外（×1.25）
 export const OVERTIME_RATE_OVER60 = 1.50;     // 月60時間を超えた分の時間外（×1.50）
 export const OVERTIME_MONTHLY_THRESHOLD = 60; // 割増率が上がる月間時間外の境目（時間）
-export const HOLIDAY_RATE = 1.35;             // 休日勤務の割増（×1.35）
+export const HOLIDAY_RATE = 1.35;             // 休日勤務（×1.35）
+export const NIGHT_RATE_ADD = 0.25;           // 深夜（22:00〜5:00）の加算（賃金台帳の参考用）
+
+/**
+ * 代休にしたときの支給率（就業規則 第20条2項）。
+ * 賃金の本体部分は代休に振り替えるが、割増部分は支給する。
+ */
+export const compRateOf = (rate: number) => Math.round((rate - 1) * 100) / 100;
+
+/** 代休を取得できる期限（第20条3項）。勤務日の属する賃金計算期間の翌月末日まで */
+export function compDeadlineOf(date: string): string {
+  const [y, m] = date.split('-').map(Number);
+  const d = new Date(y, m + 1, 0); // 翌月の末日
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 export const OVERTIME_STATUS_LABELS: Record<OvertimeStatus, string> = {
   applied: '申請中',
@@ -87,6 +102,29 @@ export function allowanceDetail(
   const normalHours = Math.min(resultHours, remain);
   const over60Hours = Math.round((resultHours - normalHours) * 100) / 100;
   const amount = Math.round(normalHours * hourlyWage * OVERTIME_RATE + over60Hours * hourlyWage * OVERTIME_RATE_OVER60);
+  return { amount, normalHours: Math.round(normalHours * 100) / 100, over60Hours };
+}
+
+/**
+ * 代休にした勤務に支給する割増部分（第20条2項）。
+ * 時間外は当月60時間までが25%、超えた分は50%。休日勤務は35%。
+ */
+export function compPremiumDetail(
+  resultHours: number, hourlyWage: number, kind: OvertimeKind, priorOvertimeHours: number
+): { amount: number; normalHours: number; over60Hours: number } {
+  if (kind === 'holiday') {
+    return {
+      amount: Math.round(resultHours * hourlyWage * compRateOf(HOLIDAY_RATE)),
+      normalHours: resultHours, over60Hours: 0,
+    };
+  }
+  const remain = Math.max(0, OVERTIME_MONTHLY_THRESHOLD - priorOvertimeHours);
+  const normalHours = Math.min(resultHours, remain);
+  const over60Hours = Math.round((resultHours - normalHours) * 100) / 100;
+  const amount = Math.round(
+    normalHours * hourlyWage * compRateOf(OVERTIME_RATE) +
+    over60Hours * hourlyWage * compRateOf(OVERTIME_RATE_OVER60)
+  );
   return { amount, normalHours: Math.round(normalHours * 100) / 100, over60Hours };
 }
 

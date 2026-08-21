@@ -33,7 +33,7 @@ export default function StaffLeaveRequest() {
   const [note, setNote] = useState('');
   const hourAmt = hoursBetween(start, end);        // 時間単位の取得時間
 
-  // 特別休暇（第24〜30条）は常勤職員のみ。それ以外は年次有給休暇だけ申請できる
+  // 特別休暇（第23〜33条）は常勤職員のみ。それ以外は年次有給休暇だけ申請できる
   const specialOk = me ? canUseSpecialLeave(me) : true;
 
   const summary = useMemo(() => computeLeaveBalance(records), [records]);
@@ -234,7 +234,7 @@ export default function StaffLeaveRequest() {
         </p>
         {!specialOk && me && (
           <p className="mt-3 text-xs bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-gray-600">
-            特別休暇（就業規則 第24〜31条）は常勤職員のみに付与されます。
+            特別休暇（就業規則 第23〜33条）は常勤職員のみに付与されます。
             {EMPLOYMENT_TYPE_LABELS[me.employmentType]}の方は年次有給休暇の申請のみできます。
           </p>
         )}
