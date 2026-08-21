@@ -826,6 +826,85 @@ export async function getDashboardData(date: string): Promise<DashboardData> {
 
 // --- シフト表 ---
 export interface ShiftMonthData { availability: AvailabilityRecord[]; confirmed: ConfirmedShift[] }
+/**
+ * 基礎データ（職員・区分・費目）を、他のデータと同じバッチで取得するための部品。
+ * GASは1リクエストずつ順番に処理されるため、画面を開くときの通信は1回にまとめる。
+ */
+const REF_ACTIONS: Record<string, unknown>[] = [
+  { action: 'getStaff' }, { action: 'getShiftPatterns' }, { action: 'getExpenseCategories' },
+];
+/** メモリ上の基礎データが新しければ再取得しない */
+function refNeedsReload(): boolean { return !refFromCache(); }
+/** いま手元にある基礎データ（メモリ→端末保存の順） */
+function refNow(): ReferenceData {
+  return refFromCache() ?? refFromPersist() ?? { staff: [], patterns: resolvePatterns([]), categories: local.listExpenseCategories() };
+}
+/** バッチ結果の先頭にある基礎データを取り出してキャッシュに載せる */
+function refFromBatch(r: SubRes<unknown>[]): ReferenceData {
+  const staffRes = subOrKeep(r[0] as SubRes<Staff[]>, 'staff', [] as Staff[]);
+  const staff = staffRes.value.slice().sort((a, b) => (a.lastKana || '').localeCompare(b.lastKana || '', 'ja'));
+  const patterns = resolvePatterns(unwrap(r[1] as SubRes<ShiftPattern[]>, []));
+  const catRes = subOrKeep(r[2] as SubRes<ExpenseCategory[]>, 'categories', [] as ExpenseCategory[]);
+  const categories = catRes.value.length ? catRes.value : local.listExpenseCategories();
+  if (staffRes.fresh) cacheSet('staff', staff);
+  cacheSet('patterns', patterns);
+  if (catRes.fresh) cacheSet('categories', categories);
+  return { staff, patterns, categories };
+}
+
+/** シフト画面のデータ（基礎データ＋その月の希望・確定）を1リクエストで取得する */
+export interface ShiftPageData extends ReferenceData, ShiftMonthData {}
+
+export async function getShiftPageData(month: string): Promise<ShiftPageData> {
+  if (!USE_GAS) {
+    const ref = { staff: await listStaff(), patterns: await listShiftPatterns(), categories: await listExpenseCategories() };
+    return { ...ref, availability: local.listAvailabilityByMonth(month), confirmed: local.listConfirmedByMonth(month) };
+  }
+  const withRef = refNeedsReload();
+  const reqs = [
+    ...(withRef ? REF_ACTIONS : []),
+    { action: 'getAvailabilityMonth', month }, { action: 'getConfirmedMonth', month },
+  ];
+  const r = await batchCall(reqs);
+  if (!r) {
+    const ref = refNow();
+    return { ...ref, ...(await getShiftMonthData(month)) };
+  }
+  const ref = withRef ? refFromBatch(r) : refNow();
+  const base = withRef ? 3 : 0;
+  return {
+    ...ref,
+    availability: unwrap(r[base] as SubRes<AvailabilityRecord[]>, []),
+    confirmed: unwrap(r[base + 1] as SubRes<ConfirmedShift[]>, []),
+  };
+}
+
+/** 会計画面のデータ（基礎データ＋その年度の予算・経費）を1リクエストで取得する */
+export interface AccountingPageData extends ReferenceData, AccountingData {}
+
+export async function getAccountingPageData(fiscalYear: number): Promise<AccountingPageData> {
+  if (!USE_GAS) {
+    const ref = { staff: await listStaff(), patterns: await listShiftPatterns(), categories: await listExpenseCategories() };
+    return { ...ref, budgets: local.listBudgets(fiscalYear), expenses: local.listExpenses(fiscalYear) };
+  }
+  const withRef = refNeedsReload();
+  const reqs = [
+    ...(withRef ? REF_ACTIONS : []),
+    { action: 'getBudgets', fiscalYear }, { action: 'getExpenses', fiscalYear },
+  ];
+  const r = await batchCall(reqs);
+  if (!r) {
+    const ref = refNow();
+    return { ...ref, ...(await getAccountingData(fiscalYear)) };
+  }
+  const ref = withRef ? refFromBatch(r) : refNow();
+  const base = withRef ? 3 : 0;
+  const budgets = unwrap(r[base] as SubRes<Budget[]>, []);
+  const expenses = unwrap(r[base + 1] as SubRes<Expense[]>, []);
+  persistAcct(fiscalYear, { budgets, expenses });
+  return { ...ref, budgets, expenses };
+}
+
 export async function getShiftMonthData(month: string): Promise<ShiftMonthData> {
   if (!USE_GAS) return { availability: local.listAvailabilityByMonth(month), confirmed: local.listConfirmedByMonth(month) };
   const r = await batchCall([{ action: 'getAvailabilityMonth', month }, { action: 'getConfirmedMonth', month }]);

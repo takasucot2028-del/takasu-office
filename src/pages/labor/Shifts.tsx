@@ -3,8 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { PageContainer, Card, Button, Alert } from '../../components/UI';
 import {
-  getReference, todayStr, onDataRefresh,
-  saveMonthAvailability, saveMonthConfirmed, getShiftMonthData, genId,
+  todayStr, onDataRefresh,
+  saveMonthAvailability, saveMonthConfirmed, getShiftPageData, genId,
 } from '../../api/data';
 import { WORK_LOCATION_LABELS, WEEKDAY_LABELS, staffInLocation, UNAVAILABLE_PATTERN_ID } from '../../utils/constants';
 import { isClosedDay, isNationalHoliday } from '../../utils/holidays';
@@ -47,6 +47,7 @@ export default function Shifts() {
   const [month, setMonth] = useState(currentMonth());
   const [location, setLocation] = useState<WorkLocation>('sotai');
   const [mode, setMode] = useState<Mode>('request');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // 希望＝人単位（key aKey）、確定＝場所単位（key cKey）。どちらも patternId の配列
   const [reqMap, setReqMap] = useState<Record<string, string[]>>({});
@@ -76,22 +77,7 @@ export default function Shifts() {
   const [checkResult, setCheckResult] = useState<{ problems: ShiftProblem[]; conflicts: ShiftConflict[]; warn?: string } | null>(null);
 
   // 初回：職員・区分を読み込む
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      const { staff: s, patterns: p } = await getReference();
-      if (!alive) return;
-      setAllStaff(s);
-      setPatterns(p);
-      setStaffLoaded(true);
-    };
-    load();
-    // 職員・区分が裏で最新化されたら反映する
-    const off = onDataRefresh(key => { if (key === 'staff' || key === 'patterns') load(); });
-    return () => { alive = false; off(); };
-  }, []);
-
-  // 月が変わるたびに希望・確定を読み込む
+  // 職員・区分・その月の希望と確定を1リクエストでまとめて読み込む
   useEffect(() => {
     let alive = true;
     setLoading(true);
@@ -99,8 +85,11 @@ export default function Shifts() {
     setMenu(null);
     setCheckResult(null);
     (async () => {
-      const { availability: avail, confirmed: conf } = await getShiftMonthData(month);
+      const { staff: s, patterns: p, availability: avail, confirmed: conf } = await getShiftPageData(month);
       if (!alive) return;
+      setAllStaff(s);
+      setPatterns(p);
+      setStaffLoaded(true);
       const rm: Record<string, string[]> = {};
       for (const r of avail) { const k = aKey(r.staffId, r.date); (rm[k] = rm[k] || []).push(r.patternId); }
       const cm: Record<string, string[]> = {};
@@ -109,8 +98,10 @@ export default function Shifts() {
       setConfMap(cm);
       setLoading(false);
     })();
-    return () => { alive = false; };
-  }, [month]);
+    // 事務局の別の端末などで職員・区分が更新されたら読み直す
+    const off = onDataRefresh(key => { if (key === 'staff' || key === 'patterns') setRefreshKey(k => k + 1); });
+    return () => { alive = false; off(); };
+  }, [month, refreshKey]);
 
   // 区分を master 順に並べ、現在の場所で有効なものだけ返す
   const orderValid = (ids: string[]): string[] => validPatterns.filter(p => ids.includes(p.id)).map(p => p.id);

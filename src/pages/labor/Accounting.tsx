@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import {
-  getReference, saveExpenseCategories,
+  saveExpenseCategories,
   saveBudgets, addExpense, setExpenseStatus, deleteExpense,
-  getAccountingData, getAccountingCached, usedOf, genId, todayStr,
+  getAccountingPageData, getAccountingCached, usedOf, genId, todayStr,
 } from '../../api/data';
 import { currentFiscalYear, fiscalYearLabel, PROJECT_DIVISIONS, divisionLabel } from '../../utils/constants';
 import type { Staff, ExpenseCategory, Budget, Expense } from '../../types';
@@ -35,7 +35,7 @@ export default function Accounting() {
   // 保存直後（version変更）の再読込ではキャッシュ即表示をスキップし、最新のみ反映する。
   const skipCacheRef = useRef(false);
 
-  useEffect(() => { getReference().then(r => { setStaff(r.staff); setCategories(r.categories); }); }, []);
+
   useEffect(() => {
     let alive = true;
     setMessage('');
@@ -47,8 +47,9 @@ export default function Accounting() {
       setLoading(true);
     }
     (async () => {
-      const { budgets: b, expenses: e } = await getAccountingData(fy); // 最新を取得
+      const { budgets: b, expenses: e, staff: st, categories: cs } = await getAccountingPageData(fy); // 最新を取得
       if (!alive) return;
+      setStaff(st); setCategories(cs);
       setExpenses(e); // 経費は読み取りのみ→常に最新
       // 予算はキャッシュ即表示から編集されていなければ最新に更新（編集中は保持）。updaterは副作用なしの純関数。
       const baseline = cached ? cached.budgets : null;
