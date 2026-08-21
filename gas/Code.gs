@@ -161,27 +161,41 @@ function ensureHeader_(sheet, key) {
   if (_headerCache[cacheKey]) return _headerCache[cacheKey];
 
   const labels = colLabels(key);
-  const lastCol = sheet.getLastColumn();
-  let header = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String) : [];
+  // getLastColumn() はデータ行を含む右端なので、見出しが途中で切れている場合がある。
+  // 見出し行はデータの幅ぶん読み、空欄はそのまま空欄として扱う。
+  const width = Math.max(sheet.getLastColumn(), labels.length);
+  const header = width > 0
+    ? sheet.getRange(1, 1, 1, width).getValues()[0].map(function (v) { return String(v == null ? '' : v).trim(); })
+    : [];
+  while (header.length < labels.length) header.push('');
+  const before = header.join('\u0001');
 
-  // 見出しが空のシートは、コードの定義をそのまま書き込む
-  if (header.join('').trim() === '') {
-    if (sheet.getMaxColumns() < labels.length) {
-      sheet.insertColumnsAfter(Math.max(sheet.getMaxColumns(), 1), labels.length - sheet.getMaxColumns());
-    }
-    sheet.getRange(1, 1, 1, labels.length).setValues([labels]);
-    header = labels.slice();
+  // 見出しが全く無いシートは、コードの定義をそのまま書き込む
+  if (before.replace(/\u0001/g, '').trim() === '') {
+    for (let i = 0; i < labels.length; i++) header[i] = labels[i];
   } else {
-    // 不足している列だけを右端に追加する
-    const missing = labels.filter(function (l) { return header.indexOf(l) < 0; });
-    if (missing.length) {
-      const need = header.length + missing.length;
-      if (sheet.getMaxColumns() < need) {
-        sheet.insertColumnsAfter(sheet.getMaxColumns(), need - sheet.getMaxColumns());
+    // 期待する列を、定義の順で埋めていく。
+    // データは定義順に書かれてきたため、見出しが空いている位置はその列に対応する。
+    labels.forEach(function (label, i) {
+      const at = header.indexOf(label);
+      if (at >= 0 && at < labels.length) return;            // すでに正しい範囲にある
+      if (!header[i]) {                                     // 本来の位置が空欄なら、そこに入れる
+        if (at >= labels.length) header[at] = '';           // 右端に付いてしまった見出しは消す
+        header[i] = label;
+        return;
       }
-      sheet.getRange(1, header.length + 1, 1, missing.length).setValues([missing]);
-      header = header.concat(missing);
+      if (at >= 0) return;                                  // 別の位置にあるならそのまま使う
+      const blank = header.indexOf('');                     // 空欄があればそこへ
+      if (blank >= 0) header[blank] = label;
+      else header.push(label);
+    });
+  }
+
+  if (header.join('\u0001') !== before) {
+    if (sheet.getMaxColumns() < header.length) {
+      sheet.insertColumnsAfter(sheet.getMaxColumns(), header.length - sheet.getMaxColumns());
     }
+    sheet.getRange(1, 1, 1, header.length).setValues([header]);
   }
 
   const map = labelKeyMap_(key);
