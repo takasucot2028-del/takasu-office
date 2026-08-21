@@ -22,7 +22,7 @@ export default function Leave() {
   const staff = useMemo(() => allStaff.filter(s => s.status === 'active'), [allStaff]);
   const [staffId, setStaffId] = useState('');
   const selectedStaff = useMemo(() => staff.find(s => s.id === staffId) ?? null, [staff, staffId]);
-  // 特別休暇（第23〜33条）は常勤職員のみ
+  // 特別休暇（第23〜34条）は常勤職員のみ
   const specialOk = selectedStaff ? canUseSpecialLeave(selectedStaff) : false;
   const [version, setVersion] = useState(0); // 追加・削除後の再読込用
 

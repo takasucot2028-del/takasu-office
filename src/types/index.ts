@@ -150,22 +150,22 @@ export type LeaveKind = 'grant' | 'use';
 
 /**
  * 休暇の種類。'paid'＝年次有給休暇（従来からの記録はすべてこれ）。
- * それ以外は就業規則の特別休暇（第23〜33条）。
+ * それ以外は就業規則の特別休暇（第23〜34条）。
  */
 export type LeaveType =
   | 'paid'          // 年次有給休暇
-  | 'sick'          // 病気休暇（第29条）
-  | 'refresh'       // リフレッシュ休暇（第31条・年3日）
-  | 'condolence'    // 慶弔休暇（第28条）
-  | 'fertility'     // 不妊治療休暇（第27条）
+  | 'sick'          // 病気休暇（第30条）
+  | 'refresh'       // リフレッシュ休暇（第32条・年3日）
+  | 'condolence'    // 慶弔休暇（第29条）
+  | 'fertility'     // 不妊治療休暇（第28条）
   | 'childcareTime' // 育児時間（第24条1項）
   | 'menstrual'     // 生理休暇（第24条2項）
   | 'childNursing'  // 子の看護等休暇（第27条）
   | 'familyCare'    // 介護休暇（第26条）
-  | 'jury'          // 裁判員等のための休暇（第30条）
+  | 'jury'          // 裁判員等のための休暇（第31条）
   | 'maternityHealth' // 母性健康管理のための休暇（第24条）
   | 'maternityLeave'  // 産前産後の休業（第23条）
-  | 'healthCheckup';  // 健康診断（第33条・労働時間とみなす）
+  | 'healthCheckup';  // 健康診断（第34条・労働時間とみなす）
 
 /** 有給休暇記録（付与または取得）。取得は日単位・時間単位のどちらも可（1日=7.5時間） */
 export interface LeaveRecord {

@@ -69,7 +69,7 @@ export const DEFAULT_SHIFT_PATTERNS: ShiftPattern[] = [
 // ==== 有給休暇の標準付与 ====
 export const LEAVE_HOURS_PER_DAY = 7.5;      // 1日の勤務時間（時間単位取得の換算に使用）
 
-// ==== 特別休暇（就業規則 第23〜33条）====
+// ==== 特別休暇（就業規則 第23〜34条）====
 
 /** 特別休暇の種類の定義 */
 export interface SpecialLeaveDef {
@@ -86,7 +86,7 @@ export interface SpecialLeaveDef {
 }
 
 /**
- * 特別休暇（第23〜33条）の対象かどうか。
+ * 特別休暇（第23〜34条）の対象かどうか。
  * 特別休暇は常勤職員のみに付与する。パート・指導員・業務委託は年次有給休暇のみ。
  */
 export function canUseSpecialLeave(staff: Pick<Staff, 'employmentType'>): boolean {
@@ -96,20 +96,20 @@ export function canUseSpecialLeave(staff: Pick<Staff, 'employmentType'>): boolea
 /** 特別休暇の一覧。年次有給休暇は別枠のためここには含めない */
 export const SPECIAL_LEAVE_TYPES: SpecialLeaveDef[] = [
   {
-    id: 'condolence', name: '慶弔休暇', article: '第28条', unit: 'day', annualDays: 0, paid: true,
+    id: 'condolence', name: '慶弔休暇', article: '第29条', unit: 'day', annualDays: 0, paid: true,
     needsSubReason: true, note: '事由ごとに日数が決まっています。',
   },
   {
-    id: 'sick', name: '病気休暇', article: '第29条', unit: 'both', annualDays: 0, paid: false, paidDays: 5,
+    id: 'sick', name: '病気休暇', article: '第30条', unit: 'both', annualDays: 0, paid: false, paidDays: 5,
     note: '私的な負傷又は疾病の療養のため、勤務しないことがやむを得ないと認められる場合の休暇です。1年度（4/1〜3/31）につき5日までは有給、これを超える期間は無給です。事前に法人の承認を受けてください（やむを得ない場合は事後に承認を求めることができます。手続きを怠ると無断欠勤の扱いになります）。必要に応じて医師の診断書の提出を求めることがあります。',
   },
   {
-    id: 'refresh', name: 'リフレッシュ休暇', article: '第31条', unit: 'day', annualDays: 3, paid: true,
+    id: 'refresh', name: 'リフレッシュ休暇', article: '第32条', unit: 'day', annualDays: 3, paid: true,
     note: '心身の疲労回復のための有給休暇です。毎年度3日間。所定休日（第18条）は3日間に含みません（勤務日だけを日数に数えてください）。当該年度内に取得する必要があり、翌年度への繰越はできません。',
   },
   {
-    id: 'fertility', name: '不妊治療休暇', article: '第27条', unit: 'both', annualDays: 5, paid: false,
-    note: '年5日が限度です。第38条1項に有給として列挙されていないため、同条2項により無給です。長期の休業（休業開始日の属する事業年度を含む5事業年度で最長1年間）を希望する場合は事務局にご相談ください。',
+    id: 'fertility', name: '不妊治療休暇', article: '第28条', unit: 'both', annualDays: 5, paid: false,
+    note: '年5日が限度です。第39条1項に有給として列挙されていないため、同条2項により無給です。長期の休業（休業開始日の属する事業年度を含む5事業年度で最長1年間）を希望する場合は事務局にご相談ください。',
   },
   {
     id: 'childNursing', name: '子の看護等休暇', article: '第27条', unit: 'both', annualDays: 0, paid: true,
@@ -118,7 +118,7 @@ export const SPECIAL_LEAVE_TYPES: SpecialLeaveDef[] = [
   },
   {
     id: 'familyCare', name: '介護休暇', article: '第26条', unit: 'both', annualDays: 0, paid: false,
-    note: '育児・介護休業法に基づく休暇です。詳細は「育児・介護休業等に関する規則」によります。第38条2項により無給です。',
+    note: '育児・介護休業法に基づく休暇です。詳細は「育児・介護休業等に関する規則」によります。第39条2項により無給です。',
   },
   {
     id: 'childcareTime', name: '育児時間', article: '第25条1項', unit: 'hour', annualDays: 0, paid: true,
@@ -129,25 +129,25 @@ export const SPECIAL_LEAVE_TYPES: SpecialLeaveDef[] = [
     note: '就業が著しく困難な場合に、必要な期間取得できます。',
   },
   {
-    id: 'jury', name: '裁判員等のための休暇', article: '第30条', unit: 'both', annualDays: 0, paid: true,
+    id: 'jury', name: '裁判員等のための休暇', article: '第31条', unit: 'both', annualDays: 0, paid: true,
     note: '裁判員・補充裁判員は必要な日数、裁判員候補者は必要な時間を取得できます。',
   },
   {
     id: 'maternityHealth', name: '母性健康管理のための休暇', article: '第24条', unit: 'both', annualDays: 0, paid: true,
-    note: '妊娠中・出産後1年を経過しない女性職員が、保健指導または健康診査を受けるための休暇です（産前は妊娠23週まで4週に1回、24〜35週は2週に1回、36週から出産までは1週に1回。産後1年以内は医師等の指示による）。第38条1項により有給です。',
+    note: '妊娠中・出産後1年を経過しない女性職員が、保健指導または健康診査を受けるための休暇です（産前は妊娠23週まで4週に1回、24〜35週は2週に1回、36週から出産までは1週に1回。産後1年以内は医師等の指示による）。第39条1項により有給です。',
   },
   {
     id: 'maternityLeave', name: '産前産後の休業', article: '第23条', unit: 'day', annualDays: 0, paid: false,
     note: '出産予定日の8週間前（多胎妊娠は14週間前）から、産後8週間までの休業です。第38条2項により無給です（健康保険の出産手当金の対象になります）。期間が長くなるため、予定が決まった時点で事務局にご相談ください。',
   },
   {
-    id: 'healthCheckup', name: '健康診断', article: '第33条', unit: 'both', annualDays: 0, paid: true,
+    id: 'healthCheckup', name: '健康診断', article: '第34条', unit: 'both', annualDays: 0, paid: true,
     asWorkingTime: true,
     note: '毎年1回の定期健康診断です。受診に要する時間（移動時間を含む）は原則として労働時間とみなし、通常の賃金を支払います。正当な理由なく受診を拒むことはできません。勤務時間中に受診した場合は、その時間も含めて勤怠に出退勤を記録してください（この申請は受診の記録・把握のためのものです）。',
   },
 ];
 
-/** 子の看護等休暇の上限日数（第26条2項）。対象の子が1人=5日、2人以上=10日 */
+/** 子の看護等休暇の上限日数（第27条2項）。対象の子が1人=5日、2人以上=10日 */
 export const CHILD_NURSING_DAYS_ONE = 5;
 export const CHILD_NURSING_DAYS_MANY = 10;
 
@@ -192,7 +192,7 @@ export function paymentLabel(def: SpecialLeaveDef): string {
 /** 特別休暇の事由。days がある事由は選ぶと日数が自動で入る */
 export interface SubReason { id: string; name: string; days?: number }
 
-/** 慶弔休暇の事由と日数（第28条） */
+/** 慶弔休暇の事由と日数（第29条） */
 export const CONDOLENCE_REASONS: SubReason[] = [
   { id: 'marriage', name: '本人が結婚したとき', days: 5 },
   { id: 'birth', name: '妻が出産したとき', days: 3 },
@@ -214,7 +214,7 @@ const LEGACY_CONDOLENCE_REASONS: SubReason[] = [
   { id: 'death4', name: '兄弟姉妹、祖父母、配偶者の父母又は兄弟姉妹が死亡したとき（旧規定）', days: 3 },
 ];
 
-/** 子の看護等休暇の事由（第26条1項）。日数は事由では決まらない */
+/** 子の看護等休暇の事由（第27条1項）。日数は事由では決まらない */
 export const CHILD_NURSING_REASONS: SubReason[] = [
   { id: 'illness', name: '負傷し、又は疾病にかかった子の世話をする' },
   { id: 'vaccination', name: '子に予防接種又は健康診断を受けさせる' },

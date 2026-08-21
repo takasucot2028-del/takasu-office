@@ -3,7 +3,7 @@ import type { Staff, ShiftPattern, OvertimeKind, OvertimeStatus, OvertimeDisposi
 import { isClosedDay } from './holidays';
 
 export const FULLTIME_STANDARD_HOURS = 7.5;   // 常勤の1日の所定（これを超えた分が時間外）
-// 割増率（就業規則 第36条。時間外25%・月60時間超50%・休日35%・深夜25%）
+// 割増率（就業規則 第37条。時間外25%・月60時間超50%・休日35%・深夜25%）
 export const OVERTIME_RATE = 1.25;            // 時間外（×1.25）
 export const OVERTIME_RATE_OVER60 = 1.50;     // 月60時間を超えた分の時間外（×1.50）
 export const OVERTIME_MONTHLY_THRESHOLD = 60; // 割増率が上がる月間時間外の境目（時間）
