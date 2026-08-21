@@ -177,6 +177,25 @@ function labelKeyMap_(key) {
 // 実行中のヘッダー確認結果（同じリクエスト内での重複読み取りを避ける）
 var _headerCache = {};
 
+/** 短い文字列ハッシュ（見出し定義が変わったらキャッシュを作り直すため） */
+function simpleHash_(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) { h = ((h << 5) - h + str.charCodeAt(i)) | 0; }
+  return String(h);
+}
+
+/** 見出しの確認結果を捨てる（シートを丸ごと書き換えたあとに呼ぶ） */
+function forgetHeader_(sheetName) {
+  delete _headerCache[sheetName];
+  try {
+    const cache = CacheService.getScriptCache();
+    Object.keys(SHEETS).forEach(function (k) {
+      if (SHEETS[k].name !== sheetName) return;
+      cache.remove('hdr_' + sheetName + '_' + simpleHash_(colLabels(k).join('|')));
+    });
+  } catch (err) { /* noop */ }
+}
+
 /**
  * シートの1行目を正として、コードにある列で不足しているものを右端に追加する。
  * 列の順番はシート側に合わせるため、途中に列を足しても既存データがずれない。
@@ -187,6 +206,18 @@ function ensureHeader_(sheet, key) {
   if (_headerCache[cacheKey]) return _headerCache[cacheKey];
 
   const labels = colLabels(key);
+  // 見出しの確認は毎回スプレッドシートを読むため、結果をキャッシュして通信を減らす。
+  // 見出し定義が変わるとキーも変わるので、古い結果は自動的に使われなくなる。
+  const ck = 'hdr_' + cacheKey + '_' + simpleHash_(labels.join('|'));
+  const cache = CacheService.getScriptCache();
+  const hit = cache.get(ck);
+  if (hit) {
+    try {
+      const cachedOrder = JSON.parse(hit);
+      _headerCache[cacheKey] = cachedOrder;
+      return cachedOrder;
+    } catch (err) { /* 壊れていれば読み直す */ }
+  }
   // getLastColumn() はデータ行を含む右端なので、見出しが途中で切れている場合がある。
   // 見出し行はデータの幅ぶん読み、空欄はそのまま空欄として扱う。
   const width = Math.max(sheet.getLastColumn(), labels.length);
@@ -227,6 +258,7 @@ function ensureHeader_(sheet, key) {
   const map = labelKeyMap_(key);
   const order = header.map(function (l) { return map[l] || null; });
   _headerCache[cacheKey] = order;
+  try { cache.put(ck, JSON.stringify(order), 21600); } catch (err) { /* noop */ }
   return order;
 }
 
@@ -871,6 +903,7 @@ function replaceSheetRows_(sheetKey, rows) {
   range.setValues(out);
   if (lastRow > out.length) sheet.deleteRows(out.length + 1, lastRow - out.length); // 余剰行を削除
   sheet.setFrozenRows(1);
+  forgetHeader_(sheet.getSheetName()); // 見出しを書き換えたので確認し直す
 }
 
 // 同じIDが無ければ追加する（冪等）。リトライで二重登録されないようにする。
@@ -1026,6 +1059,7 @@ function handleSaveMonthAttendance(staffId, month, records) {
   sheet.getRange(1, 1, out.length, ncol).setValues(out);
   sheet.setFrozenRows(1);
   return { success: true };
+  forgetHeader_(sheet.getSheetName()); // 見出しを書き換えたので確認し直す
 }
 
 // --- ハンドラー：シフト区分マスタ ---
@@ -1075,6 +1109,7 @@ function handleSaveMonthAvailability(month, staffIds, records) {
   sheet.getRange(1, 1, out.length, ncol).setValues(out);
   sheet.setFrozenRows(1);
   return { success: true };
+  forgetHeader_(sheet.getSheetName()); // 見出しを書き換えたので確認し直す
 }
 
 // --- ハンドラー：確定シフト ---
@@ -1214,6 +1249,7 @@ function handleSaveMonthOvertime(staffId, month, records) {
   sheet.getRange(1, 1, out.length, ncol).setValues(out);
   sheet.setFrozenRows(1);
   return { success: true };
+  forgetHeader_(sheet.getSheetName()); // 見出しを書き換えたので確認し直す
 }
 
 // --- ハンドラー：代休取得（消化） ---
@@ -1765,6 +1801,7 @@ function handleSaveMyAvailability(session, month, records) {
   sheet.getRange(1, 1, out.length, ncol).setValues(out);
   sheet.setFrozenRows(1);
   return { success: true };
+  forgetHeader_(sheet.getSheetName()); // 見出しを書き換えたので確認し直す
 }
 
 function handleGetMyOvertime(session) {

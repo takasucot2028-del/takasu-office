@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageContainer, Card, Badge } from '../components/UI';
-import { getDashboardData, getDashboardCached, listAllLeave, listOvertimeFiscalYear, listConfirmedByMonth, listAttendanceMonthAll, todayStr } from '../api/data';
+import { getDashboardData, getDashboardCached, getDashboardAlertData, todayStr } from '../api/data';
 import type { DayAbsences, PendingSummary } from '../api/data';
-import { WORK_LOCATION_LABELS, WEEKDAY_LABELS, currentFiscalYear } from '../utils/constants';
+import { WORK_LOCATION_LABELS, WEEKDAY_LABELS } from '../utils/constants';
 import { currentObligation } from '../utils/annualLeave';
 import { monthlyTotals, evaluate36 } from '../utils/limit36';
 import { getPrefs } from '../utils/prefs';
 import { shiftPlanByDate, isMissingPunch } from '../utils/shiftPlan';
-import type { WorkLocation, Staff, ShiftPattern, ConfirmedShift, LeaveRecord, OvertimeRecord } from '../types';
+import type { WorkLocation, Staff, ShiftPattern, ConfirmedShift } from '../types';
 
 // 未承認の種別ごとの表示設定
 const PENDING_LABEL = { overtime: '時間外', leave: '休暇', expense: '経費' } as const;
@@ -47,40 +47,40 @@ export default function Dashboard() {
 
   // 年5日取得義務の未達者。主要表示の妨げにならないよう、描画後に裏で取得する。
   // 表示しない設定のときは取得自体を行わない。
-  useEffect(() => {
-    if (!staff.length || !getPrefs().showLeaveObligation) return;
-    let alive = true;
-    (async () => {
-      let all: LeaveRecord[] = [];
-      try { all = await listAllLeave(); } catch { return; }
-      if (!alive) return;
-      const rows = staff
-        .filter(s => s.status === 'active')
-        .map(s => {
-          const o = currentObligation(all.filter(r => r.staffId === s.id), today);
-          if (!o || o.achieved) return null;
-          return { name: `${s.lastName} ${s.firstName}`, remaining: o.remaining, deadline: o.deadline, overdue: o.overdue };
-        })
-        .filter((x): x is { name: string; remaining: number; deadline: string; overdue: boolean } => x !== null)
-        .sort((a, b) => a.deadline.localeCompare(b.deadline));
-      setLeaveAlerts(rows);
-    })();
-    return () => { alive = false; };
-  }, [staff, today]);
-
-  // 36協定の上限に触れている職員。こちらも描画後に裏で取得する
+  /**
+   * 警告用のデータ。
+   * 年5日未達・36協定・打刻漏れをまとめて1リクエストで取得する。
+   * 本体の表示を妨げないよう、描画後に裏で読み込む。
+   */
   useEffect(() => {
     if (!staff.length) return;
     let alive = true;
     (async () => {
-      let all: OvertimeRecord[] = [];
-      try { all = await listOvertimeFiscalYear(currentFiscalYear()); } catch { return; }
+      const showLeave = getPrefs().showLeaveObligation;
+      let d;
+      try { d = await getDashboardAlertData(today, showLeave); } catch { return; }
       if (!alive) return;
+      const active = staff.filter(s => s.status === 'active');
       const month = today.slice(0, 7);
-      const rows = staff
-        .filter(s => s.status === 'active')
+
+      // 年5日の取得義務（表示する設定のときだけ）
+      if (showLeave) {
+        setLeaveAlerts(active
+          .map(s => {
+            const o = currentObligation(d.leave.filter(r => r.staffId === s.id), today);
+            if (!o || o.achieved) return null;
+            return { name: `${s.lastName} ${s.firstName}`, remaining: o.remaining, deadline: o.deadline, overdue: o.overdue };
+          })
+          .filter((x): x is { name: string; remaining: number; deadline: string; overdue: boolean } => x !== null)
+          .sort((a, b) => a.deadline.localeCompare(b.deadline)));
+      } else {
+        setLeaveAlerts([]);
+      }
+
+      // 36協定の上限
+      setOt36Alerts(active
         .map(s => {
-          const st = evaluate36(monthlyTotals(all.filter(r => r.staffId === s.id)), month);
+          const st = evaluate36(monthlyTotals(d.overtime.filter(r => r.staffId === s.id)), month);
           if (st.warnings.length === 0) return null;
           return {
             name: `${s.lastName} ${s.firstName}`,
@@ -89,35 +89,21 @@ export default function Dashboard() {
           };
         })
         .filter((x): x is { name: string; level: 'error' | 'warn'; texts: string[] } => x !== null)
-        .sort((a, b) => (a.level === b.level ? 0 : a.level === 'error' ? -1 : 1));
-      setOt36Alerts(rows);
-    })();
-    return () => { alive = false; };
-  }, [staff, today]);
+        .sort((a, b) => (a.level === b.level ? 0 : a.level === 'error' ? -1 : 1)));
 
-  // シフトがあるのに打刻がない日。当月ぶんを描画後に裏で確認する
-  useEffect(() => {
-    if (!staff.length || !patterns.length) return;
-    let alive = true;
-    (async () => {
-      const month = today.slice(0, 7);
-      let conf, att;
-      try {
-        [conf, att] = await Promise.all([listConfirmedByMonth(month), listAttendanceMonthAll(month)]);
-      } catch { return; }
-      if (!alive) return;
-      const rows = staff
-        .filter(s => s.status === 'active')
-        .map(s => {
-          const plans = shiftPlanByDate(conf.filter(c => c.staffId === s.id), patterns);
-          const recByDate = new Map(att.filter(r => r.staffId === s.id).map(r => [r.date, r]));
-          const dates = [...plans.keys()]
-            .filter(d => isMissingPunch(recByDate.get(d), plans.get(d), d, today))
-            .sort();
-          return dates.length ? { name: `${s.lastName} ${s.firstName}`, dates } : null;
-        })
-        .filter((x): x is { name: string; dates: string[] } => x !== null);
-      setPunchAlerts(rows);
+      // シフトがあるのに打刻がない日（区分マスタが読めているときだけ）
+      if (patterns.length) {
+        setPunchAlerts(active
+          .map(s => {
+            const plans = shiftPlanByDate(d.confirmed.filter(c => c.staffId === s.id), patterns);
+            const recByDate = new Map(d.attendance.filter(r => r.staffId === s.id).map(r => [r.date, r]));
+            const dates = [...plans.keys()]
+              .filter(x => isMissingPunch(recByDate.get(x), plans.get(x), x, today))
+              .sort();
+            return dates.length ? { name: `${s.lastName} ${s.firstName}`, dates } : null;
+          })
+          .filter((x): x is { name: string; dates: string[] } => x !== null));
+      }
     })();
     return () => { alive = false; };
   }, [staff, patterns, today]);

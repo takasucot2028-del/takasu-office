@@ -874,6 +874,45 @@ function persistAcct(fy: number, data: AccountingData) {
     localStorage.setItem(acctKey(fy), JSON.stringify(data));
   } catch { /* 容量超過等は無視 */ }
 }
+/**
+ * ダッシュボードの警告用データ。
+ * 年5日未達・36協定・打刻漏れの判定に必要なものを1リクエストでまとめて取得する。
+ * （GASは1リクエストずつ順番に処理されるため、回数を減らすのが最も効く）
+ */
+export interface DashboardAlertData {
+  leave: LeaveRecord[];
+  overtime: OvertimeRecord[];
+  confirmed: ConfirmedShift[];
+  attendance: AttendanceRecord[];
+}
+
+export async function getDashboardAlertData(date: string, includeLeave: boolean): Promise<DashboardAlertData> {
+  const month = date.slice(0, 7);
+  const fy = currentFiscalYear();
+  if (!USE_GAS) {
+    return {
+      leave: includeLeave ? local.listAllLeave() : [],
+      overtime: local.listOvertimeFiscalYear(fy),
+      confirmed: local.listConfirmedByMonth(month),
+      attendance: local.listAttendanceMonthAll(month),
+    };
+  }
+  const reqs: Record<string, unknown>[] = [
+    { action: 'getOvertimeFiscalYear', fiscalYear: fy },
+    { action: 'getConfirmedMonth', month },
+    { action: 'getAttendanceMonthAll', month },
+  ];
+  if (includeLeave) reqs.push({ action: 'getAllLeave' });
+  const r = await batchCall(reqs);
+  if (!r) return { leave: [], overtime: [], confirmed: [], attendance: [] };
+  return {
+    overtime: unwrap(r[0] as SubRes<OvertimeRecord[]>, []),
+    confirmed: unwrap(r[1] as SubRes<ConfirmedShift[]>, []),
+    attendance: unwrap(r[2] as SubRes<AttendanceRecord[]>, []),
+    leave: includeLeave ? unwrap(r[3] as SubRes<LeaveRecord[]>, []) : [],
+  };
+}
+
 /** 年度末のアーカイブ用に、その年度のデータを一式まとめて取得する */
 export interface YearArchive {
   fiscalYear: number;
