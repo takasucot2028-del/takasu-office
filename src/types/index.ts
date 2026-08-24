@@ -122,7 +122,9 @@ export interface CompLeaveUse {
   id: string;
   staffId: string;
   date: string;               // YYYY-MM-DD
-  hours: number;              // 消化時間
+  hours: number;              // 消化時間。startTime/endTime から算出した値
+  startTime?: string;         // 取得の開始 HH:MM（任意。時刻で記録した場合に保持）
+  endTime?: string;           // 取得の終了 HH:MM（任意）
   note: string;
 }
 

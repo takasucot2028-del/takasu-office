@@ -37,6 +37,7 @@ var SHEETS = {
   ] },
   comp_leave_use: { name: '代休取得', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['hours', '時間'], ['note', '備考'],
+    ['startTime', '開始'], ['endTime', '終了'],
   ] },
   documents: { name: '文書', columns: [
     ['id', 'ID'], ['type', '種別'], ['title', 'タイトル'], ['url', '共有リンク'], ['createdAt', '作成日時'], ['updatedAt', '更新日時'],

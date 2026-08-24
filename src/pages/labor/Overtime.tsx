@@ -67,7 +67,8 @@ export default function Overtime() {
   const [fReason, setFReason] = useState('');
   // 代休取得フォーム
   const [cDate, setCDate] = useState(todayStr());
-  const [cHours, setCHours] = useState('8');
+  const [cStart, setCStart] = useState('08:30');
+  const [cEnd, setCEnd] = useState('12:00');
   const [cNote, setCNote] = useState('');
 
   const targetStaff = useMemo(() => allStaff.filter(s => s.status === 'active' && isOvertimeTarget(s)), [allStaff]);
@@ -236,11 +237,16 @@ export default function Overtime() {
 
   const addCompUseRec = async () => {
     if (!staff) return;
-    const hrs = Number(cHours);
-    if (!hrs || hrs <= 0) { setError('代休の時間を入力してください'); return; }
+    // 開始〜終了から取得時間を求める（例: 8:30〜12:00 → 3.5時間）
+    const hrs = Math.round((breakMinutesBetween(cStart, cEnd) / 60) * 100) / 100;
+    if (!cStart || !cEnd) { setError('代休の開始と終了の時刻を入力してください'); return; }
+    if (!hrs || hrs <= 0) { setError('終了は開始より後の時刻にしてください'); return; }
     setError('');
     try {
-      await addCompUse({ id: genId('cu'), staffId: staff.id, date: cDate, hours: hrs, note: cNote });
+      await addCompUse({
+        id: genId('cu'), staffId: staff.id, date: cDate,
+        hours: hrs, startTime: cStart, endTime: cEnd, note: cNote,
+      });
       setCNote('');
       setReloadKey(k => k + 1);
     } catch (err) {
@@ -468,22 +474,39 @@ export default function Overtime() {
           <Card>
             <h2 className="font-bold text-gray-800 mb-1">代休の取得（消化）</h2>
             <p className="text-xs text-gray-500 mb-3">代休にした時間外の合計 {h1(compGranted)} − 取得 {h1(compUsed)} ＝ 残 <span className="font-medium text-emerald-700">{h1(compBalance)}</span></p>
-            <div className="grid sm:grid-cols-4 gap-3 items-end mb-4">
+            <div className="grid sm:grid-cols-5 gap-3 items-end mb-1">
               <Field label="取得日"><Input type="date" value={cDate} onChange={e => setCDate(e.target.value)} /></Field>
-              <Field label="時間（h）"><Input type="number" min={0} step={0.5} value={cHours} onChange={e => setCHours(e.target.value)} /></Field>
-              <Field label="備考"><Input value={cNote} onChange={e => setCNote(e.target.value)} placeholder="例: 終日代休" /></Field>
+              <Field label="開始"><Input type="time" value={cStart} onChange={e => setCStart(e.target.value)} /></Field>
+              <Field label="終了"><Input type="time" value={cEnd} onChange={e => setCEnd(e.target.value)} /></Field>
+              <Field label="備考"><Input value={cNote} onChange={e => setCNote(e.target.value)} placeholder="例: 午前中のみ" /></Field>
               <div className="mb-4"><Button className="w-full" variant="secondary" onClick={addCompUseRec}>取得を記録</Button></div>
             </div>
+            <p className="text-xs text-gray-400 mb-4">
+              取得時間は開始〜終了から計算します（現在:{' '}
+              <span className="font-medium text-gray-600">
+                {(() => {
+                  const h = Math.round((breakMinutesBetween(cStart, cEnd) / 60) * 100) / 100;
+                  return h > 0 ? `${h}時間` : '—';
+                })()}
+              </span>
+              ）。終日の代休は所定の勤務時間帯を入力してください。
+            </p>
             <Table>
-              <thead><tr><Th>取得日</Th><Th>時間</Th><Th>備考</Th><Th></Th></tr></thead>
+              <thead><tr><Th>取得日</Th><Th>時間帯</Th><Th>時間</Th><Th>備考</Th><Th></Th></tr></thead>
               <tbody>
                 {compUse.map(r => (
                   <tr key={r.id}>
-                    <Td>{r.date}</Td><Td>{h1(r.hours)}</Td><Td>{r.note}</Td>
+                    <Td>{r.date}</Td>
+                    <Td className="whitespace-nowrap">
+                      {r.startTime && r.endTime
+                        ? `${r.startTime}〜${r.endTime}`
+                        : <span className="text-gray-300">—</span>}
+                    </Td>
+                    <Td>{h1(r.hours)}</Td><Td>{r.note}</Td>
                     <Td><Button variant="ghost" size="sm" onClick={() => removeCompUse(r.id)}>削除</Button></Td>
                   </tr>
                 ))}
-                {compUse.length === 0 && <tr><Td className="text-center text-gray-400 py-6" colSpan={4}>取得記録はありません</Td></tr>}
+                {compUse.length === 0 && <tr><Td className="text-center text-gray-400 py-6" colSpan={5}>取得記録はありません</Td></tr>}
               </tbody>
             </Table>
           </Card>
