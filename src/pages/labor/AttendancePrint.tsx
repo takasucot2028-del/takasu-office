@@ -4,11 +4,13 @@ import { useAuth } from '../../components/AuthContext';
 import {
   getStaff, listStaff, listAttendance, getMyProfile, getMyAttendance,
   listConfirmedByMonth, getMyConfirmed, listShiftPatterns, todayStr,
+  listOvertimeByStaff, listOvertimeByMonth, getMyOvertime,
 } from '../../api/data';
 import { DAY_TYPE_LABELS, WEEKDAY_LABELS } from '../../utils/constants';
 import { isNationalHoliday } from '../../utils/holidays';
 import { shiftPlanByDate, isMissingPunch } from '../../utils/shiftPlan';
-import type { Staff, AttendanceRecord, ConfirmedShift, ShiftPattern } from '../../types';
+import { overtimeByDate } from '../../utils/overtime';
+import type { Staff, AttendanceRecord, ConfirmedShift, ShiftPattern, OvertimeRecord } from '../../types';
 
 /** 'YYYY-MM' の月の日付一覧（YYYY-MM-DD） */
 function daysOfMonth(month: string): string[] {
@@ -29,7 +31,7 @@ function workMinutes(rec?: AttendanceRecord): number {
 }
 const hhmm = (min: number) => `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`;
 
-interface Sheet { staff: Staff; records: Record<string, AttendanceRecord>; confirmed: ConfirmedShift[] }
+interface Sheet { staff: Staff; records: Record<string, AttendanceRecord>; confirmed: ConfirmedShift[]; overtime: OvertimeRecord[] }
 
 export default function AttendancePrint() {
   const navigate = useNavigate();
@@ -62,22 +64,30 @@ export default function AttendancePrint() {
       let built: Sheet[] = [];
       if (isStaff) {
         // 従業員は自分の勤怠・シフトのみ
-        const [s, list, conf] = await Promise.all([getMyProfile(), getMyAttendance(month), getMyConfirmed(month)]);
-        if (s) built = [{ staff: s, records: toMap(list), confirmed: conf }];
+        const [s, list, conf, ot] = await Promise.all([
+          getMyProfile(), getMyAttendance(month), getMyConfirmed(month), getMyOvertime(),
+        ]);
+        if (s) built = [{ staff: s, records: toMap(list), confirmed: conf, overtime: ot.filter(r => r.date.startsWith(month)) }];
       } else if (all) {
         // 事務局：在職者全員を1ページずつ（職員ごとに改ページ）
-        const [staffList, conf] = await Promise.all([listStaff(), listConfirmedByMonth(month)]);
+        const [staffList, conf, otAll] = await Promise.all([
+          listStaff(), listConfirmedByMonth(month), listOvertimeByMonth(month),
+        ]);
         for (const s of staffList.filter(x => x.status === 'active')) {
           built.push({
             staff: s, records: toMap(await listAttendance(s.id, month)),
             confirmed: conf.filter(c => c.staffId === s.id),
+            overtime: otAll.filter(r => r.staffId === s.id),
           });
         }
       } else {
-        const [s, list, conf] = await Promise.all([
-          getStaff(staffId), listAttendance(staffId, month), listConfirmedByMonth(month),
+        const [s, list, conf, ot] = await Promise.all([
+          getStaff(staffId), listAttendance(staffId, month), listConfirmedByMonth(month), listOvertimeByStaff(staffId),
         ]);
-        if (s) built = [{ staff: s, records: toMap(list), confirmed: conf.filter(c => c.staffId === s.id) }];
+        if (s) built = [{
+          staff: s, records: toMap(list), confirmed: conf.filter(c => c.staffId === s.id),
+          overtime: ot.filter(r => r.date.startsWith(month)),
+        }];
       }
       if (!alive) return;
       setSheets(built);
@@ -111,6 +121,11 @@ export default function AttendancePrint() {
         const records = sh.records;
         const plans = shiftPlanByDate(sh.confirmed, patterns);
         const missing = days.filter(d => isMissingPunch(records[d], plans.get(d), d, today));
+        const otMap = overtimeByDate(sh.overtime);
+        const otTotal = Math.round(sh.overtime.filter(r => r.kind === 'overtime')
+          .reduce((t, r) => t + (Number(r.resultHours) || 0), 0) * 10) / 10;
+        const holidayTotal = Math.round(sh.overtime.filter(r => r.kind === 'holiday')
+          .reduce((t, r) => t + (Number(r.resultHours) || 0), 0) * 10) / 10;
         const list = days.map(d => records[d]).filter((r): r is AttendanceRecord => !!r);
         const totals = {
           work: list.filter(r => r.dayType === 'work').length,
@@ -150,6 +165,7 @@ export default function AttendancePrint() {
                   <th className="border border-gray-500 bg-gray-100 px-1 py-1 w-16">退勤</th>
                   <th className="border border-gray-500 bg-gray-100 px-1 py-1 w-24">休憩</th>
                   <th className="border border-gray-500 bg-gray-100 px-1 py-1 w-16">実働</th>
+                  <th className="border border-gray-500 bg-gray-100 px-1 py-1 w-20">時間外</th>
                   <th className="border border-gray-500 bg-gray-100 px-2 py-1 text-left">備考</th>
                 </tr>
               </thead>
@@ -176,12 +192,23 @@ export default function AttendancePrint() {
                       <td className="border border-gray-500 px-1 py-0.5 text-center">{rec?.dayType === 'work' ? rec.endTime : ''}</td>
                       <td className="border border-gray-500 px-1 py-0.5 text-center">{rec?.dayType === 'work' ? brk : ''}</td>
                       <td className="border border-gray-500 px-1 py-0.5 text-right">{rec && rec.dayType === 'work' && workMinutes(rec) > 0 ? hhmm(workMinutes(rec)) : ''}</td>
+                      <td className="border border-gray-500 px-1 py-0.5 text-right whitespace-nowrap">
+                        {(() => {
+                          const ot = otMap.get(date);
+                          if (!ot || !ot.hours) return '';
+                          return `${ot.hours}${ot.kind === 'holiday' ? '（休日）' : ''}`;
+                        })()}
+                      </td>
                       <td className="border border-gray-500 px-2 py-0.5">{rec?.note || ''}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+
+            <p className="text-xs text-gray-500 mt-2">
+              ※ 時間外・休日勤務は「時間外」で登録された実績です。休日勤務の日は「（休日）」と記載しています。
+            </p>
 
             {missing.length > 0 && (
               <p className="text-xs text-red-600 mt-2">
@@ -203,6 +230,12 @@ export default function AttendancePrint() {
                   <td className="border border-gray-500 px-2 py-1 text-right">{totals.absent}日</td>
                   <th className="border border-gray-500 bg-gray-100 px-2 py-1 text-left">総実働時間</th>
                   <td className="border border-gray-500 px-2 py-1 text-right font-bold">{hhmm(totals.minutes)}</td>
+                </tr>
+                <tr>
+                  <th className="border border-gray-500 bg-gray-100 px-2 py-1 text-left">時間外</th>
+                  <td className="border border-gray-500 px-2 py-1 text-right font-bold">{otTotal}時間</td>
+                  <th className="border border-gray-500 bg-gray-100 px-2 py-1 text-left">休日勤務</th>
+                  <td className="border border-gray-500 px-2 py-1 text-right font-bold">{holidayTotal}時間</td>
                 </tr>
               </tbody>
             </table>

@@ -128,6 +128,33 @@ export function compPremiumDetail(
   return { amount, normalHours: Math.round(normalHours * 100) / 100, over60Hours };
 }
 
+/** その日の時間外（実績） */
+export interface DayOvertime {
+  hours: number;                 // 実績時間
+  kind: OvertimeKind;            // 時間外 / 休日
+  status: OvertimeStatus;        // 申請中 / 承認済
+  disposition: OvertimeDisposition; // 手当 / 代休 / 未定
+}
+
+/**
+ * 時間外の記録を日付ごとにまとめる。
+ * 同じ日に複数の記録がある場合は実績時間を合計する。
+ */
+export function overtimeByDate(records: { date: string; kind: OvertimeKind; status: OvertimeStatus; disposition: OvertimeDisposition; resultHours: number }[]): Map<string, DayOvertime> {
+  const map = new Map<string, DayOvertime>();
+  for (const r of records) {
+    const hours = Number(r.resultHours) || 0;
+    const cur = map.get(r.date);
+    if (cur) {
+      cur.hours = Math.round((cur.hours + hours) * 100) / 100;
+      if (r.status === 'applied') cur.status = 'applied'; // 1件でも未承認なら未承認として示す
+    } else {
+      map.set(r.date, { hours, kind: r.kind, status: r.status, disposition: r.disposition });
+    }
+  }
+  return map;
+}
+
 /**
  * 月内の各記録に「その記録より前の時間外累計」を割り当てる。
  * 日付順に、承認済みの「時間外」実績だけを積み上げる（休日勤務は含めない）。

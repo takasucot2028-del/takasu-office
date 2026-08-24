@@ -852,6 +852,43 @@ function refFromBatch(r: SubRes<unknown>[]): ReferenceData {
   return { staff, patterns, categories };
 }
 
+/** 勤怠画面のデータ（その職員・その月の勤怠／確定シフト／時間外）を1リクエストで取得する */
+export interface AttendancePageData {
+  attendance: AttendanceRecord[];
+  confirmed: ConfirmedShift[];
+  overtime: OvertimeRecord[];
+}
+
+export async function getAttendancePageData(staffId: string, month: string): Promise<AttendancePageData> {
+  if (!USE_GAS) {
+    return {
+      attendance: local.listAttendance(staffId, month),
+      confirmed: local.listConfirmedByMonth(month).filter(c => c.staffId === staffId),
+      overtime: local.listOvertimeByStaff(staffId).filter(r => r.date.startsWith(month)),
+    };
+  }
+  const r = await batchCall([
+    { action: 'getAttendance', staffId, month },
+    { action: 'getConfirmedMonth', month },
+    { action: 'getOvertimeByStaff', staffId },
+  ]);
+  if (!r) {
+    const [attendance, confirmed, overtime] = await Promise.all([
+      listAttendance(staffId, month), listConfirmedByMonth(month), listOvertimeByStaff(staffId),
+    ]);
+    return {
+      attendance,
+      confirmed: confirmed.filter(c => c.staffId === staffId),
+      overtime: overtime.filter(x => x.date.startsWith(month)),
+    };
+  }
+  return {
+    attendance: unwrap(r[0] as SubRes<AttendanceRecord[]>, []),
+    confirmed: unwrap(r[1] as SubRes<ConfirmedShift[]>, []).filter(c => c.staffId === staffId),
+    overtime: unwrap(r[2] as SubRes<OvertimeRecord[]>, []).filter(x => x.date.startsWith(month)),
+  };
+}
+
 /** シフト画面のデータ（基礎データ＋その月の希望・確定）を1リクエストで取得する */
 export interface ShiftPageData extends ReferenceData, ShiftMonthData {}
 

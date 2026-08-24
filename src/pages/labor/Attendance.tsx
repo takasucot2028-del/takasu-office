@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { PageContainer, Card, Select, Input, Button, Table, Th, Td, Alert } from '../../components/UI';
-import { listStaff, listAttendance, saveMonthAttendance, listConfirmedByMonth, getReference, todayStr } from '../../api/data';
+import { listStaff, saveMonthAttendance, getAttendancePageData, listShiftPatterns, todayStr } from '../../api/data';
 import { DAY_TYPE_LABELS, WEEKDAY_LABELS, breakMinutesBetween } from '../../utils/constants';
 import { shiftPlanByDate, isMissingPunch } from '../../utils/shiftPlan';
-import type { AttendanceRecord, AttendanceDayType, Staff, ShiftPattern, ConfirmedShift } from '../../types';
+import { overtimeByDate, OVERTIME_KIND_LABELS } from '../../utils/overtime';
+import type { AttendanceRecord, AttendanceDayType, Staff, ShiftPattern, ConfirmedShift, OvertimeRecord } from '../../types';
 
 function currentMonth(): string {
   return new Date().toISOString().slice(0, 7);
@@ -49,6 +50,7 @@ export default function Attendance() {
   const [saving, setSaving] = useState(false);
   const [patterns, setPatterns] = useState<ShiftPattern[]>([]);
   const [confirmed, setConfirmed] = useState<ConfirmedShift[]>([]);
+  const [overtime, setOvertime] = useState<OvertimeRecord[]>([]);
 
   const days = daysOfMonth(month);
   const selectedStaff = staff.find(s => s.id === staffId);
@@ -67,23 +69,35 @@ export default function Attendance() {
     return () => { alive = false; };
   }, []);
 
-  useEffect(() => { getReference().then(r => setPatterns(r.patterns)); }, []);
+  useEffect(() => { listShiftPatterns().then(setPatterns).catch(() => {}); }, []);
 
-  // 職員・月が変わるたびに勤怠と確定シフトを読み込む
+  // 職員・月が変わるたびに勤怠・確定シフト・時間外を1リクエストで読み込む
   useEffect(() => {
     if (!staffId) return;
     let alive = true;
     setMessage('');
     (async () => {
-      const [list, conf] = await Promise.all([listAttendance(staffId, month), listConfirmedByMonth(month)]);
+      const d = await getAttendancePageData(staffId, month);
       if (!alive) return;
       const map: Record<string, AttendanceRecord> = {};
-      for (const rec of list) map[rec.date] = rec;
+      for (const rec of d.attendance) map[rec.date] = rec;
       setRecords(map);
-      setConfirmed(conf.filter(c => c.staffId === staffId));
+      setConfirmed(d.confirmed);
+      setOvertime(d.overtime);
     })();
     return () => { alive = false; };
   }, [staffId, month]);
+
+  // 日付ごとの時間外実績（時間外管理で保存された実績時間）
+  const otByDate = useMemo(() => overtimeByDate(overtime), [overtime]);
+  const monthOtHours = useMemo(
+    () => Math.round(overtime.filter(r => r.kind === 'overtime').reduce((t, r) => t + (Number(r.resultHours) || 0), 0) * 10) / 10,
+    [overtime]
+  );
+  const monthHolidayHours = useMemo(
+    () => Math.round(overtime.filter(r => r.kind === 'holiday').reduce((t, r) => t + (Number(r.resultHours) || 0), 0) * 10) / 10,
+    [overtime]
+  );
 
   // 日付ごとの勤務予定と、シフトがあるのに打刻がない日
   const plans = useMemo(() => shiftPlanByDate(confirmed, patterns), [confirmed, patterns]);
@@ -148,13 +162,15 @@ export default function Attendance() {
       [`出勤簿 ${month}`, '', '', '', '', '', ''],
       [`氏名: ${selectedStaff.lastName} ${selectedStaff.firstName}`, '', '', '', '', '', ''],
       [],
-      ['日付', '曜日', 'シフト予定', 'シフト時間', '区分', '出勤', '退勤', '休憩', '休憩(分)', '実働', '備考'],
+      ['日付', '曜日', 'シフト予定', 'シフト時間', '区分', '出勤', '退勤', '休憩', '休憩(分)', '実働', '時間外', '種別', '備考'],
       ...days.map(date => {
         const rec = records[date];
         const plan = plans.get(date);
         const wd = WEEKDAY_LABELS[new Date(`${date}T00:00:00`).getDay()];
         const planCells = [plan ? plan.timeLabel : '', plan ? plan.hours : ''];
-        if (!rec) return [date, wd, ...planCells, '', '', '', '', '', '', ''];
+        const ot = otByDate.get(date);
+        const otCells = [ot ? ot.hours : '', ot ? OVERTIME_KIND_LABELS[ot.kind] : ''];
+        if (!rec) return [date, wd, ...planCells, '', '', '', '', '', '', ...otCells, ''];
         return [
           date,
           wd,
@@ -165,14 +181,15 @@ export default function Attendance() {
           rec.breakStart && rec.breakEnd ? `${rec.breakStart}〜${rec.breakEnd}` : '',
           rec.breakMinutes || '',
           rec.dayType === 'work' ? formatMinutes(workMinutes(rec)) : '',
+          ...otCells,
           rec.note,
         ];
       }),
       [],
-      ['出勤日数', workDays, '有給日数', paidDays, '欠勤日数', absentDays, '総実働', formatMinutes(totalMinutes)],
+      ['出勤日数', workDays, '有給日数', paidDays, '欠勤日数', absentDays, '総実働', formatMinutes(totalMinutes), '時間外', monthOtHours, '休日勤務', monthHolidayHours],
     ];
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{ wch: 12 }, { wch: 5 }, { wch: 6 }, { wch: 7 }, { wch: 7 }, { wch: 13 }, { wch: 9 }, { wch: 7 }, { wch: 20 }];
+    ws['!cols'] = [{ wch: 12 }, { wch: 5 }, { wch: 14 }, { wch: 10 }, { wch: 6 }, { wch: 7 }, { wch: 7 }, { wch: 13 }, { wch: 9 }, { wch: 7 }, { wch: 8 }, { wch: 8 }, { wch: 20 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '出勤簿');
     XLSX.writeFile(wb, `出勤簿_${selectedStaff.lastName}${selectedStaff.firstName}_${month}.xlsx`);
@@ -207,12 +224,17 @@ export default function Attendance() {
           )}
 
           {/* 月次集計 */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
             <SummaryTile label="出勤日数" value={`${workDays}日`} />
             <SummaryTile label="有給日数" value={`${paidDays}日`} />
             <SummaryTile label="欠勤日数" value={`${absentDays}日`} />
             <SummaryTile label="総実働時間" value={formatMinutes(totalMinutes)} />
+            <SummaryTile label="時間外" value={`${monthOtHours}h`} />
+            <SummaryTile label="休日勤務" value={`${monthHolidayHours}h`} />
           </div>
+          <p className="text-xs text-gray-400 -mt-2 mb-4">
+            時間外・休日勤務は「時間外」画面で登録された実績です。この画面では変更できません。
+          </p>
 
           <div className="flex justify-end gap-2 mb-3">
             <Button variant="secondary" size="sm" onClick={() => navigate(`/labor/attendance/print?staffId=${staffId}&month=${month}`)}>出勤簿PDF</Button>
@@ -232,6 +254,7 @@ export default function Attendance() {
                   <Th>退勤</Th>
                   <Th>休憩</Th>
                   <Th>実働</Th>
+                  <Th>時間外</Th>
                   <Th>備考</Th>
                 </tr>
               </thead>
@@ -314,6 +337,19 @@ export default function Attendance() {
                       </Td>
                       <Td className="whitespace-nowrap text-gray-600">
                         {rec && isWork ? formatMinutes(workMinutes(rec)) : ''}
+                      </Td>
+                      <Td className="whitespace-nowrap">
+                        {(() => {
+                          const ot = otByDate.get(date);
+                          if (!ot) return <span className="text-gray-300">—</span>;
+                          return (
+                            <span className={ot.kind === 'holiday' ? 'text-purple-700' : 'text-gray-800'}>
+                              <span className="font-medium">{ot.hours}h</span>
+                              <span className="ml-1 text-xs">{OVERTIME_KIND_LABELS[ot.kind]}</span>
+                              {ot.status === 'applied' && <span className="ml-1 text-xs text-amber-600">未承認</span>}
+                            </span>
+                          );
+                        })()}
                       </Td>
                       <Td className="min-w-32">
                         <Input
