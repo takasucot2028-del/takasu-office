@@ -80,6 +80,30 @@ export function resultHoursOf(workedHours: number, standardHours: number): numbe
   return Math.max(0, Math.round((workedHours - standardHours) * 100) / 100);
 }
 
+/**
+ * その記録の実績時間。雇用区分で求め方が違う。
+ *
+ * 常勤職員: 実働 − 基準（平日7.5時間、土日祝は0＝全部が休日勤務）。
+ * パート職員等: シフトの時間外に働いた分を申請しているため、申請時間を
+ *   そのまま実績とする。例えばシフトが8:30からの日に7:30から勤務した場合、
+ *   7:30〜8:30 の1時間を申請し、その1時間が時間外になる。
+ *   （実働からシフト時間を引く方法だと、シフトが未登録の日に働いた分が
+ *     まるごと時間外になってしまうため）
+ */
+export function resultHoursFor(
+  staff: Staff, date: string, workedHours: number, shiftHours: number, appliedHours: number
+): number {
+  if (staff.employmentType === 'fulltime') {
+    return resultHoursOf(workedHours, standardHoursOf(staff, date, shiftHours));
+  }
+  return Math.max(0, Math.round((Number(appliedHours) || 0) * 100) / 100);
+}
+
+/** 実績が申請時間そのままになる雇用区分か（画面の説明で使う） */
+export function usesAppliedHours(staff: Staff): boolean {
+  return staff.employmentType !== 'fulltime';
+}
+
 /** 時間外手当（円）= round(実績時間 × 時給 × 割増率)。月60時間超の割増は考慮しない単純計算 */
 export function allowanceOf(resultHours: number, hourlyWage: number, kind: OvertimeKind): number {
   return Math.round(resultHours * hourlyWage * rateOf(kind));

@@ -13,7 +13,7 @@ import {
   LIMIT_MULTI_MONTH_AVG, LIMIT_OVER45_COUNT,
 } from '../../utils/limit36';
 import {
-  isOvertimeTarget, overtimeKindOf, standardHoursOf, resultHoursOf,
+  isOvertimeTarget, overtimeKindOf, standardHoursOf, resultHoursFor, usesAppliedHours,
   allowanceDetail, compPremiumDetail, compDeadlineOf, priorOvertimeMap, patternHours,
   OVERTIME_MONTHLY_THRESHOLD,
   OVERTIME_STATUS_LABELS, OVERTIME_KIND_LABELS,
@@ -72,6 +72,8 @@ export default function Overtime() {
 
   const targetStaff = useMemo(() => allStaff.filter(s => s.status === 'active' && isOvertimeTarget(s)), [allStaff]);
   const staff = useMemo(() => allStaff.find(s => s.id === staffId) ?? null, [allStaff, staffId]);
+  // パート職員等は、シフト時間外に働いた分を申請しているため、申請時間が実績になる
+  const byApplied = staff ? usesAppliedHours(staff) : false;
   const patternMap = useMemo(() => new Map(patterns.map(p => [p.id, p])), [patterns]);
 
   // 初回：職員・区分
@@ -119,9 +121,9 @@ export default function Overtime() {
   }, [allOt, month]);
 
   // 実績時間だけを求める（累計の計算に使う。手当は含めない）
-  const resultOf = (r: { date: string }) => {
+  const resultOf = (r: { date: string; appliedHours?: number }) => {
     if (!staff) return 0;
-    return resultHoursOf(attMap[r.date] || 0, standardHoursOf(staff, r.date, shiftMap[r.date] || 0));
+    return resultHoursFor(staff, r.date, attMap[r.date] || 0, shiftMap[r.date] || 0, r.appliedHours || 0);
   };
   // 各記録の「その記録より前の時間外累計」。月60時間超の割増判定に使う。
   const priorMap = useMemo(
@@ -140,7 +142,7 @@ export default function Overtime() {
     const kind = overtimeKindOf(staff, r.date);
     const worked = attMap[r.date] || 0;
     const standard = standardHoursOf(staff, r.date, shiftMap[r.date] || 0);
-    const result = resultHoursOf(worked, standard);
+    const result = resultHoursFor(staff, r.date, worked, shiftMap[r.date] || 0, r.appliedHours || 0);
     const wage = staff.hourlyWage || 0;
     const prior = priorMap.get(r.id) ?? 0;
     const d = allowanceDetail(result, wage, kind, prior);
@@ -274,7 +276,8 @@ export default function Overtime() {
           <Button size="sm" onClick={handleSave} disabled={saving || !staff}>{saving ? '保存中…' : '保存する'}</Button>
         </div>
         <p className="mt-2 text-xs text-gray-500">
-          実働は「勤怠管理」の出退勤から自動集計。実績時間＝実働−基準（常勤=7.5時間／パート=シフト予定、常勤の土日祝は休日勤務で実働全部）。
+          実績時間は、常勤職員が「実働−基準」（平日7.5時間、土日祝は休日勤務で実働全部）。
+          パート職員等は<b>申請した時間</b>（シフト時間外に勤務した分）がそのまま実績になります。実働は「勤怠管理」の出退勤から自動集計。
           手当＝時給×割増（時間外×1.25／<span className="font-medium">当月の時間外が60時間を超えた分は×1.50</span>／休日×1.35）。
         </p>
       </Card>
@@ -387,9 +390,14 @@ export default function Overtime() {
             </div>
           </Card>
 
-          {anyMissingAttendance && (
+          {anyMissingAttendance && !byApplied && (
             <Alert type="info">
               出退勤が未入力の日があります（下表で <span className="text-red-500 font-medium">勤怠未入力</span> と表示）。「勤怠管理」でその日の出退勤を入力すると、実績・手当・代休付与に反映されます。
+            </Alert>
+          )}
+          {byApplied && (
+            <Alert type="info">
+              この職員は<b>申請した時間がそのまま実績</b>になります。シフトの時間外に勤務した分（例: シフトが8:30からの日に7:30から勤務した場合の 7:30〜8:30）を申請してください。
             </Alert>
           )}
 
@@ -423,7 +431,7 @@ export default function Overtime() {
                       </Td>
                       <Td className="whitespace-nowrap text-gray-600">
                         {h1(c.worked)}
-                        {c.worked === 0 && <div className="text-[10px] text-red-500 leading-tight">勤怠未入力</div>}
+                        {c.worked === 0 && !byApplied && <div className="text-[10px] text-red-500 leading-tight">勤怠未入力</div>}
                       </Td>
                       <Td className="whitespace-nowrap text-gray-500">{h1(c.standard)}</Td>
                       <Td className="whitespace-nowrap font-medium">{h1(c.result)}</Td>
