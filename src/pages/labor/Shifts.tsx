@@ -220,7 +220,7 @@ export default function Shifts() {
 
   const handlePrint = async () => {
     await handleSave();
-    navigate(`/labor/shifts/print?month=${month}&location=${location}`);
+    navigate(`/labor/shifts/print?month=${month}&location=${location}&mode=${mode}`);
   };
 
   // 集計（確定モード）
@@ -360,7 +360,7 @@ export default function Shifts() {
           <div className="flex-1" />
           <Link to="/labor/shift-patterns" className="text-xs text-emerald-700 hover:underline">区分マスタ →</Link>
           <Button variant="secondary" size="sm" onClick={runCheck}>入力チェック</Button>
-          {mode === 'confirm' && <Button variant="secondary" size="sm" onClick={handlePrint}>印刷</Button>}
+          <Button variant="secondary" size="sm" onClick={handlePrint}>印刷</Button>
           <Button variant="secondary" size="sm" onClick={exportExcel}>Excel出力</Button>
           <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? '保存中…' : '保存する'}</Button>
         </div>
