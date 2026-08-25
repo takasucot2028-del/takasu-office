@@ -38,8 +38,7 @@ export default function ShiftsPrint() {
     let alive = true;
     (async () => {
       const [s, p, c, a] = await Promise.all([
-        listStaff(), listShiftPatterns(), listConfirmedByMonth(month),
-        isRequest ? listAvailabilityByMonth(month) : Promise.resolve([] as AvailabilityRecord[]),
+        listStaff(), listShiftPatterns(), listConfirmedByMonth(month), listAvailabilityByMonth(month),
       ]);
       if (!alive) return;
       setStaff(s.filter(x => x.status === 'active' && staffInLocation(x.workLocation, location)));
@@ -94,9 +93,15 @@ export default function ShiftsPrint() {
       <h1 className="text-lg font-bold text-center mb-1">
         {Number(y)}年{Number(m)}月 シフト{isRequest ? '希望' : '表'}（{WORK_LOCATION_LABELS[location]}）
       </h1>
+      {!isRequest && (
+        <p className="text-[10px] text-gray-500 text-center mb-1">
+          本人が「勤務不可」で申請した日は赤地の <span className="text-red-600 font-bold">×</span> で示しています
+          （区分が入っている日は、割り当てたうえで勤務不可の申請があったことを表します）
+        </p>
+      )}
       <p className="text-xs text-gray-600 text-center mb-3">
         {patterns.filter(p => p.location === '' || p.location === location).map(p => `${p.name} ${p.startTime}〜${p.endTime}`).join('　／　')}
-        {isRequest && <span className="ml-2">／　<span className="text-red-600 font-bold">×</span> 勤務不可</span>}
+        <span className="ml-2">／　<span className="text-red-600 font-bold">×</span> 勤務不可</span>
       </p>
 
       {loading ? (
@@ -131,12 +136,15 @@ export default function ShiftsPrint() {
                     <td className="border border-gray-400 px-2 py-1 whitespace-nowrap font-medium">{s.lastName} {s.firstName}</td>
                     {days.map(date => {
                       const wd = new Date(`${date}T00:00:00`).getDay();
-                      const ng = isRequest && isUnavailable(s.id, date);
-                      const names = cellIds(s.id, date).map(id => patternMap.get(id)?.name ?? '').join(' ');
+                      const ng = isUnavailable(s.id, date);
+                      const ids = cellIds(s.id, date);
+                      const names = ids.map(id => patternMap.get(id)?.name ?? '').join(' ');
                       return (
                         <td key={date}
                           className={`border border-gray-400 text-center px-0 py-1 ${ng ? 'bg-red-100' : wd === 0 ? 'bg-red-50' : wd === 6 ? 'bg-blue-50' : ''}`}>
-                          {ng ? <span className="text-red-600 font-bold">×</span> : names}
+                          {ids.length
+                            ? <span>{names}{ng && <span className="text-red-600 font-bold"> ×</span>}</span>
+                            : ng ? <span className="text-red-600 font-bold">×</span> : ''}
                         </td>
                       );
                     })}
