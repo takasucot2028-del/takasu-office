@@ -27,9 +27,13 @@ export default function StaffShiftRequest() {
   const [error, setError] = useState('');
 
   const days = useMemo(() => daysOfMonth(month), [month]);
+  /**
+   * 従業員が申請できるのは、全勤務場所で共通の①②③のみ。
+   * 勤務場所ごとの区分（④など）は事務局が確定シフトで扱う。
+   */
   const validPatterns = useMemo(
-    () => patterns.filter(p => p.location === '' || !staff?.workLocation || staff.workLocation === 'both' || p.location === staff.workLocation),
-    [patterns, staff]
+    () => patterns.filter(p => p.location === '').slice().sort((a, b) => a.order - b.order).slice(0, 3),
+    [patterns]
   );
 
   useEffect(() => {
@@ -86,9 +90,15 @@ export default function StaffShiftRequest() {
     if (!staff) return;
     setSaving(true); setError(''); setMessage('');
     try {
+      // 画面で操作できる範囲（①②③と終日の勤務不可）だけを保存する。
+      // これ以外の区分が残っていると、本人が解除できない申請になってしまう。
+      const allowed = new Set([...validPatterns.map(p => p.id), UNAVAILABLE_PATTERN_ID]);
       const records: AvailabilityRecord[] = [];
       for (const [date, pids] of Object.entries(map)) {
-        for (const patternId of pids) records.push({ id: genId('av'), staffId: staff.id, date, patternId });
+        for (const patternId of pids) {
+          if (!allowed.has(patternId)) continue;
+          records.push({ id: genId('av'), staffId: staff.id, date, patternId });
+        }
       }
       await saveMyAvailability(month, records);
       setMessage('勤務できない区分を提出しました');
