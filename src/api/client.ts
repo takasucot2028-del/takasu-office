@@ -59,6 +59,9 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const IDEMPOTENT_ADDS = new Set([
   'addExpense', 'addCompUse', 'addLeave',
   'addMyExpense', 'addMyOvertime', 'addMyLeaveRequest', // 従業員申請もクライアント採番＋GAS側冪等化済み
+  // 打刻は職員×日付の1行を書き換えるだけで、何度実行しても行が増えない。
+  // 通信が一時的に失敗しただけで打刻できないのは困るため再試行する。
+  'punch',
 ]);
 const isRetryable = (action: string) =>
   /^(get|save|upsert|set|delete)/.test(action) || IDEMPOTENT_ADDS.has(action) || action === 'batch' || /Login$/.test(action);

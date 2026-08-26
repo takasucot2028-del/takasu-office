@@ -69,6 +69,7 @@ export default function StaffHome() {
   const load = async (keepInput = false) => {
     const home = await getStaffHomeData(date.slice(0, 7));
     apply(home, keepInput);
+    return home;
   };
 
   useEffect(() => {
@@ -96,9 +97,24 @@ export default function StaffHome() {
       setToday(prev => withPunch(prev, type, res.time));  // サーバーが記録した時刻に合わせる
       setMessage(`${label}を記録しました（${res.time}）`);
     } catch (err) {
-      setToday(before);                       // 記録できなかったので表示を戻す
+      const msg = err instanceof Error ? err.message : '打刻に失敗しました';
       setMessage('');
-      setError(err instanceof Error ? err.message : '打刻に失敗しました');
+      setToday(before);
+      // 応答が失われただけで、サーバー側では記録できていることがある。
+      // 実際の記録を取り直して、打刻できているかを確かめる。
+      try {
+        const home = await load(true);
+        const rec = home.attendance.find((r: AttendanceRecord) => r.date === date);
+        const saved = type === 'in' ? rec?.startTime : rec?.endTime;
+        if (saved) {
+          setError('');
+          setMessage(`${label}は記録できています（${saved}）`);
+        } else {
+          setError(msg);
+        }
+      } catch {
+        setError(msg); // 確認もできなかった場合は、そのまま失敗として伝える
+      }
     } finally { setPunching(false); }
   };
 
