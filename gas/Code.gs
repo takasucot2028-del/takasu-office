@@ -169,6 +169,101 @@ function testSession() {
   return text;
 }
 
+/**
+ * 【保守用・1回だけ実行】シフト希望の意味を反転する。
+ *
+ * 旧: 登録されている区分 = その区分なら「勤務できる」
+ * 新: 登録されている区分 = その区分は「勤務できない」
+ *
+ * 変換のルール
+ *   ・終日「勤務不可」の日はそのまま（意味が変わらないため）
+ *   ・区分が登録されている日は、区分マスタの全区分から登録済みを引いた
+ *     「補集合」に置き換える（勤務できると言っていない区分＝勤務できない）
+ *   ・1件も登録がない日は触らない（未提出とみなし、全区分 勤務可として扱う）
+ *
+ * 実行前の内容は「シフト希望_変換前」シートに控えを残す。
+ * 二重実行を防ぐため、実行済みかどうかを記録する。
+ */
+function migrateAvailabilityToNg() {
+  // 「終日 勤務不可」を表す予約済みの区分ID（画面側の UNAVAILABLE_PATTERN_ID と同じ）
+  const UNAVAILABLE_ID = '__unavailable__';
+  const FLAG = 'availability_ng_migrated';
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty(FLAG)) {
+    const msg = 'すでに変換済みです（' + props.getProperty(FLAG) + '）。'
+      + 'もう一度実行するには、スクリプトのプロパティから ' + FLAG + ' を削除してください。';
+    Logger.log(msg);
+    return msg;
+  }
+
+  const ss = SpreadsheetApp.openById(getSpreadsheetId());
+  const sheet = getSheet('availability');
+  const rows = sheetToObjects(sheet, 'availability');
+  const patterns = sheetToObjects(getSheet('shift_patterns'), 'shift_patterns');
+  const allIds = patterns.map(function (p) { return String(p.id); }).filter(function (id) { return id; });
+  if (!allIds.length) {
+    const msg = '区分マスタが空のため変換できません。';
+    Logger.log(msg);
+    return msg;
+  }
+
+  // 変換前の控えを残す
+  const backupName = 'シフト希望_変換前';
+  const old = ss.getSheetByName(backupName);
+  if (old) ss.deleteSheet(old);
+  const backup = ss.insertSheet(backupName);
+  const labels = colLabels('availability');
+  const raw = [labels].concat(rows.map(function (r) { return objectToRow('availability', r); }));
+  backup.getRange(1, 1, raw.length, labels.length).setNumberFormat('@').setValues(raw);
+  backup.setFrozenRows(1);
+
+  // 職員×日でまとめる
+  const groups = {};
+  rows.forEach(function (r) {
+    const key = String(r.staffId) + '|' + String(r.date);
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(String(r.patternId));
+  });
+
+  const out = [];
+  let kept = 0, converted = 0, cleared = 0;
+  Object.keys(groups).forEach(function (key) {
+    const parts = key.split('|');
+    const staffId = parts[0], date = parts[1];
+    const ids = groups[key];
+    if (ids.indexOf(UNAVAILABLE_ID) >= 0) {
+      // 終日 勤務不可はそのまま
+      out.push({ id: staffId + '_' + date + '_' + UNAVAILABLE_ID, staffId: staffId, date: date, patternId: UNAVAILABLE_ID });
+      kept++;
+      return;
+    }
+    // 勤務できると言っていない区分＝勤務できない区分
+    const ng = allIds.filter(function (id) { return ids.indexOf(id) < 0; });
+    if (!ng.length) { cleared++; return; }   // 全区分 勤務可 → 記録なし
+    ng.forEach(function (id) {
+      out.push({ id: staffId + '_' + date + '_' + id, staffId: staffId, date: date, patternId: id });
+    });
+    converted++;
+  });
+
+  replaceSheetRows_('availability', out.map(function (r) { return objectToRow('availability', r); }));
+
+  const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+  props.setProperty(FLAG, stamp);
+
+  const msg = [
+    'シフト希望の意味を反転しました（' + stamp + '）',
+    '  変換前の件数: ' + rows.length + '件',
+    '  変換後の件数: ' + out.length + '件',
+    '  終日 勤務不可（そのまま）: ' + kept + '日',
+    '  区分を反転した日: ' + converted + '日',
+    '  全区分 勤務可となり記録を消した日: ' + cleared + '日',
+    '  控え: 「' + backupName + '」シート',
+  ].join('\n');
+  Logger.log(msg);
+  return msg;
+}
+
 function labelKeyMap_(key) {
   const map = {};
   sheetConf(key).columns.forEach(function (c) { map[String(c[1])] = c[0]; });

@@ -61,7 +61,7 @@ export default function StaffShiftRequest() {
   const toggle = (date: string, pid: string) => {
     setMap(prev => {
       const cur = prev[date] || [];
-      // 区分を選んだら「勤務不可」は解除する（両立しないため）
+      // 個別の区分を選んだら終日の「勤務不可」は解除する（両立しないため）
       const base = cur.filter(x => x !== UNAVAILABLE_PATTERN_ID);
       const arr = base.includes(pid) ? base.filter(x => x !== pid) : [...base, pid];
       const next = { ...prev };
@@ -70,7 +70,7 @@ export default function StaffShiftRequest() {
     });
   };
 
-  /** 勤務不可のON/OFF。ONにすると区分の選択はすべて解除する */
+  /** 終日の勤務不可のON/OFF。ONにすると個別の区分指定はすべて解除する */
   const toggleUnavailable = (date: string) => {
     setMap(prev => {
       const cur = prev[date] || [];
@@ -91,14 +91,14 @@ export default function StaffShiftRequest() {
         for (const patternId of pids) records.push({ id: genId('av'), staffId: staff.id, date, patternId });
       }
       await saveMyAvailability(month, records);
-      setMessage('シフト希望を提出しました');
+      setMessage('勤務できない区分を提出しました');
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存に失敗しました');
     } finally { setSaving(false); }
   };
 
   return (
-    <PageContainer title="シフト希望の申請">
+    <PageContainer title="シフト希望（勤務できない区分）の申請">
       <Card className="mb-4">
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" onClick={() => setMonth(m => shiftMonth(m, -1))}>← 前月</Button>
@@ -108,8 +108,9 @@ export default function StaffShiftRequest() {
           <Button size="sm" onClick={handleSave} disabled={saving || !staff}>{saving ? '提出中…' : '提出する'}</Button>
         </div>
         <p className="mt-2 text-xs text-gray-500">
-          勤務できる区分を日ごとにタップで選んでください（複数可）。終日勤務できない日は
-          <span className="text-red-600 font-medium">「勤務不可」</span>を選んでください。提出後、事務局がシフトを確定します。
+          <b>勤務できない区分</b>を日ごとにタップで選んでください（複数可）。終日勤務できない日は
+          <span className="text-red-600 font-medium">「勤務不可」</span>を選んでください。
+          選ばなかった区分は勤務できるものとして扱います。提出後、事務局がシフトを確定します。
         </p>
       </Card>
 
@@ -136,8 +137,8 @@ export default function StaffShiftRequest() {
                   const ng = isUnavailable(date);
                   return (
                     <button key={p.id} onClick={() => toggle(date, p.id)}
-                      className={`px-2 py-1 rounded text-xs border ${on ? 'bg-emerald-600 text-white border-emerald-600' : ng ? 'bg-gray-100 text-gray-300 border-gray-200' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
-                      {p.name} <span className={on ? 'text-emerald-100' : ng ? 'text-gray-300' : 'text-gray-400'}>{p.startTime}〜{p.endTime}</span>
+                      className={`px-2 py-1 rounded text-xs border ${on ? 'bg-red-600 text-white border-red-600' : ng ? 'bg-gray-100 text-gray-300 border-gray-200' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+                      {on ? '✕ ' : ''}{p.name} <span className={on ? 'text-red-100' : ng ? 'text-gray-300' : 'text-gray-400'}>{p.startTime}〜{p.endTime}</span>
                     </button>
                   );
                 })}

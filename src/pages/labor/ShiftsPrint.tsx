@@ -69,7 +69,7 @@ export default function ShiftsPrint() {
     return { daysCount, hours: Math.round(hours * 10) / 10 };
   };
   const dayCount = (date: string) => staff.reduce((n, s) => n + (cellIds(s.id, date).length ? 1 : 0), 0);
-  /** 希望のときの集計：希望を出した日数と勤務不可の日数 */
+  /** 希望のときの集計：区分単位で不可とした日数と、終日不可の日数 */
   const requestTotals = (staffId: string) => {
     let wish = 0, ng = 0;
     for (const date of days) {
@@ -91,7 +91,7 @@ export default function ShiftsPrint() {
       </div>
 
       <h1 className="text-lg font-bold text-center mb-1">
-        {Number(y)}年{Number(m)}月 シフト{isRequest ? '希望' : '表'}（{WORK_LOCATION_LABELS[location]}）
+        {Number(y)}年{Number(m)}月 {isRequest ? 'シフト希望（勤務できない区分）' : 'シフト表'}（{WORK_LOCATION_LABELS[location]}）
       </h1>
       {!isRequest && (
         <p className="text-[10px] text-gray-500 text-center mb-1">
@@ -101,7 +101,8 @@ export default function ShiftsPrint() {
       )}
       <p className="text-xs text-gray-600 text-center mb-3">
         {patterns.filter(p => p.location === '' || p.location === location).map(p => `${p.name} ${p.startTime}〜${p.endTime}`).join('　／　')}
-        <span className="ml-2">／　<span className="text-red-600 font-bold">×</span> 勤務不可</span>
+        <span className="ml-2">／　<span className="text-red-600 font-bold">×</span> 終日 勤務不可</span>
+        {isRequest && <span className="ml-2">／　表中の区分は<span className="text-red-600">勤務できない区分</span></span>}
       </p>
 
       {loading ? (
@@ -123,8 +124,8 @@ export default function ShiftsPrint() {
                     </th>
                   );
                 })}
-                <th className="border border-gray-400 px-1 py-1 bg-gray-100 whitespace-nowrap">{isRequest ? '希望' : '日数'}</th>
-                <th className="border border-gray-400 px-1 py-1 bg-gray-100 whitespace-nowrap">{isRequest ? '不可' : '実働'}</th>
+                <th className="border border-gray-400 px-1 py-1 bg-gray-100 whitespace-nowrap">{isRequest ? '区分不可' : '日数'}</th>
+                <th className="border border-gray-400 px-1 py-1 bg-gray-100 whitespace-nowrap">{isRequest ? '終日不可' : '実働'}</th>
               </tr>
             </thead>
             <tbody>
@@ -143,7 +144,7 @@ export default function ShiftsPrint() {
                         <td key={date}
                           className={`border border-gray-400 text-center px-0 py-1 ${ng ? 'bg-red-100' : wd === 0 ? 'bg-red-50' : wd === 6 ? 'bg-blue-50' : ''}`}>
                           {ids.length
-                            ? <span>{names}{ng && <span className="text-red-600 font-bold"> ×</span>}</span>
+                            ? <span className={isRequest ? 'text-red-600' : ''}>{names}{ng && <span className="text-red-600 font-bold"> ×</span>}</span>
                             : ng ? <span className="text-red-600 font-bold">×</span> : ''}
                         </td>
                       );
@@ -163,7 +164,7 @@ export default function ShiftsPrint() {
                 );
               })}
               <tr>
-                <td className="border border-gray-400 px-2 py-1 bg-gray-50 text-gray-600">{isRequest ? '希望人数' : '人数'}</td>
+                <td className="border border-gray-400 px-2 py-1 bg-gray-50 text-gray-600">{isRequest ? '不可の人数' : '人数'}</td>
                 {days.map(date => (
                   <td key={date} className="border border-gray-400 text-center px-0 py-1 text-gray-600">{dayCount(date) || ''}</td>
                 ))}

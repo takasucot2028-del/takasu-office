@@ -74,7 +74,11 @@ export default function Shifts() {
     () => patterns.filter(p => p.location === '').slice().sort((a, b) => a.order - b.order).slice(0, 3),
     [patterns]
   );
-  const [checkResult, setCheckResult] = useState<{ problems: ShiftProblem[]; conflicts: ShiftConflict[]; warn?: string } | null>(null);
+  // 本人が勤務できないとした区分への割り当て
+  type NgAssign = { staffId: string; name: string; date: string; patterns: ShiftPattern[]; allDay: boolean };
+  const [checkResult, setCheckResult] = useState<{
+    problems: ShiftProblem[]; conflicts: ShiftConflict[]; ngAssigned?: NgAssign[]; warn?: string;
+  } | null>(null);
 
   // 初回：職員・区分を読み込む
   // 職員・区分・その月の希望と確定を1リクエストでまとめて読み込む
@@ -108,11 +112,16 @@ export default function Shifts() {
   const reqIds = (staffId: string, date: string) => orderValid(reqMap[aKey(staffId, date)] || []);
   const confIds = (staffId: string, date: string) => orderValid(confMap[cKey(staffId, date, location)] || []);
   const names = (ids: string[]) => ids.map(id => patternMap.get(id)?.name ?? '').join(' ');
-  /** その職員・その日が「勤務不可」で申請されているか */
+  /** その職員・その日が終日「勤務不可」で申請されているか */
   const isUnavailable = (staffId: string, date: string) =>
     (reqMap[aKey(staffId, date)] || []).includes(UNAVAILABLE_PATTERN_ID);
+  /** その区分が本人の申請で「勤務できない」とされているか（終日不可を含む） */
+  const isPatternNg = (staffId: string, date: string, patternId: string) => {
+    const arr = reqMap[aKey(staffId, date)] || [];
+    return arr.includes(UNAVAILABLE_PATTERN_ID) || arr.includes(patternId);
+  };
 
-  // ポップアップで区分を付け外し（モードにより希望/確定を更新）
+  // ポップアップで区分を付け外し（希望＝勤務できない区分、確定＝割り当て）
   const togglePattern = (staffId: string, date: string, patternId: string) => {
     if (mode === 'request') {
       const k = aKey(staffId, date);
@@ -127,6 +136,16 @@ export default function Shifts() {
     } else {
       const k = cKey(staffId, date, location);
       const adding = !(confMap[k] || []).includes(patternId);
+      // 本人が「勤務できない」と申請した区分は、確認のうえでなら割り当てられる
+      if (adding && isPatternNg(staffId, date, patternId)) {
+        const st = allStaff.find(s => s.id === staffId);
+        const nm = `${st?.lastName ?? ''} ${st?.firstName ?? ''}`.trim();
+        const pname = patternMap.get(patternId)?.name ?? '';
+        const reason = isUnavailable(staffId, date)
+          ? `${nm}さんは ${Number(date.slice(5, 7))}/${Number(date.slice(8))} を「終日 勤務不可」で申請しています。`
+          : `${nm}さんは ${Number(date.slice(5, 7))}/${Number(date.slice(8))} の ${pname} を「勤務できない区分」で申請しています。`;
+        if (!confirm(`${reason}\n\nそれでもこの区分に割り当てますか？\n（割り当てた場合は入力チェックで確認できます）`)) return;
+      }
       // 両方(both)勤務の職員は、同じ日・同じ時間帯に総体とB&Gの両方へ入れない
       if (adding) {
         const st = allStaff.find(s => s.id === staffId);
@@ -283,7 +302,27 @@ export default function Shifts() {
         if (missing.length) problems.push({ loc, date, missing });
       }
     }
-    // 両方(both)勤務職員が同じ日・同じ時間帯に総体とB&Gの両方へ入っている重複を検出
+      // 本人が「勤務できない」と申請している区分に割り当てている箇所を検出
+    const ngAssigned: NgAssign[] = [];
+    for (const [k, ids] of Object.entries(confMap)) {
+      if (!k.endsWith(`_${location}`)) continue;
+      const rest = k.slice(0, k.length - location.length - 1);
+      const sep = rest.lastIndexOf('_');
+      const staffId = rest.slice(0, sep);
+      const date = rest.slice(sep + 1);
+      if (!date.startsWith(month)) continue;
+      const hit = ids.filter(id => isPatternNg(staffId, date, id));
+      if (!hit.length) continue;
+      const st = allStaff.find(x => x.id === staffId);
+      ngAssigned.push({
+        staffId, name: st ? `${st.lastName} ${st.firstName}` : staffId, date,
+        patterns: validPatterns.filter(p => hit.includes(p.id)),
+        allDay: isUnavailable(staffId, date),
+      });
+    }
+    ngAssigned.sort((a, b) => a.date.localeCompare(b.date));
+
+  // 両方(both)勤務職員が同じ日・同じ時間帯に総体とB&Gの両方へ入っている重複を検出
     const conflicts: ShiftConflict[] = [];
     const bothStaff = allStaff.filter(s => s.status === 'active' && s.workLocation === 'both');
     for (const s of bothStaff) {
@@ -296,7 +335,7 @@ export default function Shifts() {
         }
       }
     }
-    setCheckResult({ problems, conflicts });
+    setCheckResult({ problems, conflicts, ngAssigned });
   };
 
   const exportExcel = () => {
@@ -368,9 +407,9 @@ export default function Shifts() {
         {/* 凡例 */}
         <div className="mt-3 text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
           {mode === 'request'
-            ? <span>セルをクリックで希望の区分または<span className="text-red-600">勤務不可</span>を選択（区分は複数可・空欄＝希望なし）</span>
-            : <span>セルをクリックで区分を割り当て（複数可）。希望がある日は<span className="text-amber-600"> 黄色 </span>で表示</span>}
-          <span>勤務不可の日は<span className="text-red-600"> 赤（×） </span>で表示</span>
+            ? <span>セルをクリックで<span className="text-red-600 font-medium">勤務できない区分</span>を選択（複数可・空欄＝すべて勤務可）。終日不可は<span className="text-red-600">勤務不可</span></span>
+            : <span>セルをクリックで区分を割り当て（複数可）。本人が<span className="text-red-600">勤務できない</span>とした区分は確認のうえ割り当てできます</span>}
+          <span>終日の勤務不可は<span className="text-red-600"> 赤（×） </span>で表示</span>
           {validPatterns.map(p => (
             <span key={p.id} className="text-gray-600">{p.name}: {p.startTime}〜{p.endTime}</span>
           ))}
@@ -405,10 +444,38 @@ export default function Shifts() {
           </div>
           {checkResult.warn ? (
             <Alert type="warning">{checkResult.warn}</Alert>
-          ) : checkResult.problems.length === 0 && checkResult.conflicts.length === 0 ? (
-            <Alert type="success">総体・B&G（海洋センター）ともに、必要な区分がすべて入力されています。時間帯の重複もありません。</Alert>
+          ) : checkResult.problems.length === 0 && checkResult.conflicts.length === 0
+              && !(checkResult.ngAssigned && checkResult.ngAssigned.length) ? (
+            <Alert type="success">
+              総体・B&G（海洋センター）ともに、必要な区分がすべて入力されています。時間帯の重複や、本人が勤務できないとした区分への割り当てもありません。
+            </Alert>
           ) : (
             <>
+              {checkResult.ngAssigned && checkResult.ngAssigned.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-sm text-gray-700 mb-1">
+                    <span className="font-medium text-red-700">本人が勤務できないとした区分に割り当てています</span>
+                    <span className="ml-2 text-xs text-gray-400">{checkResult.ngAssigned.length}件</span>
+                  </p>
+                  <ul className="space-y-0.5">
+                    {checkResult.ngAssigned.map((x, i) => (
+                      <li key={i} className="text-sm">
+                        <span className="font-medium">{x.name}</span>
+                        <span className="mx-2 text-gray-500">
+                          {Number(x.date.slice(5, 7))}/{Number(x.date.slice(8))}
+                        </span>
+                        <span className="text-red-700 font-medium">{x.patterns.map(p => p.name).join(' ')}</span>
+                        <span className="ml-2 text-xs text-gray-500">
+                          （{x.allDay ? '終日 勤務不可' : '勤務できない区分'}の申請あり）
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-gray-500 mt-1">
+                    ※ 意図して割り当てている場合はそのままで問題ありません。本人への連絡をお忘れなく。
+                  </p>
+                </div>
+              )}
               {checkResult.conflicts.length > 0 && (
                 <div className="mb-4">
                   <div className="text-sm font-medium text-red-700 mb-1">
@@ -512,17 +579,18 @@ export default function Shifts() {
                       const wd = new Date(`${date}T00:00:00`).getDay();
                       const ids = mode === 'request' ? reqIds(s.id, date) : confIds(s.id, date);
                       const weekend = wd === 0 ? 'bg-red-50/40' : wd === 6 ? 'bg-blue-50/40' : '';
-                      const hasReq = reqIds(s.id, date).length > 0;
-                      const ng = isUnavailable(s.id, date); // 従業員が「勤務不可」で申請した日
-                      const bg = ng ? 'bg-red-100' : mode === 'confirm' && hasReq ? 'bg-amber-50' : weekend;
+                      const hasNg = reqIds(s.id, date).length > 0; // 勤務できない区分の申請がある
+                      const ng = isUnavailable(s.id, date);          // 終日の勤務不可
+                      const bg = ng ? 'bg-red-100' : mode === 'confirm' && hasNg ? 'bg-amber-50' : weekend;
                       return (
                         <td key={date}
                           onClick={e => setMenu({ staffId: s.id, date, x: e.clientX, y: e.clientY })}
                           className={`${cellBase} ${bg}`}
-                          title={ng ? '「勤務不可」の日です' : undefined}>
+                          title={ng ? '終日「勤務不可」の日です'
+                            : mode === 'confirm' && hasNg ? `勤務できない区分: ${names(reqIds(s.id, date))}` : undefined}>
                           {ng && ids.length === 0
                             ? <span className="text-red-600 font-bold leading-tight">×</span>
-                            : <span className="font-medium text-gray-800 leading-tight px-0.5">{names(ids)}</span>}
+                            : <span className={`font-medium leading-tight px-0.5 ${mode === 'request' ? 'text-red-600' : 'text-gray-800'}`}>{names(ids)}</span>}
                         </td>
                       );
                     })}
@@ -570,10 +638,17 @@ export default function Shifts() {
               {menuStaff.lastName} {menuStaff.firstName}・{Number(menu.date.slice(5, 7))}/{Number(menu.date.slice(8))}
             </div>
             {mode === 'confirm' && isUnavailable(menu.staffId, menu.date) && (
-              <div className="text-xs text-red-700 bg-red-50 rounded px-1.5 py-1 mb-1 font-medium">「勤務不可」で申請されています</div>
+              <div className="text-xs text-red-700 bg-red-50 rounded px-1.5 py-1 mb-1 font-medium">終日「勤務不可」で申請されています</div>
             )}
             {mode === 'confirm' && !isUnavailable(menu.staffId, menu.date) && (
-              <div className="text-xs text-amber-700 bg-amber-50 rounded px-1.5 py-1 mb-1">希望: {menuReqNames || 'なし'}</div>
+              <div className="text-xs text-amber-700 bg-amber-50 rounded px-1.5 py-1 mb-1">
+                勤務できない区分: {menuReqNames || 'なし'}
+              </div>
+            )}
+            {mode === 'request' && (
+              <div className="text-xs text-gray-500 bg-gray-50 rounded px-1.5 py-1 mb-1">
+                選んだ区分が<b>勤務できない区分</b>になります
+              </div>
             )}
             {mode === 'request' && (() => {
               const ng = isUnavailable(menu.staffId, menu.date);
@@ -589,11 +664,21 @@ export default function Shifts() {
             <div className="flex flex-col gap-1">
               {validPatterns.map(p => {
                 const on = isOn(menu.staffId, menu.date, p.id);
+                // 確定モードでは、本人が勤務できないとした区分を選べないようにする
+                const ng = mode === 'confirm' && isPatternNg(menu.staffId, menu.date, p.id);
+                const cls = on
+                  ? (mode === 'request' ? 'bg-red-600 text-white' : ng ? 'bg-amber-600 text-white' : 'bg-emerald-600 text-white')
+                  : ng
+                    ? 'bg-red-50 text-red-700 border border-red-200 hover:bg-red-100'
+                    : 'bg-gray-50 text-gray-700 hover:bg-gray-100';
                 return (
-                  <button key={p.id} onClick={() => togglePattern(menu.staffId, menu.date, p.id)}
-                    className={`flex items-center justify-between px-2 py-1.5 rounded text-sm ${on ? 'bg-emerald-600 text-white' : 'bg-gray-50 text-gray-700 hover:bg-gray-100'}`}>
-                    <span>{on ? '✓ ' : ''}{p.name}</span>
-                    <span className={`text-xs ${on ? 'text-emerald-100' : 'text-gray-400'}`}>{p.startTime}〜{p.endTime}</span>
+                  <button key={p.id}
+                    onClick={() => togglePattern(menu.staffId, menu.date, p.id)}
+                    className={`flex items-center justify-between px-2 py-1.5 rounded text-sm ${cls}`}>
+                    <span>{on ? (mode === 'request' ? '✕ ' : '✓ ') : ''}{p.name}</span>
+                    <span className={`text-xs ${on ? 'text-white/80' : ng ? 'text-red-500' : 'text-gray-400'}`}>
+                      {ng ? '勤務不可' : `${p.startTime}〜${p.endTime}`}
+                    </span>
                   </button>
                 );
               })}
