@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { listStaff, listOvertimeByMonth, listCompUse, todayStr } from '../../api/data';
 import { WEEKDAY_LABELS } from '../../utils/constants';
-import { overtimeKindOf, allowanceDetail, priorOvertimeMap, OVERTIME_KIND_LABELS } from '../../utils/overtime';
+import { overtimeKindOf, allowanceDetail, priorOvertimeMap, usesFlatOvertimeRate, OVERTIME_KIND_LABELS } from '../../utils/overtime';
 import type { Staff, OvertimeRecord } from '../../types';
 
 interface Sheet {
@@ -45,6 +45,7 @@ export default function OvertimePrint() {
           .sort((a, b) => a.date.localeCompare(b.date));
         if (records.length === 0) continue;
         const kindOf = (r: OvertimeRecord) => r.kind || overtimeKindOf(s, r.date);
+        const flat = usesFlatOvertimeRate(s); // パート職員等は一律×1.25（パート規則 第8条1項）
         // 月60時間超の割増を判定するため、日付順の累計を先に求める
         const priors = priorOvertimeMap(records, kindOf, r => (r as OvertimeRecord).resultHours || 0);
         const uses = (await listCompUse(s.id)).filter(u => u.date.startsWith(month));
@@ -55,7 +56,7 @@ export default function OvertimePrint() {
           hol: r1(records.filter(r => kindOf(r) === 'holiday').reduce((x, r) => x + (r.resultHours || 0), 0)),
           allowH: r1(records.filter(r => r.disposition === 'allowance').reduce((x, r) => x + (r.resultHours || 0), 0)),
           allowYen: Math.round(records.filter(r => r.disposition === 'allowance')
-            .reduce((x, r) => x + allowanceDetail(r.resultHours || 0, s.hourlyWage || 0, kindOf(r), priors.get(r.id) ?? 0).amount, 0)),
+            .reduce((x, r) => x + allowanceDetail(r.resultHours || 0, s.hourlyWage || 0, kindOf(r), priors.get(r.id) ?? 0, flat).amount, 0)),
           compGrant: r1(records.filter(r => r.disposition === 'comp').reduce((x, r) => x + (r.resultHours || 0), 0)),
           compUsed: r1(uses.reduce((x, u) => x + (u.hours || 0), 0)),
         });
@@ -127,7 +128,7 @@ export default function OvertimePrint() {
                         <td className="border border-gray-500 px-2 py-1">{r.reason}</td>
                         <td className="border border-gray-500 px-2 py-1 text-right">{r1(r.resultHours || 0)}h</td>
                         <td className="border border-gray-500 px-1 py-1 text-center">{dispLabel[r.disposition] || '未定'}</td>
-                        <td className="border border-gray-500 px-2 py-1 text-right">{r.disposition === 'allowance' ? yen(allowanceDetail(r.resultHours || 0, s.hourlyWage || 0, k, sh.priors.get(r.id) ?? 0).amount) : ''}</td>
+                        <td className="border border-gray-500 px-2 py-1 text-right">{r.disposition === 'allowance' ? yen(allowanceDetail(r.resultHours || 0, s.hourlyWage || 0, k, sh.priors.get(r.id) ?? 0, usesFlatOvertimeRate(s)).amount) : ''}</td>
                       </tr>
                     );
                   })}

@@ -1,5 +1,5 @@
 // 時間外・休日勤務の計算ロジック（画面から共通利用）
-import type { Staff, ShiftPattern, OvertimeKind, OvertimeStatus, OvertimeDisposition } from '../types';
+import type { Staff, ShiftPattern, OvertimeKind, OvertimeStatus, OvertimeDisposition, AttendanceRecord } from '../types';
 import { isClosedDay } from './holidays';
 
 export const FULLTIME_STANDARD_HOURS = 7.5;   // 常勤の1日の所定（これを超えた分が時間外）
@@ -8,7 +8,8 @@ export const OVERTIME_RATE = 1.25;            // 時間外（×1.25）
 export const OVERTIME_RATE_OVER60 = 1.50;     // 月60時間を超えた分の時間外（×1.50）
 export const OVERTIME_MONTHLY_THRESHOLD = 60; // 割増率が上がる月間時間外の境目（時間）
 export const HOLIDAY_RATE = 1.35;             // 休日勤務（×1.35）
-export const NIGHT_RATE_ADD = 0.25;           // 深夜（22:00〜5:00）の加算（賃金台帳の参考用）
+export const NIGHT_RATE = 1.25;               // 深夜（22:00〜5:00）×1.25
+export const NIGHT_RATE_ADD = 0.25;           // 深夜の加算部分（通常の賃金に上乗せする分）
 
 /**
  * 代休にしたときの支給率（就業規則 第20条2項）。
@@ -52,6 +53,52 @@ export function rateOf(kind: OvertimeKind): number {
   return kind === 'holiday' ? HOLIDAY_RATE : OVERTIME_RATE;
 }
 
+/**
+ * 割増率が一律×1.25になる雇用区分か。
+ *
+ * パートタイム労働者就業規則 第8条1項は、シフト表の所定労働時間を超えた分
+ * （始業前の早出・終業後の残業を含む）を一律25％増しと定めており、
+ * 月60時間超の×1.50は定めていないため、パート職員等は一律×1.25で計算する。
+ */
+export function usesFlatOvertimeRate(staff: Staff): boolean {
+  return staff.employmentType !== 'fulltime';
+}
+
+/* ---- 深夜労働（22:00〜翌5:00）。就業規則 第37条／パート規則 第8条2項 ---- */
+
+const hm = (t: string): number | null => {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(t || '');
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+
+/**
+ * 開始〜終了のうち深夜帯に重なる分数。
+ * 退勤が出勤より小さい場合は日をまたいだものとして翌日扱いにする。
+ */
+export function nightMinutesBetween(start: string, end: string): number {
+  const s = hm(start); let e = hm(end);
+  if (s === null || e === null) return 0;
+  if (e <= s) e += 24 * 60;
+  // 深夜帯: [22:00, 翌5:00) と、当日早朝の [0:00, 5:00)
+  const bands: [number, number][] = [[22 * 60, 29 * 60], [0, 5 * 60]];
+  return bands.reduce((t, [bs, be]) => t + Math.max(0, Math.min(e as number, be) - Math.max(s, bs)), 0);
+}
+
+/** その日の勤怠から深夜労働の時間数を求める（休憩は深夜帯に重ならない前提） */
+export function nightHoursOf(rec: AttendanceRecord | undefined): number {
+  if (!rec || rec.dayType !== 'work') return 0;
+  return Math.round((nightMinutesBetween(rec.startTime, rec.endTime) / 60) * 100) / 100;
+}
+
+/**
+ * 深夜手当（円）。通常の賃金は実働時間分としてすでに支払われるため、
+ * ここでは上乗せする25％分だけを求める。
+ * 時間外かつ深夜の時間は、時間外手当（×1.25）＋深夜加算（×0.25）＝×1.50 になる。
+ */
+export function nightAllowanceOf(nightHours: number, hourlyWage: number): number {
+  return Math.round(nightHours * hourlyWage * NIGHT_RATE_ADD);
+}
+
 /** 区分の実働時間（時間）。開始〜終了、日跨ぎは想定しない */
 export function patternHours(p: ShiftPattern): number {
   const re = /^(\d{1,2}):(\d{2})$/;
@@ -84,9 +131,10 @@ export function resultHoursOf(workedHours: number, standardHours: number): numbe
  * その記録の実績時間。雇用区分で求め方が違う。
  *
  * 常勤職員: 実働 − 基準（平日7.5時間、土日祝は0＝全部が休日勤務）。
- * パート職員等: シフトの時間外に働いた分を申請しているため、申請時間を
- *   そのまま実績とする。例えばシフトが8:30からの日に7:30から勤務した場合、
- *   7:30〜8:30 の1時間を申請し、その1時間が時間外になる。
+ * パート職員等: シフト表の所定労働時間を超えて働いた分（始業前の早出・終業後の
+ *   残業を含む。パート規則 第8条1項）を申請しているため、申請時間をそのまま実績とする。
+ *   例えばシフトが8:30からの日に7:30から勤務した場合、7:30〜8:30 の1時間を申請し、
+ *   その1時間が時間外になる。
  *   （実働からシフト時間を引く方法だと、シフトが未登録の日に働いた分が
  *     まるごと時間外になってしまうため）
  */
@@ -111,16 +159,21 @@ export function allowanceOf(resultHours: number, hourlyWage: number, kind: Overt
 
 /**
  * 月60時間超の割増を考慮した時間外手当。
- * 平日の時間外は、その月の累計が60時間までは×1.20、60時間を超えた分は×1.50。
+ * 平日の時間外は、その月の累計が60時間までは×1.25、60時間を超えた分は×1.50。
  * 休日勤務は月の累計に関係なく×1.35（60時間の累計にも含めない）。
  *
  * @param priorOvertimeHours この記録より前（同月・日付順）の「時間外」実績の累計時間
+ * @param flatRate true なら月60時間超の×1.50を使わず一律×1.25（パート規則 第8条1項）
  */
 export function allowanceDetail(
-  resultHours: number, hourlyWage: number, kind: OvertimeKind, priorOvertimeHours: number
+  resultHours: number, hourlyWage: number, kind: OvertimeKind, priorOvertimeHours: number,
+  flatRate = false
 ): { amount: number; normalHours: number; over60Hours: number } {
   if (kind === 'holiday') {
     return { amount: Math.round(resultHours * hourlyWage * HOLIDAY_RATE), normalHours: resultHours, over60Hours: 0 };
+  }
+  if (flatRate) {
+    return { amount: Math.round(resultHours * hourlyWage * OVERTIME_RATE), normalHours: resultHours, over60Hours: 0 };
   }
   const remain = Math.max(0, OVERTIME_MONTHLY_THRESHOLD - priorOvertimeHours); // 60時間までの残り
   const normalHours = Math.min(resultHours, remain);
@@ -134,11 +187,18 @@ export function allowanceDetail(
  * 時間外は当月60時間までが25%、超えた分は50%。休日勤務は35%。
  */
 export function compPremiumDetail(
-  resultHours: number, hourlyWage: number, kind: OvertimeKind, priorOvertimeHours: number
+  resultHours: number, hourlyWage: number, kind: OvertimeKind, priorOvertimeHours: number,
+  flatRate = false
 ): { amount: number; normalHours: number; over60Hours: number } {
   if (kind === 'holiday') {
     return {
       amount: Math.round(resultHours * hourlyWage * compRateOf(HOLIDAY_RATE)),
+      normalHours: resultHours, over60Hours: 0,
+    };
+  }
+  if (flatRate) {
+    return {
+      amount: Math.round(resultHours * hourlyWage * compRateOf(OVERTIME_RATE)),
       normalHours: resultHours, over60Hours: 0,
     };
   }

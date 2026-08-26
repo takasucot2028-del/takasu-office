@@ -15,6 +15,7 @@ import {
 import {
   isOvertimeTarget, overtimeKindOf, standardHoursOf, resultHoursFor, usesAppliedHours,
   allowanceDetail, compPremiumDetail, compDeadlineOf, priorOvertimeMap, patternHours,
+  usesFlatOvertimeRate, nightHoursOf, nightMinutesBetween, nightAllowanceOf,
   OVERTIME_MONTHLY_THRESHOLD,
   OVERTIME_STATUS_LABELS, OVERTIME_KIND_LABELS,
 } from '../../utils/overtime';
@@ -54,6 +55,7 @@ export default function Overtime() {
   const [compUse, setCompUse] = useState<CompLeaveUse[]>([]);
   const [records, setRecords] = useState<OvertimeRecord[]>([]); // 当月の編集用コピー
   const [attMap, setAttMap] = useState<Record<string, number>>({});   // date→実働h
+  const [nightMap, setNightMap] = useState<Record<string, number>>({}); // date→深夜労働h
   const [shiftMap, setShiftMap] = useState<Record<string, number>>({}); // date→シフト予定h
 
   const [message, setMessage] = useState('');
@@ -75,6 +77,8 @@ export default function Overtime() {
   const staff = useMemo(() => allStaff.find(s => s.id === staffId) ?? null, [allStaff, staffId]);
   // パート職員等は、シフト時間外に働いた分を申請しているため、申請時間が実績になる
   const byApplied = staff ? usesAppliedHours(staff) : false;
+  // パート職員等は割増率が一律×1.25（パートタイム労働者就業規則 第8条1項）
+  const flatRate = staff ? usesFlatOvertimeRate(staff) : false;
   const patternMap = useMemo(() => new Map(patterns.map(p => [p.id, p])), [patterns]);
 
   // 初回：職員・区分
@@ -103,7 +107,12 @@ export default function Overtime() {
       setAllOt(d.overtime);
       setCompUse(d.compUse);
       const am: Record<string, number> = {};
-      for (const r of d.attendance) am[r.date] = workedHoursOf(r);
+      const nm: Record<string, number> = {};
+      for (const r of d.attendance) {
+        am[r.date] = workedHoursOf(r);
+        const night = nightHoursOf(r);
+        if (night > 0) nm[r.date] = night;   // 深夜（22:00〜5:00）に重なった分
+      }
       const sm: Record<string, number> = {};
       for (const c of d.confirmed as ConfirmedShift[]) {
         if (c.staffId !== staffId) continue;
@@ -111,6 +120,7 @@ export default function Overtime() {
         if (p) sm[c.date] = (sm[c.date] || 0) + patternHours(p);
       }
       setAttMap(am);
+      setNightMap(nm);
       setShiftMap(sm);
     })();
     return () => { alive = false; };
@@ -139,16 +149,19 @@ export default function Overtime() {
    * 割増部分だけを支給する（就業規則 第20条2項）。
    */
   const calc = (r: OvertimeRecord) => {
-    if (!staff) return { kind: r.kind, worked: 0, standard: 0, result: 0, amount: 0, over60Hours: 0, premium: 0 };
+    if (!staff) return { kind: r.kind, worked: 0, standard: 0, result: 0, amount: 0, over60Hours: 0, premium: 0, night: 0 };
     const kind = overtimeKindOf(staff, r.date);
     const worked = attMap[r.date] || 0;
     const standard = standardHoursOf(staff, r.date, shiftMap[r.date] || 0);
     const result = resultHoursFor(staff, r.date, worked, shiftMap[r.date] || 0, r.appliedHours || 0);
     const wage = staff.hourlyWage || 0;
     const prior = priorMap.get(r.id) ?? 0;
-    const d = allowanceDetail(result, wage, kind, prior);
-    const p = compPremiumDetail(result, wage, kind, prior);
-    return { kind, worked, standard, result, amount: d.amount, over60Hours: d.over60Hours, premium: p.amount };
+    const d = allowanceDetail(result, wage, kind, prior, flatRate);
+    const p = compPremiumDetail(result, wage, kind, prior, flatRate);
+    // 申請した時間帯のうち深夜（22:00〜5:00）に重なる分。深夜加算の目安として示す
+    const night = r.startTime && r.endTime
+      ? Math.round((nightMinutesBetween(r.startTime, r.endTime) / 60) * 100) / 100 : 0;
+    return { kind, worked, standard, result, amount: d.amount, over60Hours: d.over60Hours, premium: p.amount, night };
   };
 
   const setRec = (id: string, patch: Partial<OvertimeRecord>) =>
@@ -226,8 +239,13 @@ export default function Overtime() {
   const monthHoliday = r1(approvedRecs.filter(r => calc(r).kind === 'holiday').reduce((s, r) => s + calc(r).result, 0));
   const monthAllowanceHours = r1(approvedRecs.filter(r => r.disposition === 'allowance').reduce((s, r) => s + calc(r).result, 0));
   const monthCompUsed = r1(compUse.filter(u => u.date.startsWith(month)).reduce((s, u) => s + (u.hours || 0), 0));
-  // 60時間を超えた分（×1.50 対象）の合計
+  // 60時間を超えた分（×1.50 対象）の合計。パート職員等は一律×1.25のため常に0
   const monthOver60 = r1(approvedRecs.reduce((s, r) => s + calc(r).over60Hours, 0));
+  // 深夜労働（22:00〜5:00）。勤怠の出退勤から集計し、加算25%分を手当とする
+  const monthNightHours = r1(
+    Object.entries(nightMap).filter(([d]) => d.startsWith(month)).reduce((s, [, h]) => s + h, 0)
+  );
+  const monthNightAllowance = nightAllowanceOf(monthNightHours, staff?.hourlyWage || 0);
   // 出退勤（実働）が未入力の申請があるか（実績が0のまま気づかないのを防ぐ）
   const anyMissingAttendance = records.some(r => (attMap[r.date] || 0) === 0);
 
@@ -283,8 +301,10 @@ export default function Overtime() {
         </div>
         <p className="mt-2 text-xs text-gray-500">
           実績時間は、常勤職員が「実働−基準」（平日7.5時間、土日祝は休日勤務で実働全部）。
-          パート職員等は<b>申請した時間</b>（シフト時間外に勤務した分）がそのまま実績になります。実働は「勤怠管理」の出退勤から自動集計。
-          手当＝時給×割増（時間外×1.25／<span className="font-medium">当月の時間外が60時間を超えた分は×1.50</span>／休日×1.35）。
+          パート職員等は<b>申請した時間</b>（シフトの所定時間を超えて勤務した分）がそのまま実績になります。実働は「勤怠管理」の出退勤から自動集計。
+          {flatRate
+            ? <>手当＝時給×<span className="font-medium">1.25</span>（パートタイム労働者就業規則 第8条1項。早出・残業とも一律）。深夜（22:00〜5:00）は<span className="font-medium">＋25%</span>（同2項）。</>
+            : <>手当＝時給×割増（時間外×1.25／<span className="font-medium">当月の時間外が60時間を超えた分は×1.50</span>／休日×1.35）。深夜（22:00〜5:00）は＋25%。</>}
         </p>
       </Card>
 
@@ -307,11 +327,29 @@ export default function Overtime() {
               <Tile label="代休付与" value={h1(monthComp)} />
               <Tile label="代休分の割増（第20条2項）" value={yen(monthCompPremium)} />
               <Tile label="当月 代休消化" value={h1(monthCompUsed)} />
+              {monthNightHours > 0 && (
+                <Tile label="深夜手当（加算25%）" value={`${yen(monthNightAllowance)} / ${h1(monthNightHours)}`} />
+              )}
             </div>
             {monthOver60 > 0 && (
               <p className="mt-3 text-sm text-amber-700 bg-amber-50 rounded px-3 py-2">
                 当月の時間外が{OVERTIME_MONTHLY_THRESHOLD}時間を超えています。
                 超過分 <span className="font-bold">{h1(monthOver60)}</span> は割増率 ×1.50 で計算しています。
+              </p>
+            )}
+            {flatRate && monthWeekdayOt > OVERTIME_MONTHLY_THRESHOLD && (
+              <p className="mt-3 text-sm text-amber-700 bg-amber-50 rounded px-3 py-2">
+                当月の時間外が{OVERTIME_MONTHLY_THRESHOLD}時間を超えています。パート職員等は
+                パートタイム労働者就業規則 第8条1項により<b>一律×1.25</b>で計算していますが、
+                1日8時間・週40時間を超える法定時間外が月60時間を超える場合は、その分に
+                法定の×1.50が必要です。実際の勤務時間を確認してください。
+              </p>
+            )}
+            {monthNightHours > 0 && (
+              <p className="mt-3 text-sm text-gray-600 bg-gray-50 rounded px-3 py-2">
+                深夜（22:00〜5:00）の勤務が <b>{h1(monthNightHours)}</b> あります。
+                通常の賃金に25%を加算します（{yen(monthNightAllowance)}）。時間外かつ深夜の時間は
+                時間外×1.25＋深夜0.25＝<b>×1.50</b> になります。
               </p>
             )}
           </Card>
@@ -403,7 +441,10 @@ export default function Overtime() {
           )}
           {byApplied && (
             <Alert type="info">
-              この職員は<b>申請した時間がそのまま実績</b>になります。シフトの時間外に勤務した分（例: シフトが8:30からの日に7:30から勤務した場合の 7:30〜8:30）を申請してください。
+              この職員は<b>申請した時間がそのまま実績</b>になります。
+              シフト表の所定労働時間を超えて勤務した分（<b>始業前の早出</b>・<b>終業後の残業</b>のいずれも。
+              例: シフトが8:30からの日に7:30から勤務した場合の 7:30〜8:30）を申請してください。
+              割増は一律×1.25で計算します（パートタイム労働者就業規則 第8条1項）。
             </Alert>
           )}
 
@@ -429,6 +470,7 @@ export default function Overtime() {
                       <Td className="min-w-28"><Input value={r.reason} onChange={e => setRec(r.id, { reason: e.target.value })} /></Td>
                       <Td className="whitespace-nowrap text-gray-500">
                         {r.startTime && r.endTime ? <span>{r.startTime}〜{r.endTime}<span className="text-gray-400 ml-1">({r.appliedHours}h)</span></span> : `${r.appliedHours}h`}
+                        {c.night > 0 && <div className="text-[10px] text-indigo-600 leading-tight">深夜 {h1(c.night)}（＋25%）</div>}
                       </Td>
                       <Td>
                         {r.status === 'approved'

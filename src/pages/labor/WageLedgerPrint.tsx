@@ -8,7 +8,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getStaff, listAttendanceRange, listOvertimeByStaff, todayStr } from '../../api/data';
 import { EMPLOYMENT_TYPE_LABELS, GENDER_LABELS, fiscalYearLabel, currentFiscalYear } from '../../utils/constants';
-import { allowanceDetail, compPremiumDetail, priorOvertimeMap } from '../../utils/overtime';
+import {
+  allowanceDetail, compPremiumDetail, priorOvertimeMap,
+  usesFlatOvertimeRate, nightHoursOf, nightAllowanceOf,
+} from '../../utils/overtime';
 import type { Staff, AttendanceRecord } from '../../types';
 
 const parseHM = (hm: string): number | null => {
@@ -24,23 +27,8 @@ function workMinutes(rec: AttendanceRecord): number {
   return Math.max(0, e - s - (rec.breakMinutes || 0));
 }
 
-/**
- * 深夜労働（22:00〜翌5:00）の分数。出勤〜退勤の重なりから求める。
- * 日をまたぐ勤務は退勤時刻が出勤時刻より小さい場合に翌日扱いとする。
- */
-function nightMinutes(rec: AttendanceRecord): number {
-  if (rec.dayType !== 'work') return 0;
-  const s = parseHM(rec.startTime); let e = parseHM(rec.endTime);
-  if (s === null || e === null) return 0;
-  if (e <= s) e += 24 * 60;
-  // 深夜帯: [22:00, 29:00) と、当日早朝の [0:00, 5:00)
-  const bands: [number, number][] = [[22 * 60, 29 * 60], [0, 5 * 60]];
-  let total = 0;
-  for (const [bs, be] of bands) total += Math.max(0, Math.min(e, be) - Math.max(s, bs));
-  return total;
-}
-
 const h1 = (min: number) => Math.round((min / 60) * 10) / 10;
+const r1 = (n: number) => Math.round(n * 10) / 10;
 const yen = (n: number) => `¥${n.toLocaleString()}`;
 
 interface MonthRow {
@@ -50,7 +38,8 @@ interface MonthRow {
   overtimeHours: number;
   holidayHours: number;
   nightHours: number;
-  allowance: number;    // 時間外手当（システムで計算できる分）
+  allowance: number;      // 時間外手当（システムで計算できる分）
+  nightAllowance: number; // 深夜手当（加算25%分）
 }
 
 export default function WageLedgerPrint() {
@@ -95,23 +84,27 @@ export default function WageLedgerPrint() {
         const o = ot.filter(r => r.date.startsWith(month) && r.status === 'approved');
         // 月60時間超の割増を月内の日付順に反映する
         const prior = priorOvertimeMap(o, r => r.kind, r => Number(r.resultHours) || 0);
+        const wage = s?.hourlyWage || 0;
+        // パート職員等は一律×1.25（パートタイム労働者就業規則 第8条1項）
+        const flat = s ? usesFlatOvertimeRate(s) : false;
         const allowance = o.reduce((sum, r) => {
           const hrs = Number(r.resultHours) || 0;
-          const wage = s?.hourlyWage || 0;
           // 代休にしたものは割増部分のみ支給する（就業規則 第20条2項）
           const d = r.disposition === 'comp'
-            ? compPremiumDetail(hrs, wage, r.kind, prior.get(r.id) ?? 0)
-            : allowanceDetail(hrs, wage, r.kind, prior.get(r.id) ?? 0);
+            ? compPremiumDetail(hrs, wage, r.kind, prior.get(r.id) ?? 0, flat)
+            : allowanceDetail(hrs, wage, r.kind, prior.get(r.id) ?? 0, flat);
           return sum + d.amount;
         }, 0);
+        const nightHours = r1(a.reduce((x, r) => x + nightHoursOf(r), 0));
         return {
           month,
           days: a.filter(r => r.dayType === 'work' && workMinutes(r) > 0).length,
           workHours: h1(a.reduce((x, r) => x + workMinutes(r), 0)),
           overtimeHours: Math.round(o.filter(r => r.kind === 'overtime').reduce((x, r) => x + (Number(r.resultHours) || 0), 0) * 10) / 10,
           holidayHours: Math.round(o.filter(r => r.kind === 'holiday').reduce((x, r) => x + (Number(r.resultHours) || 0), 0) * 10) / 10,
-          nightHours: h1(a.reduce((x, r) => x + nightMinutes(r), 0)),
+          nightHours,
           allowance,
+          nightAllowance: nightAllowanceOf(nightHours, wage),
         };
       });
       setRows(built);
@@ -127,7 +120,8 @@ export default function WageLedgerPrint() {
     holidayHours: Math.round((t.holidayHours + r.holidayHours) * 10) / 10,
     nightHours: Math.round((t.nightHours + r.nightHours) * 10) / 10,
     allowance: t.allowance + r.allowance,
-  }), { days: 0, workHours: 0, overtimeHours: 0, holidayHours: 0, nightHours: 0, allowance: 0 });
+    nightAllowance: t.nightAllowance + r.nightAllowance,
+  }), { days: 0, workHours: 0, overtimeHours: 0, holidayHours: 0, nightHours: 0, allowance: 0, nightAllowance: 0 });
 
   const th = 'border border-gray-500 bg-gray-100 px-1 py-1 text-center';
   const td = 'border border-gray-500 px-1 py-0.5 text-right';
@@ -178,6 +172,7 @@ export default function WageLedgerPrint() {
                 <th className={th}>深夜労働</th>
                 <th className={th}>基本給</th>
                 <th className={th}>時間外手当</th>
+                <th className={th}>深夜手当</th>
                 <th className={th}>その他手当</th>
                 <th className={th}>賃金総額</th>
                 <th className={th}>控除額</th>
@@ -195,6 +190,7 @@ export default function WageLedgerPrint() {
                   <td className={td}>{r.nightHours || ''}</td>
                   <td className={blank}>&nbsp;</td>
                   <td className={td}>{r.allowance ? yen(r.allowance) : ''}</td>
+                  <td className={td}>{r.nightAllowance ? yen(r.nightAllowance) : ''}</td>
                   <td className={blank}>&nbsp;</td>
                   <td className={blank}>&nbsp;</td>
                   <td className={blank}>&nbsp;</td>
@@ -210,6 +206,7 @@ export default function WageLedgerPrint() {
                 <td className={`${td} bg-gray-100`}>{total.nightHours}</td>
                 <td className={blank}>&nbsp;</td>
                 <td className={`${td} bg-gray-100`}>{total.allowance ? yen(total.allowance) : ''}</td>
+                <td className={`${td} bg-gray-100`}>{total.nightAllowance ? yen(total.nightAllowance) : ''}</td>
                 <td className={blank}>&nbsp;</td>
                 <td className={blank}>&nbsp;</td>
                 <td className={blank}>&nbsp;</td>
@@ -220,7 +217,8 @@ export default function WageLedgerPrint() {
 
           <p className="text-xs text-gray-500 mt-2">
             労働日数・労働時間数・深夜労働は勤怠の記録から、時間外・休日労働と時間外手当は承認済みの時間外実績から集計しています
-            （代休にした分は第20条2項により割増部分のみ含めています）。基本給・その他手当・控除額は給与計算の情報のため、色のついた欄に記入してください。
+            （代休にした分は第20条2項により割増部分のみ含めています）。パート職員等の時間外は一律×1.25（パートタイム労働者就業規則 第8条1項）。
+            深夜手当は22:00〜5:00の勤務に対する加算25%分です（同2項）。基本給・その他手当・控除額は給与計算の情報のため、色のついた欄に記入してください。
           </p>
           <p className="text-xs text-gray-400 mt-1">作成日: {todayStr()}</p>
         </section>
