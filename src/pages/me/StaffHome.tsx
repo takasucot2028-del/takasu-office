@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageContainer, Card, Button, Alert, Badge } from '../../components/UI';
-import { punch, setMyBreak, getStaffHomeData, markShiftChangesRead, todayStr } from '../../api/data';
-import type { TodayWork } from '../../api/data';
+import { punch, setMyBreak, getStaffHomeData, getStaffHomeCached, markShiftChangesRead, todayStr } from '../../api/data';
+import type { TodayWork, StaffHomeData } from '../../api/data';
 import { WEEKDAY_LABELS, DOC_TYPE_LABELS, WORK_LOCATION_LABELS, breakMinutesBetween } from '../../utils/constants';
 import type { Staff, AttendanceRecord, DocumentItem, WorkLocation, ShiftChange } from '../../types';
 
@@ -37,26 +37,47 @@ export default function StaffHome() {
   const wd = WEEKDAY_LABELS[new Date(`${date}T00:00:00`).getDay()];
   const breakNum = breakMinutesBetween(breakStartInput, breakEndInput);
 
-  const load = async () => {
-    const home = await getStaffHomeData(date.slice(0, 7));
+  /** 取得した内容を画面に反映する。keepInput=true なら入力中の休憩欄は触らない */
+  const apply = (home: StaffHomeData, keepInput = false) => {
     setStaff(home.staff);
-    const rec = home.attendance.find(r => r.date === date);
+    const rec = home.attendance.find((r: AttendanceRecord) => r.date === date);
     setToday(rec);
-    setBreakStartInput(rec?.breakStart || '');
-    setBreakEndInput(rec?.breakEnd || '');
+    if (!keepInput) {
+      setBreakStartInput(rec?.breakStart || '');
+      setBreakEndInput(rec?.breakEnd || '');
+    }
     setTodayWork(home.today);
     setShiftChanges(home.shiftChanges);
     setRecentDocs(home.documents.slice(0, 4));
     setLoading(false);
   };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  const load = async (keepInput = false) => {
+    const home = await getStaffHomeData(date.slice(0, 7));
+    apply(home, keepInput);
+  };
+
+  useEffect(() => {
+    // 前回の内容があれば先に表示し、最新は裏で取得する（待ち時間を感じさせない）
+    const cached = getStaffHomeCached(date.slice(0, 7));
+    if (cached) apply(cached);
+    load(!!cached).catch(() => setLoading(false));
+    /* eslint-disable-next-line */
+  }, []);
 
   const doPunch = async (type: 'in' | 'out') => {
     setBusy(true); setError(''); setMessage('');
     try {
       const res = await punch(type);
       setMessage(`${type === 'in' ? '出勤' : '退勤'}を記録しました（${res.time}）`);
-      await load();
+      // 打刻の結果はその場で反映する（もう一度全体を取りに行かない）
+      setToday(prev => {
+        const base: AttendanceRecord = prev ?? {
+          id: `${staff?.id ?? ''}_${date}`, staffId: staff?.id ?? '', date,
+          dayType: 'work', startTime: '', endTime: '', breakMinutes: 0, note: '',
+        };
+        return type === 'in' ? { ...base, startTime: res.time } : { ...base, endTime: res.time };
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : '打刻に失敗しました');
     } finally { setBusy(false); }
@@ -78,9 +99,12 @@ export default function StaffHome() {
     }
     setBusy(true); setError(''); setMessage('');
     try {
-      await setMyBreak(breakStartInput, breakEndInput);
+      const res = await setMyBreak(breakStartInput, breakEndInput);
       setMessage(breakNum > 0 ? `休憩 ${breakStartInput}〜${breakEndInput}（${breakNum}分）を保存しました` : '休憩を保存しました');
-      await load();
+      // 保存した内容をその場で反映する（取り直さない）
+      setToday(prev => (prev ? {
+        ...prev, breakStart: res.breakStart, breakEnd: res.breakEnd, breakMinutes: res.breakMinutes,
+      } : prev));
     } catch (err) {
       setError(err instanceof Error ? err.message : '休憩時間の保存に失敗しました');
     } finally { setBusy(false); }

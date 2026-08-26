@@ -1191,14 +1191,39 @@ export async function getTodayWork(date: string): Promise<TodayWork> {
 // --- 従業員ホーム ---
 // プロフィール・勤怠・文書・本日の勤務を1リクエスト(バッチ)でまとめて取得する。
 export interface StaffHomeData { staff: Staff | null; attendance: AttendanceRecord[]; documents: DocumentItem[]; today: TodayWork; shiftChanges: ShiftChange[] }
+/**
+ * 従業員ホームの内容を端末に保存しておき、次に開いたとき即座に表示する。
+ * GASの応答を待つ間、画面が空のままにならないようにするため。
+ */
+const homeKey = (month: string) => `tof_home_${staffId()}_${month}`;
+
+export function getStaffHomeCached(month: string): StaffHomeData | null {
+  try {
+    const raw = localStorage.getItem(homeKey(month));
+    return raw ? JSON.parse(raw) as StaffHomeData : null;
+  } catch { return null; }
+}
+function persistHome(month: string, data: StaffHomeData) {
+  try {
+    // 同じ職員の古い月は残さない
+    const keep = homeKey(month);
+    Object.keys(localStorage)
+      .filter(k => k.startsWith(`tof_home_${staffId()}_`) && k !== keep)
+      .forEach(k => localStorage.removeItem(k));
+    localStorage.setItem(keep, JSON.stringify(data));
+  } catch { /* 容量超過等は無視 */ }
+}
+
 export async function getStaffHomeData(month: string): Promise<StaffHomeData> {
   const date = todayStr();
   if (!USE_GAS) {
-    return {
+    const demo: StaffHomeData = {
       staff: local.getStaff(staffId()), attendance: local.listAttendance(staffId(), month),
       documents: local.listDocuments(), today: await getTodayWork(date),
       shiftChanges: local.listMyShiftChanges(staffId()),
     };
+    if (demo.staff) persistHome(month, demo);
+    return demo;
   }
   const r = await batchCall([
     { action: 'getMyProfile' }, { action: 'getMyAttendance', month }, { action: 'getDocuments' }, { action: 'getTodayWork', date },
@@ -1207,13 +1232,15 @@ export async function getStaffHomeData(month: string): Promise<StaffHomeData> {
   if (r) {
     const staff = unwrap(r[0] as SubRes<Staff | null>, null);
     if (staff) cacheSet('myProfile', staff); // 他画面の getMyProfile もキャッシュから即返せるようにする
-    return {
+    const result: StaffHomeData = {
       staff,
       attendance: unwrap(r[1] as SubRes<AttendanceRecord[]>, []),
       documents: unwrap(r[2] as SubRes<DocumentItem[]>, []),
       today: unwrap(r[3] as SubRes<TodayWork>, EMPTY_TODAY),
       shiftChanges: unwrap(r[4] as SubRes<ShiftChange[]>, []),
     };
+    if (staff) persistHome(month, result); // 取得できたときだけ保存する
+    return result;
   }
   const [staff, attendance, documents, today, shiftChanges] = await Promise.all([
     getMyProfile(), getMyAttendance(month), listDocuments(), getTodayWork(date), getMyShiftChanges(),
