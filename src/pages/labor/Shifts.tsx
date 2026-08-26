@@ -581,7 +581,7 @@ export default function Shifts() {
                       const weekend = wd === 0 ? 'bg-red-50/40' : wd === 6 ? 'bg-blue-50/40' : '';
                       const hasNg = reqIds(s.id, date).length > 0; // 勤務できない区分の申請がある
                       const ng = isUnavailable(s.id, date);          // 終日の勤務不可
-                      const bg = ng ? 'bg-red-100' : mode === 'confirm' && hasNg ? 'bg-amber-50' : weekend;
+                      const bg = ng ? 'bg-red-100' : weekend;
                       return (
                         <td key={date}
                           onClick={e => setMenu({ staffId: s.id, date, x: e.clientX, y: e.clientY })}
