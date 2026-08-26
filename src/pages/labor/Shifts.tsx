@@ -7,7 +7,7 @@ import {
   saveMonthAvailability, saveMonthConfirmed, getShiftPageData, genId,
 } from '../../api/data';
 import { WORK_LOCATION_LABELS, WEEKDAY_LABELS, staffInLocation, UNAVAILABLE_PATTERN_ID } from '../../utils/constants';
-import { isClosedDay, isNationalHoliday } from '../../utils/holidays';
+import { isClosedDay, isNationalHoliday, holidayName } from '../../utils/holidays';
 import type { Staff, ShiftPattern, WorkLocation, AvailabilityRecord, ConfirmedShift } from '../../types';
 
 interface ShiftProblem { loc: WorkLocation; date: string; missing: ShiftPattern[] }
@@ -556,7 +556,10 @@ export default function Shifts() {
                 {days.map(d => {
                   const wd = new Date(`${d}T00:00:00`).getDay();
                   return (
-                    <th key={d} className={`min-w-9 px-0 py-1 text-xs font-medium border-b border-r border-gray-100 ${wd === 0 ? 'bg-red-50 text-red-500' : wd === 6 ? 'bg-blue-50 text-blue-500' : 'bg-gray-50 text-gray-500'}`}>
+                    <th key={d} title={holidayName(d) || undefined}
+                      className={`min-w-9 px-0 py-1 text-xs font-medium border-b border-r border-gray-100 ${
+                        isNationalHoliday(d) || wd === 0 ? 'bg-red-50 text-red-500'
+                          : wd === 6 ? 'bg-blue-50 text-blue-500' : 'bg-gray-50 text-gray-500'}`}>
                       <div>{Number(d.slice(8))}</div>
                       <div>{WEEKDAY_LABELS[wd]}</div>
                     </th>
@@ -578,7 +581,8 @@ export default function Shifts() {
                     {days.map(date => {
                       const wd = new Date(`${date}T00:00:00`).getDay();
                       const ids = mode === 'request' ? reqIds(s.id, date) : confIds(s.id, date);
-                      const weekend = wd === 0 ? 'bg-red-50/40' : wd === 6 ? 'bg-blue-50/40' : '';
+                      const weekend = isNationalHoliday(date) || wd === 0 ? 'bg-red-50/40'
+                        : wd === 6 ? 'bg-blue-50/40' : '';
                       const hasNg = reqIds(s.id, date).length > 0; // 勤務できない区分の申請がある
                       const ng = isUnavailable(s.id, date);          // 終日の勤務不可
                       const bg = ng ? 'bg-red-100' : weekend;

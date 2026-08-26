@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { listStaff, listShiftPatterns, listConfirmedByMonth, listAvailabilityByMonth, todayStr } from '../../api/data';
 import { WORK_LOCATION_LABELS, WEEKDAY_LABELS, staffInLocation, UNAVAILABLE_PATTERN_ID } from '../../utils/constants';
+import { isNationalHoliday, holidayName } from '../../utils/holidays';
 import type { Staff, ShiftPattern, WorkLocation, ConfirmedShift, AvailabilityRecord } from '../../types';
 
 function daysOfMonth(month: string): string[] {
@@ -118,9 +119,11 @@ export default function ShiftsPrint() {
                 {days.map(d => {
                   const wd = new Date(`${d}T00:00:00`).getDay();
                   return (
-                    <th key={d} className={`border border-gray-400 px-0 py-1 text-center ${wd === 0 ? 'bg-red-100' : wd === 6 ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                    <th key={d} title={holidayName(d) || undefined}
+                      className={`border border-gray-400 px-0 py-1 text-center ${
+                        isNationalHoliday(d) || wd === 0 ? 'bg-red-100' : wd === 6 ? 'bg-blue-100' : 'bg-gray-100'}`}>
                       <div>{Number(d.slice(8))}</div>
-                      <div className="text-[10px]">{WEEKDAY_LABELS[wd]}</div>
+                      <div className="text-[10px]">{isNationalHoliday(d) ? '祝' : WEEKDAY_LABELS[wd]}</div>
                     </th>
                   );
                 })}
@@ -142,7 +145,10 @@ export default function ShiftsPrint() {
                       const names = ids.map(id => patternMap.get(id)?.name ?? '').join(' ');
                       return (
                         <td key={date}
-                          className={`border border-gray-400 text-center px-0 py-1 ${ng ? 'bg-red-100' : wd === 0 ? 'bg-red-50' : wd === 6 ? 'bg-blue-50' : ''}`}>
+                          className={`border border-gray-400 text-center px-0 py-1 ${
+                            ng ? 'bg-red-100'
+                              : isNationalHoliday(date) || wd === 0 ? 'bg-red-50'
+                                : wd === 6 ? 'bg-blue-50' : ''}`}>
                           {ids.length
                             ? <span className={isRequest ? 'text-red-600' : ''}>{names}{ng && <span className="text-red-600 font-bold"> ×</span>}</span>
                             : ng ? <span className="text-red-600 font-bold">×</span> : ''}
