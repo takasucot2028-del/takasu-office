@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { listStaff, listOvertimeByMonth, listCompUse, todayStr } from '../../api/data';
 import { WEEKDAY_LABELS } from '../../utils/constants';
-import { overtimeKindOf, allowanceDetail, priorOvertimeMap, usesFlatOvertimeRate, OVERTIME_KIND_LABELS } from '../../utils/overtime';
+import { overtimeKindOf, allowanceDetail, priorOvertimeMap, shiftExcessIsPremium, OVERTIME_KIND_LABELS } from '../../utils/overtime';
 import type { Staff, OvertimeRecord } from '../../types';
 
 interface Sheet {
@@ -45,7 +45,8 @@ export default function OvertimePrint() {
           .sort((a, b) => a.date.localeCompare(b.date));
         if (records.length === 0) continue;
         const kindOf = (r: OvertimeRecord) => r.kind || overtimeKindOf(s, r.date);
-        const flat = usesFlatOvertimeRate(s); // パート職員等は一律×1.25（パート規則 第8条1項）
+        // パート職員はシフト超過そのものに割増がつかない（1.0倍・パート規則 第8条1項）
+        const excessPaid = shiftExcessIsPremium(s);
         // 月60時間超の割増を判定するため、日付順の累計を先に求める
         const priors = priorOvertimeMap(records, kindOf, r => (r as OvertimeRecord).resultHours || 0);
         const uses = (await listCompUse(s.id)).filter(u => u.date.startsWith(month));
@@ -55,8 +56,8 @@ export default function OvertimePrint() {
           wkOt: r1(records.filter(r => kindOf(r) === 'overtime').reduce((x, r) => x + (r.resultHours || 0), 0)),
           hol: r1(records.filter(r => kindOf(r) === 'holiday').reduce((x, r) => x + (r.resultHours || 0), 0)),
           allowH: r1(records.filter(r => r.disposition === 'allowance').reduce((x, r) => x + (r.resultHours || 0), 0)),
-          allowYen: Math.round(records.filter(r => r.disposition === 'allowance')
-            .reduce((x, r) => x + allowanceDetail(r.resultHours || 0, s.hourlyWage || 0, kindOf(r), priors.get(r.id) ?? 0, flat).amount, 0)),
+          allowYen: !excessPaid ? 0 : Math.round(records.filter(r => r.disposition === 'allowance')
+            .reduce((x, r) => x + allowanceDetail(r.resultHours || 0, s.hourlyWage || 0, kindOf(r), priors.get(r.id) ?? 0).amount, 0)),
           compGrant: r1(records.filter(r => r.disposition === 'comp').reduce((x, r) => x + (r.resultHours || 0), 0)),
           compUsed: r1(uses.reduce((x, u) => x + (u.hours || 0), 0)),
         });
@@ -128,7 +129,9 @@ export default function OvertimePrint() {
                         <td className="border border-gray-500 px-2 py-1">{r.reason}</td>
                         <td className="border border-gray-500 px-2 py-1 text-right">{r1(r.resultHours || 0)}h</td>
                         <td className="border border-gray-500 px-1 py-1 text-center">{dispLabel[r.disposition] || '未定'}</td>
-                        <td className="border border-gray-500 px-2 py-1 text-right">{r.disposition === 'allowance' ? yen(allowanceDetail(r.resultHours || 0, s.hourlyWage || 0, k, sh.priors.get(r.id) ?? 0, usesFlatOvertimeRate(s)).amount) : ''}</td>
+                        <td className="border border-gray-500 px-2 py-1 text-right">{r.disposition === 'allowance' && shiftExcessIsPremium(s)
+                            ? yen(allowanceDetail(r.resultHours || 0, s.hourlyWage || 0, k, sh.priors.get(r.id) ?? 0).amount)
+                            : ''}</td>
                       </tr>
                     );
                   })}
@@ -158,6 +161,13 @@ export default function OvertimePrint() {
                   </tr>
                 </tbody>
               </table>
+
+              {!shiftExcessIsPremium(s) && (
+                <p className="text-xs text-gray-500 mt-2">
+                  シフト表の勤務時間を超えた分は、基本の勤務時間（8:30〜21:30）の範囲内であれば通常の賃金（1.0倍）です
+                  （パートタイム労働者就業規則 第8条1項）。8:30前・21:30後、法定時間外、深夜の割増は賃金台帳・給与計算用データに計上しています。
+                </p>
+              )}
 
               {/* 確認欄 */}
               <div className="flex justify-end gap-2 mt-4 text-xs">

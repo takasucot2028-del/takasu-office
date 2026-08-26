@@ -15,8 +15,8 @@ import {
 import {
   isOvertimeTarget, overtimeKindOf, standardHoursOf, resultHoursFor, usesAppliedHours,
   allowanceDetail, compPremiumDetail, compDeadlineOf, priorOvertimeMap, patternHours,
-  usesFlatOvertimeRate, nightHoursOf, nightMinutesBetween, nightAllowanceOf,
-  OVERTIME_MONTHLY_THRESHOLD,
+  shiftExcessIsPremium, partMonthPremium, nightAllowanceOf, nightHoursOf,
+  OVERTIME_MONTHLY_THRESHOLD, WEEKLY_LEGAL_HOURS,
   OVERTIME_STATUS_LABELS, OVERTIME_KIND_LABELS,
 } from '../../utils/overtime';
 import type { Staff, ShiftPattern, ConfirmedShift, AttendanceRecord, OvertimeRecord, CompLeaveUse, OvertimeDisposition } from '../../types';
@@ -55,7 +55,7 @@ export default function Overtime() {
   const [compUse, setCompUse] = useState<CompLeaveUse[]>([]);
   const [records, setRecords] = useState<OvertimeRecord[]>([]); // 当月の編集用コピー
   const [attMap, setAttMap] = useState<Record<string, number>>({});   // date→実働h
-  const [nightMap, setNightMap] = useState<Record<string, number>>({}); // date→深夜労働h
+  const [attRecs, setAttRecs] = useState<AttendanceRecord[]>([]);     // 当月の勤怠（時間帯の判定に使う）
   const [shiftMap, setShiftMap] = useState<Record<string, number>>({}); // date→シフト予定h
 
   const [message, setMessage] = useState('');
@@ -77,8 +77,9 @@ export default function Overtime() {
   const staff = useMemo(() => allStaff.find(s => s.id === staffId) ?? null, [allStaff, staffId]);
   // パート職員等は、シフト時間外に働いた分を申請しているため、申請時間が実績になる
   const byApplied = staff ? usesAppliedHours(staff) : false;
-  // パート職員等は割増率が一律×1.25（パートタイム労働者就業規則 第8条1項）
-  const flatRate = staff ? usesFlatOvertimeRate(staff) : false;
+  // パート職員はシフト超過そのものには割増がつかない（パート規則 第8条1項＝1.0倍）。
+  // 割増は勤務した時間帯・法定超・深夜から別に計算する（同2項・3項）。
+  const isPart = staff ? !shiftExcessIsPremium(staff) : false;
   const patternMap = useMemo(() => new Map(patterns.map(p => [p.id, p])), [patterns]);
 
   // 初回：職員・区分
@@ -107,12 +108,7 @@ export default function Overtime() {
       setAllOt(d.overtime);
       setCompUse(d.compUse);
       const am: Record<string, number> = {};
-      const nm: Record<string, number> = {};
-      for (const r of d.attendance) {
-        am[r.date] = workedHoursOf(r);
-        const night = nightHoursOf(r);
-        if (night > 0) nm[r.date] = night;   // 深夜（22:00〜5:00）に重なった分
-      }
+      for (const r of d.attendance) am[r.date] = workedHoursOf(r);
       const sm: Record<string, number> = {};
       for (const c of d.confirmed as ConfirmedShift[]) {
         if (c.staffId !== staffId) continue;
@@ -120,7 +116,7 @@ export default function Overtime() {
         if (p) sm[c.date] = (sm[c.date] || 0) + patternHours(p);
       }
       setAttMap(am);
-      setNightMap(nm);
+      setAttRecs(d.attendance);
       setShiftMap(sm);
     })();
     return () => { alive = false; };
@@ -149,20 +145,25 @@ export default function Overtime() {
    * 割増部分だけを支給する（就業規則 第20条2項）。
    */
   const calc = (r: OvertimeRecord) => {
-    if (!staff) return { kind: r.kind, worked: 0, standard: 0, result: 0, amount: 0, over60Hours: 0, premium: 0, night: 0 };
+    if (!staff) return { kind: r.kind, worked: 0, standard: 0, result: 0, amount: 0, over60Hours: 0, premium: 0 };
     const kind = overtimeKindOf(staff, r.date);
     const worked = attMap[r.date] || 0;
     const standard = standardHoursOf(staff, r.date, shiftMap[r.date] || 0);
     const result = resultHoursFor(staff, r.date, worked, shiftMap[r.date] || 0, r.appliedHours || 0);
     const wage = staff.hourlyWage || 0;
     const prior = priorMap.get(r.id) ?? 0;
-    const d = allowanceDetail(result, wage, kind, prior, flatRate);
-    const p = compPremiumDetail(result, wage, kind, prior, flatRate);
-    // 申請した時間帯のうち深夜（22:00〜5:00）に重なる分。深夜加算の目安として示す
-    const night = r.startTime && r.endTime
-      ? Math.round((nightMinutesBetween(r.startTime, r.endTime) / 60) * 100) / 100 : 0;
-    return { kind, worked, standard, result, amount: d.amount, over60Hours: d.over60Hours, premium: p.amount, night };
+    // パート職員はシフト超過分が1.0倍のため、この記録からは手当が出ない（第8条1項）
+    if (isPart) return { kind, worked, standard, result, amount: 0, over60Hours: 0, premium: 0 };
+    const d = allowanceDetail(result, wage, kind, prior);
+    const p = compPremiumDetail(result, wage, kind, prior);
+    return { kind, worked, standard, result, amount: d.amount, over60Hours: d.over60Hours, premium: p.amount };
   };
+
+  // パート職員の割増（勤怠の時間帯から自動計算。第8条2項・3項）
+  const partPrem = useMemo(
+    () => partMonthPremium(isPart ? attRecs : [], staff?.hourlyWage || 0),
+    [isPart, attRecs, staff]
+  );
 
   const setRec = (id: string, patch: Partial<OvertimeRecord>) =>
     setRecords(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)));
@@ -239,13 +240,15 @@ export default function Overtime() {
   const monthHoliday = r1(approvedRecs.filter(r => calc(r).kind === 'holiday').reduce((s, r) => s + calc(r).result, 0));
   const monthAllowanceHours = r1(approvedRecs.filter(r => r.disposition === 'allowance').reduce((s, r) => s + calc(r).result, 0));
   const monthCompUsed = r1(compUse.filter(u => u.date.startsWith(month)).reduce((s, u) => s + (u.hours || 0), 0));
-  // 60時間を超えた分（×1.50 対象）の合計。パート職員等は一律×1.25のため常に0
+  // 60時間を超えた分（×1.50 対象）の合計
   const monthOver60 = r1(approvedRecs.reduce((s, r) => s + calc(r).over60Hours, 0));
-  // 深夜労働（22:00〜5:00）。勤怠の出退勤から集計し、加算25%分を手当とする
-  const monthNightHours = r1(
-    Object.entries(nightMap).filter(([d]) => d.startsWith(month)).reduce((s, [, h]) => s + h, 0)
-  );
+  // 常勤職員の深夜労働（22:00〜5:00）。加算25%分を手当とする（第37条）
+  const monthNightHours = isPart ? 0 : r1(attRecs.reduce((s, r) => s + nightHoursOf(r), 0));
   const monthNightAllowance = nightAllowanceOf(monthNightHours, staff?.hourlyWage || 0);
+  // パート職員の割増対象日（勤怠から自動計算）
+  const partDays = Array.from(partPrem.byDate.entries())
+    .filter(([, p]) => p.amount > 0)
+    .sort((a, b) => a[0].localeCompare(b[0]));
   // 出退勤（実働）が未入力の申請があるか（実績が0のまま気づかないのを防ぐ）
   const anyMissingAttendance = records.some(r => (attMap[r.date] || 0) === 0);
 
@@ -300,11 +303,17 @@ export default function Overtime() {
           <Button size="sm" onClick={handleSave} disabled={saving || !staff}>{saving ? '保存中…' : '保存する'}</Button>
         </div>
         <p className="mt-2 text-xs text-gray-500">
-          実績時間は、常勤職員が「実働−基準」（平日7.5時間、土日祝は休日勤務で実働全部）。
-          パート職員等は<b>申請した時間</b>（シフトの所定時間を超えて勤務した分）がそのまま実績になります。実働は「勤怠管理」の出退勤から自動集計。
-          {flatRate
-            ? <>手当＝時給×<span className="font-medium">1.25</span>（パートタイム労働者就業規則 第8条1項。早出・残業とも一律）。深夜（22:00〜5:00）は<span className="font-medium">＋25%</span>（同2項）。</>
-            : <>手当＝時給×割増（時間外×1.25／<span className="font-medium">当月の時間外が60時間を超えた分は×1.50</span>／休日×1.35）。深夜（22:00〜5:00）は＋25%。</>}
+          {isPart
+            ? <>
+                実績時間は<b>申請した時間</b>（シフトの勤務時間を超えて勤務した分）。
+                <span className="font-medium">シフトを超えても 8:30〜21:30 の範囲内なら割増はつきません（1.0倍・第8条1項）。</span>
+                割増は<b>勤怠の出退勤の時間帯</b>から自動計算します。8:30前・21:30後は＋25%（第8条2項）、
+                法定労働時間（1日8時間・週40時間）超と深夜（22:00〜5:00）も＋25%（同3項）。
+              </>
+            : <>
+                実績時間は「実働−基準」（平日7.5時間、土日祝は休日勤務で実働全部）。実働は「勤怠管理」の出退勤から自動集計。
+                手当＝時給×割増（時間外×1.25／<span className="font-medium">当月の時間外が60時間を超えた分は×1.50</span>／休日×1.35）。深夜（22:00〜5:00）は＋25%。
+              </>}
         </p>
       </Card>
 
@@ -320,10 +329,13 @@ export default function Overtime() {
           <Card className="mb-4">
             <h2 className="font-bold text-gray-800 mb-3">当月の集計 <span className="text-xs font-normal text-gray-400">（{month}・承認済）</span></h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-              <Tile label="平日時間外" value={h1(monthWeekdayOt)} />
-              <Tile label="休日勤務" value={h1(monthHoliday)} />
-              <Tile label="時間外手当 時間" value={h1(monthAllowanceHours)} />
-              <Tile label="時間外手当 金額" value={yen(monthAllowance)} highlight />
+              <Tile label={isPart ? 'シフト超過（1.0倍）' : '平日時間外'} value={h1(monthWeekdayOt)} />
+              {!isPart && <Tile label="休日勤務" value={h1(monthHoliday)} />}
+              {!isPart && <Tile label="時間外手当 時間" value={h1(monthAllowanceHours)} />}
+              {!isPart && <Tile label="時間外手当 金額" value={yen(monthAllowance)} highlight />}
+              {isPart && <Tile label="割増25%対象" value={h1(partPrem.hours25 + partPrem.weeklyExcessHours)} />}
+              {isPart && <Tile label="割増50%対象" value={h1(partPrem.hours50)} />}
+              {isPart && <Tile label="割増の加算額" value={yen(partPrem.amount)} highlight />}
               <Tile label="代休付与" value={h1(monthComp)} />
               <Tile label="代休分の割増（第20条2項）" value={yen(monthCompPremium)} />
               <Tile label="当月 代休消化" value={h1(monthCompUsed)} />
@@ -337,14 +349,6 @@ export default function Overtime() {
                 超過分 <span className="font-bold">{h1(monthOver60)}</span> は割増率 ×1.50 で計算しています。
               </p>
             )}
-            {flatRate && monthWeekdayOt > OVERTIME_MONTHLY_THRESHOLD && (
-              <p className="mt-3 text-sm text-amber-700 bg-amber-50 rounded px-3 py-2">
-                当月の時間外が{OVERTIME_MONTHLY_THRESHOLD}時間を超えています。パート職員等は
-                パートタイム労働者就業規則 第8条1項により<b>一律×1.25</b>で計算していますが、
-                1日8時間・週40時間を超える法定時間外が月60時間を超える場合は、その分に
-                法定の×1.50が必要です。実際の勤務時間を確認してください。
-              </p>
-            )}
             {monthNightHours > 0 && (
               <p className="mt-3 text-sm text-gray-600 bg-gray-50 rounded px-3 py-2">
                 深夜（22:00〜5:00）の勤務が <b>{h1(monthNightHours)}</b> あります。
@@ -352,7 +356,78 @@ export default function Overtime() {
                 時間外×1.25＋深夜0.25＝<b>×1.50</b> になります。
               </p>
             )}
+            {isPart && (
+              <p className="mt-3 text-xs text-gray-500">
+                シフト超過の時間は通常の賃金（1.0倍）です。割増の加算額は「通常の賃金への上乗せ分」で、
+                実働時間分の賃金には含まれていません。
+              </p>
+            )}
           </Card>
+
+          {/* パート職員の割増の内訳（勤怠の時間帯から自動計算） */}
+          {isPart && (
+            <Card className="mb-4">
+              <h2 className="font-bold text-gray-800 mb-1">
+                割増の内訳 <span className="text-xs font-normal text-gray-400">（勤怠の出退勤から自動計算）</span>
+              </h2>
+              <p className="text-xs text-gray-500 mb-3">
+                8:30前・21:30後の勤務は＋25%（第8条2項）。1日8時間・週40時間を超えた分と深夜（22:00〜5:00）も＋25%（同3項）。
+                法定時間外かつ深夜の時間は労基法第37条により＋50%（×1.50）で計算します。
+              </p>
+              {partDays.length === 0 && partPrem.weeklyExcessHours === 0 ? (
+                <p className="text-sm text-gray-400 py-4 text-center">この月に割増の対象となる勤務はありません</p>
+              ) : (
+                <Table>
+                  <thead>
+                    <tr>
+                      <Th>日付</Th><Th>勤務</Th><Th>実働</Th>
+                      <Th>時間帯外</Th><Th>うち深夜</Th><Th>法定超(8h)</Th>
+                      <Th>25%</Th><Th>50%</Th><Th>加算額</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {partDays.map(([date, p]) => {
+                      const rec = attRecs.find(a => a.date === date);
+                      const wd = new Date(`${date}T00:00:00`).getDay();
+                      return (
+                        <tr key={date}>
+                          <Td className="whitespace-nowrap">{Number(date.slice(5, 7))}/{Number(date.slice(8))}
+                            <span className={`ml-1 text-xs ${wd === 0 ? 'text-red-500' : wd === 6 ? 'text-blue-500' : 'text-gray-400'}`}>({WEEKDAY_LABELS[wd]})</span>
+                          </Td>
+                          <Td className="whitespace-nowrap text-gray-500">{rec ? `${rec.startTime}〜${rec.endTime}` : ''}</Td>
+                          <Td className="text-right text-gray-600">{h1(p.workedHours)}</Td>
+                          <Td className="text-right">{p.outsideHours ? h1(p.outsideHours) : ''}</Td>
+                          <Td className="text-right text-indigo-600">{p.nightHours ? h1(p.nightHours) : ''}</Td>
+                          <Td className="text-right">{p.legalHours ? h1(p.legalHours) : ''}</Td>
+                          <Td className="text-right">{p.hours25 ? h1(p.hours25) : ''}</Td>
+                          <Td className="text-right font-medium">{p.hours50 ? h1(p.hours50) : ''}</Td>
+                          <Td className="text-right font-medium">{yen(p.amount)}</Td>
+                        </tr>
+                      );
+                    })}
+                    {partPrem.weeks.map(w => (
+                      <tr key={w.start} className="bg-amber-50">
+                        <Td className="whitespace-nowrap text-amber-800" colSpan={6}>
+                          {w.start.replace(/^\d{4}-/, '')}の週　週{WEEKLY_LEGAL_HOURS}時間を超えた分（日8時間超を除く）
+                        </Td>
+                        <Td className="text-right">{h1(w.excessHours)}</Td>
+                        <Td>{''}</Td>
+                        <Td className="text-right font-medium">
+                          {yen(nightAllowanceOf(w.excessHours, staff.hourlyWage || 0))}
+                        </Td>
+                      </tr>
+                    ))}
+                    <tr className="font-bold bg-gray-50">
+                      <Td colSpan={6}>合計</Td>
+                      <Td className="text-right">{h1(partPrem.hours25 + partPrem.weeklyExcessHours)}</Td>
+                      <Td className="text-right">{h1(partPrem.hours50)}</Td>
+                      <Td className="text-right text-emerald-700">{yen(partPrem.amount)}</Td>
+                    </tr>
+                  </tbody>
+                </Table>
+              )}
+            </Card>
+          )}
 
           {/* 36協定の上限（労基法第36条） */}
           <Card className={`mb-4 ${status36.warnings.some(w => w.level === 'error') ? 'border-red-300'
@@ -434,17 +509,18 @@ export default function Overtime() {
             </div>
           </Card>
 
-          {anyMissingAttendance && !byApplied && (
+          {anyMissingAttendance && (
             <Alert type="info">
-              出退勤が未入力の日があります（下表で <span className="text-red-500 font-medium">勤怠未入力</span> と表示）。「勤怠管理」でその日の出退勤を入力すると、実績・手当・代休付与に反映されます。
+              出退勤が未入力の日があります（下表で <span className="text-red-500 font-medium">勤怠未入力</span> と表示）。「勤怠管理」でその日の出退勤を入力すると、
+              {isPart ? '勤務した時間帯から割増が計算されます。' : '実績・手当・代休付与に反映されます。'}
             </Alert>
           )}
           {byApplied && (
             <Alert type="info">
               この職員は<b>申請した時間がそのまま実績</b>になります。
-              シフト表の所定労働時間を超えて勤務した分（<b>始業前の早出</b>・<b>終業後の残業</b>のいずれも。
-              例: シフトが8:30からの日に7:30から勤務した場合の 7:30〜8:30）を申請してください。
-              割増は一律×1.25で計算します（パートタイム労働者就業規則 第8条1項）。
+              シフト表の勤務時間を超えて勤務した分（例: シフトが8:30からの日に7:30から勤務した場合の 7:30〜8:30）を申請してください。
+              {isPart && <>　<b>シフト超過そのものには割増がつきません（1.0倍・第8条1項）。</b>
+                割増は上の「割増の内訳」のとおり、勤務した時間帯から自動計算します。</>}
             </Alert>
           )}
 
@@ -470,7 +546,6 @@ export default function Overtime() {
                       <Td className="min-w-28"><Input value={r.reason} onChange={e => setRec(r.id, { reason: e.target.value })} /></Td>
                       <Td className="whitespace-nowrap text-gray-500">
                         {r.startTime && r.endTime ? <span>{r.startTime}〜{r.endTime}<span className="text-gray-400 ml-1">({r.appliedHours}h)</span></span> : `${r.appliedHours}h`}
-                        {c.night > 0 && <div className="text-[10px] text-indigo-600 leading-tight">深夜 {h1(c.night)}（＋25%）</div>}
                       </Td>
                       <Td>
                         {r.status === 'approved'
@@ -479,7 +554,7 @@ export default function Overtime() {
                       </Td>
                       <Td className="whitespace-nowrap text-gray-600">
                         {h1(c.worked)}
-                        {c.worked === 0 && !byApplied && <div className="text-[10px] text-red-500 leading-tight">勤怠未入力</div>}
+                        {c.worked === 0 && <div className="text-[10px] text-red-500 leading-tight">勤怠未入力</div>}
                       </Td>
                       <Td className="whitespace-nowrap text-gray-500">{h1(c.standard)}</Td>
                       <Td className="whitespace-nowrap font-medium">{h1(c.result)}</Td>
@@ -491,7 +566,9 @@ export default function Overtime() {
                         </Select>
                       </Td>
                       <Td className="whitespace-nowrap">
-                        {r.disposition === 'allowance' ? <span className="font-medium">{yen(c.amount)}</span>
+                        {isPart && r.disposition === 'allowance'
+                          ? <span className="text-gray-500 text-xs">割増なし<span className="block text-gray-400">（1.0倍・第8条1項）</span></span>
+                          : r.disposition === 'allowance' ? <span className="font-medium">{yen(c.amount)}</span>
                           : r.disposition === 'comp' ? (
                             <span className="text-gray-600">
                               代休 {h1(c.result)}

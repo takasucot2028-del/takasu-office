@@ -54,17 +54,17 @@ export function rateOf(kind: OvertimeKind): number {
 }
 
 /**
- * 割増率が一律×1.25になる雇用区分か。
+ * シフト表の勤務時間を超えたこと自体に割増がつく雇用区分か。
  *
- * パートタイム労働者就業規則 第8条1項は、シフト表の所定労働時間を超えた分
- * （始業前の早出・終業後の残業を含む）を一律25％増しと定めており、
- * 月60時間超の×1.50は定めていないため、パート職員等は一律×1.25で計算する。
+ * パートタイム労働者就業規則 第8条1項により、パート職員はシフトを超えて
+ * 働いても基本の勤務時間（8:30〜21:30）の範囲内なら通常の賃金（1.0倍）。
+ * 割増は時間帯・法定超・深夜で判定するため、partPremiumOf を使う。
  */
-export function usesFlatOvertimeRate(staff: Staff): boolean {
-  return staff.employmentType !== 'fulltime';
+export function shiftExcessIsPremium(staff: Staff): boolean {
+  return staff.employmentType === 'fulltime';
 }
 
-/* ---- 深夜労働（22:00〜翌5:00）。就業規則 第37条／パート規則 第8条2項 ---- */
+/* ---- 深夜労働（22:00〜翌5:00）。就業規則 第37条／パート規則 第8条3項 ---- */
 
 const hm = (t: string): number | null => {
   const m = /^(\d{1,2}):(\d{2})$/.exec(t || '');
@@ -99,6 +99,162 @@ export function nightAllowanceOf(nightHours: number, hourlyWage: number): number
   return Math.round(nightHours * hourlyWage * NIGHT_RATE_ADD);
 }
 
+/* ==== パート職員の割増（パートタイム労働者就業規則 第8条） ====
+ *
+ * 第8条1項 シフト表の勤務時間を超えても、基本の勤務時間（8:30〜21:30）の
+ *          範囲内なら通常の賃金（1.0倍）＝割増なし。
+ * 第8条2項 基本の勤務時間以外の時間帯に働いた分は 1.25倍。
+ * 第8条3項 法定労働時間（1日8時間・週40時間）超、または深夜（22:00〜5:00）は 1.25倍。
+ *
+ * 通常の賃金は実働時間分としてすでに支払われるため、ここでは上乗せする
+ * 加算分（0.25／0.50）だけを求める。
+ * 法定時間外かつ深夜は労基法第37条により 1.25＋0.25＝1.50倍が必要なので加算0.50。
+ */
+
+export const BASIC_WORK_START = 8 * 60 + 30;   // 8:30（第4条1項 基本の勤務時間）
+export const BASIC_WORK_END = 21 * 60 + 30;    // 21:30
+export const DAILY_LEGAL_MINUTES = 8 * 60;     // 法定労働時間 1日8時間
+export const WEEKLY_LEGAL_HOURS = 40;          // 法定労働時間 週40時間
+export const PREMIUM_ADD = 0.25;               // 加算25%
+export const PREMIUM_ADD_BOTH = 0.50;          // 法定時間外かつ深夜の加算
+
+/** その分（0:00からの通算分）が深夜帯か */
+const isNightMinute = (m: number): boolean => {
+  const t = ((m % 1440) + 1440) % 1440;
+  return t < 5 * 60 || t >= 22 * 60;
+};
+/** その分が基本の勤務時間（8:30〜21:30）の外か。深夜帯は必ず外になる */
+const isOutsideBasic = (m: number): boolean => {
+  const t = ((m % 1440) + 1440) % 1440;
+  return t < BASIC_WORK_START || t >= BASIC_WORK_END;
+};
+
+/**
+ * 実際に働いた分を並べる（休憩を除く）。
+ * 休憩の時刻が入っていればその範囲を除き、分数だけの場合は
+ * 基本の勤務時間内から真ん中あたりを除く（休憩は日中に取る前提）。
+ */
+function workedMinutesOf(rec: AttendanceRecord): number[] {
+  if (rec.dayType !== 'work') return [];
+  const s = hm(rec.startTime); let e = hm(rec.endTime);
+  if (s === null || e === null || e === s) return [];
+  if (e < s) e += 24 * 60;                       // 日をまたいだ勤務
+  let mins: number[] = [];
+  for (let m = s; m < e; m++) mins.push(m);
+
+  const bs = hm(rec.breakStart || ''), be = hm(rec.breakEnd || '');
+  if (bs !== null && be !== null && be > bs) {
+    mins = mins.filter(m => m < bs || m >= be);
+    return mins;
+  }
+  const brk = Math.max(0, Math.round(rec.breakMinutes || 0));
+  if (brk === 0) return mins;
+  const inBasic = mins.filter(m => !isOutsideBasic(m));
+  const target = inBasic.length >= brk ? inBasic : mins;   // 日中で足りなければ全体から
+  const from = Math.max(0, Math.floor((target.length - brk) / 2));
+  const removed = new Set(target.slice(from, from + brk));
+  return mins.filter(m => !removed.has(m));
+}
+
+/** 1日の割増の内訳（時間はすべて時間単位） */
+export interface PartPremium {
+  workedHours: number;    // 実働
+  outsideHours: number;   // 基本の勤務時間外（深夜を含む）
+  nightHours: number;     // 深夜（22:00〜5:00）
+  legalHours: number;     // 法定時間外（1日8時間超）
+  hours25: number;        // 加算25%の対象時間
+  hours50: number;        // 加算50%の対象時間（法定時間外かつ深夜）
+  amount: number;         // 加算額（通常の賃金への上乗せ分）
+}
+const EMPTY_PART_PREMIUM: PartPremium = {
+  workedHours: 0, outsideHours: 0, nightHours: 0, legalHours: 0, hours25: 0, hours50: 0, amount: 0,
+};
+
+const h2 = (min: number) => Math.round((min / 60) * 100) / 100;
+
+/** その日の勤怠から、パート職員の割増（加算分）を求める */
+export function partPremiumOf(rec: AttendanceRecord | undefined, hourlyWage: number): PartPremium {
+  if (!rec) return EMPTY_PART_PREMIUM;
+  const mins = workedMinutesOf(rec);
+  if (mins.length === 0) return EMPTY_PART_PREMIUM;
+  let outside = 0, night = 0, legal = 0, m25 = 0, m50 = 0;
+  mins.forEach((m, i) => {
+    const overLegal = i >= DAILY_LEGAL_MINUTES;   // 8時間を超えた分（時系列で後ろ）
+    const atNight = isNightMinute(m);
+    const atOutside = isOutsideBasic(m);
+    if (atOutside) outside++;
+    if (atNight) night++;
+    if (overLegal) legal++;
+    if (overLegal && atNight) m50++;              // 法定時間外かつ深夜は×1.50（労基法第37条）
+    else if (overLegal || atOutside) m25++;       // 第8条2項・3項
+  });
+  return {
+    workedHours: h2(mins.length), outsideHours: h2(outside), nightHours: h2(night),
+    legalHours: h2(legal), hours25: h2(m25), hours50: h2(m50),
+    amount: Math.round((m25 / 60) * hourlyWage * PREMIUM_ADD + (m50 / 60) * hourlyWage * PREMIUM_ADD_BOTH),
+  };
+}
+
+/** 週（日曜起算）の始まりの日付 */
+function weekStartOf(date: string): string {
+  const d = new Date(`${date}T00:00:00`);
+  d.setDate(d.getDate() - d.getDay());
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** 1か月分の割増 */
+export interface PartMonthPremium {
+  byDate: Map<string, PartPremium>;
+  workedHours: number; outsideHours: number; nightHours: number; legalHours: number;
+  hours25: number; hours50: number;
+  dailyAmount: number;                                  // 日ごとの加算の合計
+  weeks: { start: string; excessHours: number }[];      // 週40時間を超えた週
+  weeklyExcessHours: number;
+  weeklyExcessAmount: number;
+  amount: number;                                       // 加算の総額
+}
+
+/**
+ * 1か月分をまとめて計算する。
+ * 週40時間超（第8条3項）は、日8時間超と重ならないように
+ * 「その週の実働 − その週の日8時間超 − 40時間」で求める（日曜起算）。
+ */
+export function partMonthPremium(records: AttendanceRecord[], hourlyWage: number): PartMonthPremium {
+  const byDate = new Map<string, PartPremium>();
+  const weekMap = new Map<string, { worked: number; legal: number }>();
+  let workedHours = 0, outsideHours = 0, nightHours = 0, legalHours = 0;
+  let hours25 = 0, hours50 = 0, dailyAmount = 0;
+
+  for (const rec of records) {
+    const p = partPremiumOf(rec, hourlyWage);
+    if (p.workedHours === 0) continue;
+    byDate.set(rec.date, p);
+    workedHours += p.workedHours; outsideHours += p.outsideHours; nightHours += p.nightHours;
+    legalHours += p.legalHours; hours25 += p.hours25; hours50 += p.hours50;
+    dailyAmount += p.amount;
+    const key = weekStartOf(rec.date);
+    const w = weekMap.get(key) || { worked: 0, legal: 0 };
+    w.worked += p.workedHours; w.legal += p.legalHours;
+    weekMap.set(key, w);
+  }
+
+  const weeks = Array.from(weekMap.entries())
+    .map(([start, w]) => ({ start, excessHours: h2((w.worked - w.legal - WEEKLY_LEGAL_HOURS) * 60) }))
+    .filter(w => w.excessHours > 0)
+    .sort((a, b) => a.start.localeCompare(b.start));
+  const weeklyExcessHours = h2(weeks.reduce((t, w) => t + w.excessHours, 0) * 60);
+  const weeklyExcessAmount = Math.round(weeklyExcessHours * hourlyWage * PREMIUM_ADD);
+
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  return {
+    byDate,
+    workedHours: r2(workedHours), outsideHours: r2(outsideHours), nightHours: r2(nightHours),
+    legalHours: r2(legalHours), hours25: r2(hours25), hours50: r2(hours50),
+    dailyAmount, weeks, weeklyExcessHours, weeklyExcessAmount,
+    amount: dailyAmount + weeklyExcessAmount,
+  };
+}
+
 /** 区分の実働時間（時間）。開始〜終了、日跨ぎは想定しない */
 export function patternHours(p: ShiftPattern): number {
   const re = /^(\d{1,2}):(\d{2})$/;
@@ -131,10 +287,11 @@ export function resultHoursOf(workedHours: number, standardHours: number): numbe
  * その記録の実績時間。雇用区分で求め方が違う。
  *
  * 常勤職員: 実働 − 基準（平日7.5時間、土日祝は0＝全部が休日勤務）。
- * パート職員等: シフト表の所定労働時間を超えて働いた分（始業前の早出・終業後の
- *   残業を含む。パート規則 第8条1項）を申請しているため、申請時間をそのまま実績とする。
- *   例えばシフトが8:30からの日に7:30から勤務した場合、7:30〜8:30 の1時間を申請し、
- *   その1時間が時間外になる。
+ * パート職員等: シフト表の勤務時間を超えて働いた分を申請しているため、申請時間を
+ *   そのまま実績とする。例えばシフトが8:30からの日に7:30から勤務した場合、
+ *   7:30〜8:30 の1時間を申請し、その1時間が実績になる。
+ *   ただしこの実績自体に割増はつかない（パート規則 第8条1項＝1.0倍）。
+ *   割増は勤務した時間帯・法定超・深夜から partPremiumOf で別に求める。
  *   （実働からシフト時間を引く方法だと、シフトが未登録の日に働いた分が
  *     まるごと時間外になってしまうため）
  */
@@ -163,17 +320,12 @@ export function allowanceOf(resultHours: number, hourlyWage: number, kind: Overt
  * 休日勤務は月の累計に関係なく×1.35（60時間の累計にも含めない）。
  *
  * @param priorOvertimeHours この記録より前（同月・日付順）の「時間外」実績の累計時間
- * @param flatRate true なら月60時間超の×1.50を使わず一律×1.25（パート規則 第8条1項）
  */
 export function allowanceDetail(
-  resultHours: number, hourlyWage: number, kind: OvertimeKind, priorOvertimeHours: number,
-  flatRate = false
+  resultHours: number, hourlyWage: number, kind: OvertimeKind, priorOvertimeHours: number
 ): { amount: number; normalHours: number; over60Hours: number } {
   if (kind === 'holiday') {
     return { amount: Math.round(resultHours * hourlyWage * HOLIDAY_RATE), normalHours: resultHours, over60Hours: 0 };
-  }
-  if (flatRate) {
-    return { amount: Math.round(resultHours * hourlyWage * OVERTIME_RATE), normalHours: resultHours, over60Hours: 0 };
   }
   const remain = Math.max(0, OVERTIME_MONTHLY_THRESHOLD - priorOvertimeHours); // 60時間までの残り
   const normalHours = Math.min(resultHours, remain);
@@ -187,18 +339,11 @@ export function allowanceDetail(
  * 時間外は当月60時間までが25%、超えた分は50%。休日勤務は35%。
  */
 export function compPremiumDetail(
-  resultHours: number, hourlyWage: number, kind: OvertimeKind, priorOvertimeHours: number,
-  flatRate = false
+  resultHours: number, hourlyWage: number, kind: OvertimeKind, priorOvertimeHours: number
 ): { amount: number; normalHours: number; over60Hours: number } {
   if (kind === 'holiday') {
     return {
       amount: Math.round(resultHours * hourlyWage * compRateOf(HOLIDAY_RATE)),
-      normalHours: resultHours, over60Hours: 0,
-    };
-  }
-  if (flatRate) {
-    return {
-      amount: Math.round(resultHours * hourlyWage * compRateOf(OVERTIME_RATE)),
       normalHours: resultHours, over60Hours: 0,
     };
   }

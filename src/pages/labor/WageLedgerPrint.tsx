@@ -10,7 +10,7 @@ import { getStaff, listAttendanceRange, listOvertimeByStaff, todayStr } from '..
 import { EMPLOYMENT_TYPE_LABELS, GENDER_LABELS, fiscalYearLabel, currentFiscalYear } from '../../utils/constants';
 import {
   allowanceDetail, compPremiumDetail, priorOvertimeMap,
-  usesFlatOvertimeRate, nightHoursOf, nightAllowanceOf,
+  shiftExcessIsPremium, partMonthPremium, nightHoursOf, nightAllowanceOf,
 } from '../../utils/overtime';
 import type { Staff, AttendanceRecord } from '../../types';
 
@@ -38,8 +38,8 @@ interface MonthRow {
   overtimeHours: number;
   holidayHours: number;
   nightHours: number;
-  allowance: number;      // 時間外手当（システムで計算できる分）
-  nightAllowance: number; // 深夜手当（加算25%分）
+  allowance: number;      // 時間外手当（常勤職員）
+  nightAllowance: number; // 割増の加算分（常勤=深夜25%／パート=時間帯・法定超・深夜）
 }
 
 export default function WageLedgerPrint() {
@@ -85,26 +85,31 @@ export default function WageLedgerPrint() {
         // 月60時間超の割増を月内の日付順に反映する
         const prior = priorOvertimeMap(o, r => r.kind, r => Number(r.resultHours) || 0);
         const wage = s?.hourlyWage || 0;
-        // パート職員等は一律×1.25（パートタイム労働者就業規則 第8条1項）
-        const flat = s ? usesFlatOvertimeRate(s) : false;
-        const allowance = o.reduce((sum, r) => {
+        // パート職員はシフト超過そのものに割増がつかない（パート規則 第8条1項）
+        const excessPaid = s ? shiftExcessIsPremium(s) : true;
+        const allowance = !excessPaid ? 0 : o.reduce((sum, r) => {
           const hrs = Number(r.resultHours) || 0;
           // 代休にしたものは割増部分のみ支給する（就業規則 第20条2項）
           const d = r.disposition === 'comp'
-            ? compPremiumDetail(hrs, wage, r.kind, prior.get(r.id) ?? 0, flat)
-            : allowanceDetail(hrs, wage, r.kind, prior.get(r.id) ?? 0, flat);
+            ? compPremiumDetail(hrs, wage, r.kind, prior.get(r.id) ?? 0)
+            : allowanceDetail(hrs, wage, r.kind, prior.get(r.id) ?? 0);
           return sum + d.amount;
         }, 0);
         const nightHours = r1(a.reduce((x, r) => x + nightHoursOf(r), 0));
+        // パート職員は勤務した時間帯から割増を求める（第8条2項・3項）
+        const band = excessPaid ? null : partMonthPremium(a, wage);
         return {
           month,
           days: a.filter(r => r.dayType === 'work' && workMinutes(r) > 0).length,
           workHours: h1(a.reduce((x, r) => x + workMinutes(r), 0)),
-          overtimeHours: Math.round(o.filter(r => r.kind === 'overtime').reduce((x, r) => x + (Number(r.resultHours) || 0), 0) * 10) / 10,
+          // 時間外の労働時間数。パート職員は法定時間外（1日8時間・週40時間超）を記載する
+          overtimeHours: band
+            ? r1(band.legalHours + band.weeklyExcessHours)
+            : Math.round(o.filter(r => r.kind === 'overtime').reduce((x, r) => x + (Number(r.resultHours) || 0), 0) * 10) / 10,
           holidayHours: Math.round(o.filter(r => r.kind === 'holiday').reduce((x, r) => x + (Number(r.resultHours) || 0), 0) * 10) / 10,
           nightHours,
           allowance,
-          nightAllowance: nightAllowanceOf(nightHours, wage),
+          nightAllowance: band ? band.amount : nightAllowanceOf(nightHours, wage),
         };
       });
       setRows(built);
@@ -172,7 +177,7 @@ export default function WageLedgerPrint() {
                 <th className={th}>深夜労働</th>
                 <th className={th}>基本給</th>
                 <th className={th}>時間外手当</th>
-                <th className={th}>深夜手当</th>
+                <th className={th}>割増の加算</th>
                 <th className={th}>その他手当</th>
                 <th className={th}>賃金総額</th>
                 <th className={th}>控除額</th>
@@ -216,9 +221,12 @@ export default function WageLedgerPrint() {
           </table>
 
           <p className="text-xs text-gray-500 mt-2">
-            労働日数・労働時間数・深夜労働は勤怠の記録から、時間外・休日労働と時間外手当は承認済みの時間外実績から集計しています
-            （代休にした分は第20条2項により割増部分のみ含めています）。パート職員等の時間外は一律×1.25（パートタイム労働者就業規則 第8条1項）。
-            深夜手当は22:00〜5:00の勤務に対する加算25%分です（同2項）。基本給・その他手当・控除額は給与計算の情報のため、色のついた欄に記入してください。
+            労働日数・労働時間数・深夜労働は勤怠の記録から集計しています。
+            <b>常勤職員</b>は時間外・休日労働と時間外手当を承認済みの時間外実績から集計し（代休にした分は第20条2項により割増部分のみ）、
+            「割増の加算」は深夜25%分です。
+            <b>パート職員</b>はシフト超過だけでは割増がつかないため（1.0倍・パート規則 第8条1項）時間外手当は計上せず、
+            時間外の欄には法定時間外（1日8時間・週40時間超）を、「割増の加算」には 8:30前・21:30後／法定時間外／深夜の加算分（25%、法定時間外かつ深夜は50%）を記載しています。
+            基本給・その他手当・控除額は給与計算の情報のため、色のついた欄に記入してください。
           </p>
           <p className="text-xs text-gray-400 mt-1">作成日: {todayStr()}</p>
         </section>
