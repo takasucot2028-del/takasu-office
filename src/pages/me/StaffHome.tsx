@@ -30,11 +30,25 @@ export default function StaffHome() {
   const [breakEndInput, setBreakEndInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [punching, setPunching] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
   const date = todayStr();
   const wd = WEEKDAY_LABELS[new Date(`${date}T00:00:00`).getDay()];
+  /** 端末の現在時刻（HH:MM）。サーバーの記録が返るまでの仮表示に使う */
+  const nowHM = () => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+  /** その日の記録に打刻時刻を当てはめる */
+  const withPunch = (prev: AttendanceRecord | undefined, type: 'in' | 'out', time: string): AttendanceRecord => {
+    const base: AttendanceRecord = prev ?? {
+      id: `${staff?.id ?? ''}_${date}`, staffId: staff?.id ?? '', date,
+      dayType: 'work', startTime: '', endTime: '', breakMinutes: 0, note: '',
+    };
+    return type === 'in' ? { ...base, startTime: time } : { ...base, endTime: time };
+  };
   const breakNum = breakMinutesBetween(breakStartInput, breakEndInput);
 
   /** 取得した内容を画面に反映する。keepInput=true なら入力中の休憩欄は触らない */
@@ -65,22 +79,27 @@ export default function StaffHome() {
     /* eslint-disable-next-line */
   }, []);
 
+  /**
+   * 打刻。サーバーの応答を待つと数秒かかるため、押した時点で画面に反映し、
+   * 記録は裏で行う。記録できたらサーバーが決めた時刻に置き換え、
+   * 失敗したら元に戻す。
+   */
   const doPunch = async (type: 'in' | 'out') => {
-    setBusy(true); setError(''); setMessage('');
+    if (punching) return;                    // 二重に押させない
+    const label = type === 'in' ? '出勤' : '退勤';
+    const before = today;
+    setPunching(true); setError('');
+    setToday(prev => withPunch(prev, type, nowHM()));
+    setMessage(`${label}を記録しています…`);
     try {
       const res = await punch(type);
-      setMessage(`${type === 'in' ? '出勤' : '退勤'}を記録しました（${res.time}）`);
-      // 打刻の結果はその場で反映する（もう一度全体を取りに行かない）
-      setToday(prev => {
-        const base: AttendanceRecord = prev ?? {
-          id: `${staff?.id ?? ''}_${date}`, staffId: staff?.id ?? '', date,
-          dayType: 'work', startTime: '', endTime: '', breakMinutes: 0, note: '',
-        };
-        return type === 'in' ? { ...base, startTime: res.time } : { ...base, endTime: res.time };
-      });
+      setToday(prev => withPunch(prev, type, res.time));  // サーバーが記録した時刻に合わせる
+      setMessage(`${label}を記録しました（${res.time}）`);
     } catch (err) {
+      setToday(before);                       // 記録できなかったので表示を戻す
+      setMessage('');
       setError(err instanceof Error ? err.message : '打刻に失敗しました');
-    } finally { setBusy(false); }
+    } finally { setPunching(false); }
   };
 
   // シフト変更を確認済みにする（通知を消す）
@@ -158,8 +177,12 @@ export default function StaffHome() {
           )}
         </div>
         <div className="flex gap-3 justify-center">
-          <Button onClick={() => doPunch('in')} disabled={busy} className="px-8 py-3 text-base">出勤</Button>
-          <Button onClick={() => doPunch('out')} disabled={busy} variant="secondary" className="px-8 py-3 text-base">退勤</Button>
+          <Button onClick={() => doPunch('in')} disabled={busy || punching} className="px-8 py-3 text-base">
+            {punching ? '記録中…' : '出勤'}
+          </Button>
+          <Button onClick={() => doPunch('out')} disabled={busy || punching} variant="secondary" className="px-8 py-3 text-base">
+            {punching ? '記録中…' : '退勤'}
+          </Button>
         </div>
 
         {/* 休憩時間の入力（本日分・時刻で入力） */}
