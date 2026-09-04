@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageContainer, Card, Button, Alert, Badge } from '../../components/UI';
-import { punch, setMyBreak, getStaffHomeData, getStaffHomeCached, markShiftChangesRead, todayStr } from '../../api/data';
+import {
+  punch, setMyBreak, getStaffHomeData, getStaffHomeCached,
+  markShiftChangesRead, markAttendanceChangesRead, todayStr,
+} from '../../api/data';
 import type { TodayWork, StaffHomeData } from '../../api/data';
 import { WEEKDAY_LABELS, DOC_TYPE_LABELS, WORK_LOCATION_LABELS, breakMinutesBetween } from '../../utils/constants';
-import type { Staff, AttendanceRecord, DocumentItem, WorkLocation, ShiftChange } from '../../types';
+import type { Staff, AttendanceRecord, DocumentItem, WorkLocation, ShiftChange, AttendanceChange } from '../../types';
 
 function parseHM(hm: string): number | null {
   const m = /^(\d{1,2}):(\d{2})$/.exec(hm || '');
@@ -26,6 +29,7 @@ export default function StaffHome() {
   const [todayWork, setTodayWork] = useState<TodayWork>({ shifts: [], leave: [], comp: [] });
   const [recentDocs, setRecentDocs] = useState<DocumentItem[]>([]);
   const [shiftChanges, setShiftChanges] = useState<ShiftChange[]>([]);
+  const [attChanges, setAttChanges] = useState<AttendanceChange[]>([]);
   const [breakStartInput, setBreakStartInput] = useState('');
   const [breakEndInput, setBreakEndInput] = useState('');
   const [loading, setLoading] = useState(true);
@@ -62,6 +66,7 @@ export default function StaffHome() {
     }
     setTodayWork(home.today);
     setShiftChanges(home.shiftChanges);
+    setAttChanges(home.attendanceChanges || []);
     setRecentDocs(home.documents.slice(0, 4));
     setLoading(false);
   };
@@ -125,6 +130,12 @@ export default function StaffHome() {
     catch (err) { setError(err instanceof Error ? err.message : '確認の記録に失敗しました'); }
   };
 
+  const confirmAttChanges = async () => {
+    setAttChanges([]); // 先に消して待たせない
+    try { await markAttendanceChangesRead(); }
+    catch (err) { setError(err instanceof Error ? err.message : '確認の記録に失敗しました'); }
+  };
+
   const saveBreak = async () => {
     if ((breakStartInput && !breakEndInput) || (!breakStartInput && breakEndInput)) {
       setError('休憩は開始と終了の両方を入力してください'); return;
@@ -176,6 +187,39 @@ export default function StaffHome() {
           </ul>
           <div className="flex justify-end">
             <Button size="sm" variant="secondary" onClick={confirmShiftChanges}>確認しました</Button>
+          </div>
+        </Card>
+      )}
+
+      {/* 出退勤の修正の通知（事務局が打刻を直したとき） */}
+      {attChanges.length > 0 && (
+        <Card className="mb-4 border-amber-300 bg-amber-50">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-bold text-amber-800">出退勤の記録が修正されました</h2>
+            <Badge color="yellow">{attChanges.length}件</Badge>
+          </div>
+          <ul className="divide-y divide-amber-200 border border-amber-200 rounded-md bg-white mb-3">
+            {attChanges.map(c => (
+              <li key={c.id} className="px-3 py-2 text-sm">
+                <div className="flex flex-wrap items-center gap-x-2">
+                  <span className="font-medium text-gray-800">
+                    {Number(c.date.slice(5, 7))}/{Number(c.date.slice(8))}
+                    （{WEEKDAY_LABELS[new Date(`${c.date}T00:00:00`).getDay()]}）
+                  </span>
+                  <span className="text-gray-400 line-through">{c.before}</span>
+                  <span className="text-gray-400">→</span>
+                  <span className="font-bold text-amber-800">{c.after}</span>
+                </div>
+                <div className="text-xs text-gray-400 mt-0.5">{c.changedAt} に修正</div>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-gray-600 mb-3">
+            内容に心当たりがないときは事務局にご確認ください。
+            <Link to="/me/attendance" className="text-blue-600 underline ml-1">出勤簿を見る</Link>
+          </p>
+          <div className="flex justify-end">
+            <Button size="sm" variant="secondary" onClick={confirmAttChanges}>確認しました</Button>
           </div>
         </Card>
       )}

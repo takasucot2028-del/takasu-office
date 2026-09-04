@@ -217,6 +217,17 @@ export interface ShiftChange {
   readAt: string;             // 従業員が確認した日時（未確認は空）
 }
 
+/** 勤怠（出退勤）の修正通知。事務局が打刻を直したときに本人へ知らせる */
+export interface AttendanceChange {
+  id: string;
+  staffId: string;
+  date: string;               // 修正された日 YYYY-MM-DD
+  before: string;             // 修正前（例:「9:00〜17:00 休憩60分」「記録なし」）
+  after: string;              // 修正後
+  changedAt: string;          // 修正日時 YYYY-MM-DD HH:mm
+  readAt: string;             // 従業員が確認した日時（未確認は空）
+}
+
 /** 変更履歴の1件（誰がいつ何を変えたか） */
 export interface AuditEntry {
   id: string;

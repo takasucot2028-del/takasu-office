@@ -3,7 +3,7 @@ import type {
   Staff, AttendanceRecord, LeaveRecord, WorkLocation,
   ShiftPattern, AvailabilityRecord, ConfirmedShift,
   OvertimeRecord, CompLeaveUse, DocumentItem,
-  ExpenseCategory, Budget, Expense, RequestStatus, ShiftChange, AuditEntry,
+  ExpenseCategory, Budget, Expense, RequestStatus, ShiftChange, AttendanceChange, AuditEntry,
 } from '../types';
 import { ADMIN_EMAIL, ADMIN_PASSWORD, DEFAULT_SHIFT_PATTERNS, DEFAULT_EXPENSE_CATEGORIES, breakMinutesBetween } from './constants';
 
@@ -133,11 +133,58 @@ export function listAttendance(staffId: string, month: string): AttendanceRecord
 
 /** 指定職員・指定月の勤怠を丸ごと差し替える */
 export function saveMonthAttendance(staffId: string, month: string, records: AttendanceRecord[]) {
-  const others = load<AttendanceRecord>(KEY_ATTENDANCE).filter(
-    r => !(r.staffId === staffId && r.date.startsWith(month))
-  );
+  const all = load<AttendanceRecord>(KEY_ATTENDANCE);
+  const isTarget = (r: AttendanceRecord) => r.staffId === staffId && r.date.startsWith(month);
+  const others = all.filter(r => !isTarget(r));
+  recordAttendanceChanges(staffId, all.filter(isTarget), records); // 変更を本人への通知に残す
   save(KEY_ATTENDANCE, [...others, ...records]);
   writeAudit('勤怠の保存', '勤怠', `${month} / ${records.length}件`);
+}
+
+// ---- 勤怠変更履歴（本人への通知） ----
+const KEY_ATT_CHANGES = 'tof_attendance_changes';
+
+/** 通知に出す1日ぶんの表示（例:「9:00〜17:00 休憩60分」「有給」「記録なし」） */
+function attendanceLabel(rec: AttendanceRecord | undefined): string {
+  if (!rec) return '記録なし';
+  if (rec.dayType === 'paid') return '有給';
+  if (rec.dayType === 'absent') return '欠勤';
+  const s = rec.startTime || '', e = rec.endTime || '';
+  if (!s && !e) return '記録なし';
+  const brk = Number(rec.breakMinutes) || 0;
+  return `${s || '—'}〜${e || '—'}${brk > 0 ? ` 休憩${brk}分` : ''}`;
+}
+
+/** 勤怠の置き換え前後を日ごとに比べ、変わった日だけを履歴に追加する */
+export function recordAttendanceChanges(
+  staffId: string, oldList: AttendanceRecord[], newList: AttendanceRecord[]
+) {
+  const byDate = (list: AttendanceRecord[]) => new Map(list.map(r => [r.date, r]));
+  const before = byDate(oldList), after = byDate(newList);
+  const dates = [...new Set([...before.keys(), ...after.keys()])].sort();
+  const d = new Date();
+  const now = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const added: AttendanceChange[] = [];
+  for (const date of dates) {
+    const b = attendanceLabel(before.get(date)), a = attendanceLabel(after.get(date));
+    if (b === a) continue;
+    added.push({ id: genId('ac'), staffId, date, before: b, after: a, changedAt: now, readAt: '' });
+  }
+  if (added.length) save(KEY_ATT_CHANGES, [...load<AttendanceChange>(KEY_ATT_CHANGES), ...added]);
+}
+
+/** 自分の未確認の勤怠修正（新しい順） */
+export function listMyAttendanceChanges(staffId: string): AttendanceChange[] {
+  return load<AttendanceChange>(KEY_ATT_CHANGES)
+    .filter(r => r.staffId === staffId && !r.readAt)
+    .sort((a, b) => b.changedAt.localeCompare(a.changedAt));
+}
+
+/** 自分の勤怠修正をすべて確認済みにする */
+export function markAttendanceChangesReadLocal(staffId: string) {
+  const d = new Date();
+  const now = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  save(KEY_ATT_CHANGES, load<AttendanceChange>(KEY_ATT_CHANGES).map(r => (r.staffId === staffId && !r.readAt ? { ...r, readAt: now } : r)));
 }
 
 // ---- シフト区分マスタ ----

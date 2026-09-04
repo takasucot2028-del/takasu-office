@@ -80,6 +80,10 @@ var SHEETS = {
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['location', '勤務場所'],
     ['before', '変更前'], ['after', '変更後'], ['changedAt', '変更日時'], ['readAt', '確認日時'],
   ] },
+  attendance_changes: { name: '勤怠変更履歴', columns: [
+    ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'],
+    ['before', '変更前'], ['after', '変更後'], ['changedAt', '変更日時'], ['readAt', '確認日時'],
+  ] },
 };
 
 function sheetConf(key) {
@@ -509,6 +513,7 @@ var PUBLIC_ACTIONS = { adminLogin: true, staffLogin: true };
 var STAFF_ACTIONS = {
   getMyProfile: true, getMyAttendance: true, punch: true, setMyBreak: true,
   getMyShiftChanges: true, markShiftChangesRead: true,
+  getMyAttendanceChanges: true, markAttendanceChangesRead: true,
   getMyAvailability: true, saveMyAvailability: true, getMyConfirmed: true,
   getMyOvertime: true, addMyOvertime: true,
   getMyLeave: true, addMyLeaveRequest: true, staffChangePassword: true,
@@ -679,6 +684,12 @@ function dispatch(action, body) {
         break;
       case 'markShiftChangesRead':
         result = handleMarkShiftChangesRead(getSession(body.token));
+        break;
+      case 'getMyAttendanceChanges':
+        result = handleGetMyAttendanceChanges(getSession(body.token));
+        break;
+      case 'markAttendanceChangesRead':
+        result = handleMarkAttendanceChangesRead(getSession(body.token));
         break;
       case 'getMyAvailability':
         result = handleGetMyAvailability(getSession(body.token), body.month);
@@ -1134,6 +1145,7 @@ function handleGetAttendance(staffId, month) {
 }
 
 // 指定職員・指定月の勤怠を丸ごと置換する。ループ削除を避け一括で書き直す。
+// 置き換え前後を比較し、変更内容を「勤怠変更履歴」に記録する（本人への通知に使う）。
 function handleSaveMonthAttendance(staffId, month, records) {
   const sheet = getSheet('attendance');
   const ncol = colKeys('attendance').length;
@@ -1141,10 +1153,18 @@ function handleSaveMonthAttendance(staffId, month, records) {
 
   // 対象（staffId かつ 対象月）以外の行を残す
   const kept = [];
+  const oldTargets = []; // 置き換え対象（同職員・同月）の既存データ
   for (let i = 1; i < data.length; i++) {
     const rowStaff = String(data[i][1]);
     const rowDate = cellYmd_(data[i][2]);
-    if (rowStaff === String(staffId) && rowDate.slice(0, 7) === month) continue;
+    if (rowStaff === String(staffId) && rowDate.slice(0, 7) === month) {
+      oldTargets.push({
+        date: rowDate, dayType: String(data[i][3]),
+        startTime: String(data[i][4] || ''), endTime: String(data[i][5] || ''),
+        breakMinutes: Number(data[i][6]) || 0,
+      });
+      continue;
+    }
     kept.push(data[i].slice(0, ncol));
   }
   const newRows = (records || []).map(function (r) { return objectToRow('attendance', r); });
@@ -1154,8 +1174,81 @@ function handleSaveMonthAttendance(staffId, month, records) {
   sheet.getRange(1, 1, sheet.getMaxRows(), ncol).setNumberFormat('@');
   sheet.getRange(1, 1, out.length, ncol).setValues(out);
   sheet.setFrozenRows(1);
-  return { success: true };
   forgetHeader_(sheet.getSheetName()); // 見出しを書き換えたので確認し直す
+
+  recordAttendanceChanges_(staffId, oldTargets, records || []);
+  return { success: true };
+}
+
+/** 通知に出す1日ぶんの表示（例:「9:00〜17:00 休憩60分」「有給」「記録なし」） */
+function attendanceLabel_(rec) {
+  if (!rec) return '記録なし';
+  const type = String(rec.dayType || 'work');
+  if (type === 'paid') return '有給';
+  if (type === 'absent') return '欠勤';
+  const s = String(rec.startTime || ''), e = String(rec.endTime || '');
+  if (!s && !e) return '記録なし';
+  const brk = Number(rec.breakMinutes) || 0;
+  return (s || '—') + '〜' + (e || '—') + (brk > 0 ? ' 休憩' + brk + '分' : '');
+}
+
+// 変更前後を日ごとに比べ、変わった日だけを履歴に追加する。
+function recordAttendanceChanges_(staffId, oldList, newList) {
+  const byDate = function (list) {
+    const m = {};
+    (list || []).forEach(function (r) { m[String(r.date)] = r; });
+    return m;
+  };
+  const before = byDate(oldList), after = byDate(newList);
+  const dates = {};
+  Object.keys(before).forEach(function (d) { dates[d] = true; });
+  Object.keys(after).forEach(function (d) { dates[d] = true; });
+
+  const tz = Session.getScriptTimeZone();
+  const now = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm');
+  const rows = [];
+  Object.keys(dates).sort().forEach(function (d) {
+    const b = attendanceLabel_(before[d]), a = attendanceLabel_(after[d]);
+    if (b === a) return;                       // 変更なし
+    if (b === '記録なし' && a === '記録なし') return;
+    rows.push(objectToRow('attendance_changes', {
+      id: genId('ac'), staffId: String(staffId), date: d,
+      before: b, after: a, changedAt: now, readAt: '',
+    }));
+  });
+  if (!rows.length) return;
+  const sheet = getSheet('attendance_changes');
+  const ncol = colKeys('attendance_changes').length;
+  const start = sheet.getLastRow() + 1;
+  if (sheet.getMaxRows() < start + rows.length) sheet.insertRowsAfter(sheet.getMaxRows(), rows.length);
+  const range = sheet.getRange(start, 1, rows.length, ncol);
+  range.setNumberFormat('@');
+  range.setValues(rows);
+}
+
+// 自分の勤怠変更のうち未確認のものを返す（新しい順）
+function handleGetMyAttendanceChanges(session) {
+  const staff = staffOf_(session);
+  const list = sheetToObjects(getSheet('attendance_changes'), 'attendance_changes')
+    .filter(function (r) { return String(r.staffId) === staff.id && !String(r.readAt || '').trim(); });
+  list.sort(function (a, b) { return String(b.changedAt).localeCompare(String(a.changedAt)); });
+  return { success: true, data: list.slice(0, 50) };
+}
+
+// 自分の勤怠変更をすべて確認済みにする
+function handleMarkAttendanceChangesRead(session) {
+  const staff = staffOf_(session);
+  const sheet = getSheet('attendance_changes');
+  const data = sheet.getDataRange().getValues();
+  const col = colNum('attendance_changes', 'readAt');
+  const tz = Session.getScriptTimeZone();
+  const now = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm');
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][1]) !== staff.id) continue;
+    if (String(data[i][col - 1] || '').trim()) continue; // 既に確認済み
+    sheet.getRange(i + 1, col).setValue(now);
+  }
+  return { success: true };
 }
 
 // --- ハンドラー：シフト区分マスタ ---
