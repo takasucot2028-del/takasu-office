@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Button, Table, Th, Td } from '../../components/UI';
-import { getMyAttendance, todayStr } from '../../api/data';
+import { getMyAttendancePageData, todayStr } from '../../api/data';
 import { DAY_TYPE_LABELS, WEEKDAY_LABELS } from '../../utils/constants';
 import { isNationalHoliday } from '../../utils/holidays';
+import { workMinutesOf, roundedTimesOf, dayShiftMap } from '../../utils/worktime';
+import type { DayShift } from '../../utils/worktime';
 import type { AttendanceRecord } from '../../types';
 
 function currentMonth(): string { return todayStr().slice(0, 7); }
@@ -17,16 +19,9 @@ function daysOfMonth(month: string): string[] {
   const last = new Date(y, m, 0).getDate();
   return Array.from({ length: last }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`);
 }
-function parseHM(hm: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hm || '');
-  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
-}
-/** 実働分数＝退勤−出勤−休憩 */
-function workMinutes(rec?: AttendanceRecord): number {
-  if (!rec || rec.dayType !== 'work') return 0;
-  const s = parseHM(rec.startTime), e = parseHM(rec.endTime);
-  if (s === null || e === null) return 0;
-  return Math.max(0, e - s - (rec.breakMinutes || 0));
+/** 実働分数。打刻はシフトに合わせて丸めてから計算する（utils/worktime） */
+function workMinutes(rec?: AttendanceRecord, shift?: DayShift): number {
+  return workMinutesOf(rec, shift);
 }
 const hhmm = (min: number) => `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`;
 
@@ -34,17 +29,20 @@ export default function StaffAttendance() {
   const navigate = useNavigate();
   const [month, setMonth] = useState(currentMonth());
   const [records, setRecords] = useState<Record<string, AttendanceRecord>>({});
+  const [shiftMap, setShiftMap] = useState<Map<string, DayShift>>(new Map());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
     (async () => {
-      const list = await getMyAttendance(month);
+      const d = await getMyAttendancePageData(month);
       if (!alive) return;
       const map: Record<string, AttendanceRecord> = {};
-      for (const r of list) map[r.date] = r;
+      for (const r of d.attendance) map[r.date] = r;
       setRecords(map);
+      // 打刻を丸めるための材料（シフトの開始・終了と早出申請の有無）
+      setShiftMap(dayShiftMap(d.confirmed, d.patterns, d.overtime)); // 本人ぶんのみのデータ
       setLoading(false);
     })();
     return () => { alive = false; };
@@ -57,9 +55,9 @@ export default function StaffAttendance() {
       work: list.filter(r => r.dayType === 'work').length,
       paid: list.filter(r => r.dayType === 'paid').length,
       absent: list.filter(r => r.dayType === 'absent').length,
-      minutes: list.reduce((s, r) => s + workMinutes(r), 0),
+      minutes: list.reduce((s, r) => s + workMinutes(r, shiftMap.get(r.date)), 0),
     };
-  }, [days, records]);
+  }, [days, records, shiftMap]);
 
   return (
     <PageContainer title="出勤簿">
@@ -83,6 +81,12 @@ export default function StaffAttendance() {
         <Tile label="欠勤日数" value={`${totals.absent}日`} />
         <Tile label="総実働時間" value={hhmm(totals.minutes)} />
       </div>
+
+      <p className="text-xs text-gray-500 mb-3">
+        実働は打刻をシフトに合わせて計算します。シフト開始より早く打刻した日は、時間外の申請がなければ
+        <b>シフト開始から</b>。シフト終了より遅く打刻した日は<b>15分単位で切り上げ</b>ます
+        （<span className="text-blue-600">青字</span>が計算に使った時刻）。
+      </p>
 
       <Card className="p-0 overflow-x-auto">
         <Table>
@@ -111,7 +115,25 @@ export default function StaffAttendance() {
                   <Td className="whitespace-nowrap">{rec?.dayType === 'work' ? rec.startTime : ''}</Td>
                   <Td className="whitespace-nowrap">{rec?.dayType === 'work' ? rec.endTime : ''}</Td>
                   <Td className="whitespace-nowrap text-xs text-gray-500">{rec?.dayType === 'work' ? brk : ''}</Td>
-                  <Td className="whitespace-nowrap font-medium">{rec && rec.dayType === 'work' && workMinutes(rec) > 0 ? hhmm(workMinutes(rec)) : ''}</Td>
+                  <Td className="whitespace-nowrap font-medium">
+                    {(() => {
+                      if (!rec || rec.dayType !== 'work') return '';
+                      const sh = shiftMap.get(date);
+                      const min = workMinutes(rec, sh);
+                      if (min <= 0) return '';
+                      const t = roundedTimesOf(rec, sh);
+                      return (
+                        <>
+                          {hhmm(min)}
+                          {(t.startRounded || t.endRounded) && (
+                            <div className="text-[10px] font-normal text-blue-600 leading-tight">
+                              {t.startTime}〜{t.endTime}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </Td>
                   <Td className="text-xs text-gray-500">{rec?.note || ''}</Td>
                 </tr>
               );

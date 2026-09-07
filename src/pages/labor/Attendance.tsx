@@ -6,6 +6,8 @@ import { listStaff, saveMonthAttendance, getAttendancePageData, listShiftPattern
 import { DAY_TYPE_LABELS, WEEKDAY_LABELS, breakMinutesBetween } from '../../utils/constants';
 import { shiftPlanByDate, isMissingPunch } from '../../utils/shiftPlan';
 import { overtimeByDate, OVERTIME_KIND_LABELS } from '../../utils/overtime';
+import { workMinutesOf, roundedTimesOf, dayShiftMap } from '../../utils/worktime';
+import type { DayShift } from '../../utils/worktime';
 import type { AttendanceRecord, AttendanceDayType, Staff, ShiftPattern, ConfirmedShift, OvertimeRecord } from '../../types';
 
 function currentMonth(): string {
@@ -19,19 +21,9 @@ function daysOfMonth(month: string): string[] {
   return Array.from({ length: last }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`);
 }
 
-function parseHM(hm: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hm);
-  if (!m) return null;
-  return Number(m[1]) * 60 + Number(m[2]);
-}
-
-/** 実働分数（出勤日で出退勤が入力済みのときのみ） */
-function workMinutes(rec: AttendanceRecord): number {
-  if (rec.dayType !== 'work') return 0;
-  const start = parseHM(rec.startTime);
-  const end = parseHM(rec.endTime);
-  if (start === null || end === null) return 0;
-  return Math.max(0, end - start - (rec.breakMinutes || 0));
+/** 実働分数。打刻はシフトに合わせて丸めてから計算する（utils/worktime） */
+function workMinutes(rec: AttendanceRecord, shift?: DayShift): number {
+  return workMinutesOf(rec, shift);
 }
 
 function formatMinutes(min: number): string {
@@ -101,6 +93,11 @@ export default function Attendance() {
 
   // 日付ごとの勤務予定と、シフトがあるのに打刻がない日
   const plans = useMemo(() => shiftPlanByDate(confirmed, patterns), [confirmed, patterns]);
+  // 打刻を丸めるための材料（シフトの開始・終了と早出申請の有無）
+  const shiftMap = useMemo(
+    () => dayShiftMap(confirmed, patterns, overtime, staffId),
+    [confirmed, patterns, overtime, staffId]
+  );
   const today = todayStr();
   const missingDays = useMemo(
     () => days.filter(d => isMissingPunch(records[d], plans.get(d), d, today)),
@@ -154,7 +151,7 @@ export default function Attendance() {
   const workDays = recList.filter(r => r.dayType === 'work').length;
   const paidDays = recList.filter(r => r.dayType === 'paid').length;
   const absentDays = recList.filter(r => r.dayType === 'absent').length;
-  const totalMinutes = recList.reduce((s, r) => s + workMinutes(r), 0);
+  const totalMinutes = recList.reduce((s, r) => s + workMinutes(r, shiftMap.get(r.date)), 0);
 
   const exportExcel = () => {
     if (!selectedStaff) return;
@@ -162,7 +159,7 @@ export default function Attendance() {
       [`出勤簿 ${month}`, '', '', '', '', '', ''],
       [`氏名: ${selectedStaff.lastName} ${selectedStaff.firstName}`, '', '', '', '', '', ''],
       [],
-      ['日付', '曜日', 'シフト予定', 'シフト時間', '区分', '出勤', '退勤', '休憩', '休憩(分)', '実働', '時間外', '種別', '備考'],
+      ['日付', '曜日', 'シフト予定', 'シフト時間', '区分', '出勤', '退勤', '計算に使う時刻', '休憩', '休憩(分)', '実働', '時間外', '種別', '備考'],
       ...days.map(date => {
         const rec = records[date];
         const plan = plans.get(date);
@@ -170,7 +167,9 @@ export default function Attendance() {
         const planCells = [plan ? plan.timeLabel : '', plan ? plan.hours : ''];
         const ot = otByDate.get(date);
         const otCells = [ot ? ot.hours : '', ot ? OVERTIME_KIND_LABELS[ot.kind] : ''];
-        if (!rec) return [date, wd, ...planCells, '', '', '', '', '', '', ...otCells, ''];
+        if (!rec) return [date, wd, ...planCells, '', '', '', '', '', '', '', ...otCells, ''];
+        const sh = shiftMap.get(date);
+        const t = roundedTimesOf(rec, sh);
         return [
           date,
           wd,
@@ -178,9 +177,10 @@ export default function Attendance() {
           DAY_TYPE_LABELS[rec.dayType],
           rec.startTime,
           rec.endTime,
+          t.startRounded || t.endRounded ? `${t.startTime}〜${t.endTime}` : '',
           rec.breakStart && rec.breakEnd ? `${rec.breakStart}〜${rec.breakEnd}` : '',
           rec.breakMinutes || '',
-          rec.dayType === 'work' ? formatMinutes(workMinutes(rec)) : '',
+          rec.dayType === 'work' ? formatMinutes(workMinutes(rec, sh)) : '',
           ...otCells,
           rec.note,
         ];
@@ -189,7 +189,7 @@ export default function Attendance() {
       ['出勤日数', workDays, '有給日数', paidDays, '欠勤日数', absentDays, '総実働', formatMinutes(totalMinutes), '時間外', monthOtHours, '休日勤務', monthHolidayHours],
     ];
     const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{ wch: 12 }, { wch: 5 }, { wch: 14 }, { wch: 10 }, { wch: 6 }, { wch: 7 }, { wch: 7 }, { wch: 13 }, { wch: 9 }, { wch: 7 }, { wch: 8 }, { wch: 8 }, { wch: 20 }];
+    ws['!cols'] = [{ wch: 12 }, { wch: 5 }, { wch: 14 }, { wch: 10 }, { wch: 6 }, { wch: 7 }, { wch: 7 }, { wch: 15 }, { wch: 13 }, { wch: 9 }, { wch: 7 }, { wch: 8 }, { wch: 8 }, { wch: 20 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '出勤簿');
     XLSX.writeFile(wb, `出勤簿_${selectedStaff.lastName}${selectedStaff.firstName}_${month}.xlsx`);
@@ -233,7 +233,10 @@ export default function Attendance() {
             <SummaryTile label="休日勤務" value={`${monthHolidayHours}h`} />
           </div>
           <p className="text-xs text-gray-400 -mt-2 mb-4">
-            時間外・休日勤務は「時間外」画面で登録された実績です。この画面では変更できません。
+            時間外・休日勤務は「時間外」画面で登録された実績です。この画面では変更できません。<br />
+            実働は打刻をシフトに合わせて丸めて計算します（<span className="text-blue-600">青字</span>が計算に使った時刻）。
+            シフト開始前の打刻は、早出の申請がなければシフト開始から。シフト終了後の打刻は15分単位で切り上げ。
+            シフト開始以降の出勤打刻と早退は実時刻のままです。
           </p>
 
           <div className="flex justify-end gap-2 mb-3">
@@ -336,7 +339,17 @@ export default function Attendance() {
                         )}
                       </Td>
                       <Td className="whitespace-nowrap text-gray-600">
-                        {rec && isWork ? formatMinutes(workMinutes(rec)) : ''}
+                        {rec && isWork ? formatMinutes(workMinutes(rec, shiftMap.get(date))) : ''}
+                        {/* 打刻をシフトに合わせて丸めた日は、計算に使った時刻を添える */}
+                        {rec && isWork && (() => {
+                          const t = roundedTimesOf(rec, shiftMap.get(date));
+                          if (!t.startRounded && !t.endRounded) return null;
+                          return (
+                            <div className="text-[10px] text-blue-600 leading-tight" title="打刻をシフトに合わせて丸めた時刻で計算しています">
+                              {t.startTime}〜{t.endTime}
+                            </div>
+                          );
+                        })()}
                       </Td>
                       <Td className="whitespace-nowrap">
                         {(() => {

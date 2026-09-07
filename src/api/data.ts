@@ -214,6 +214,42 @@ export async function getMyAttendance(month: string): Promise<AttendanceRecord[]
   return unwrap(await gas.getMyAttendance(month, token()), []);
 }
 
+/** 従業員の出勤簿。打刻の丸めに使う確定シフト・区分・自分の時間外もまとめて取得する */
+export interface MyAttendancePageData {
+  attendance: AttendanceRecord[];
+  confirmed: ConfirmedShift[];
+  patterns: ShiftPattern[];
+  overtime: OvertimeRecord[];
+}
+export async function getMyAttendancePageData(month: string): Promise<MyAttendancePageData> {
+  if (!USE_GAS) {
+    return {
+      attendance: local.listAttendance(staffId(), month),
+      confirmed: local.listConfirmedByMonth(month).filter(c => c.staffId === staffId()),
+      patterns: local.listShiftPatterns(),
+      overtime: local.listOvertimeByStaff(staffId()).filter(r => r.date.startsWith(month)),
+    };
+  }
+  const r = await batchCall([
+    { action: 'getMyAttendance', month },
+    { action: 'getMyConfirmed', month },
+    { action: 'getShiftPatterns' },
+    { action: 'getMyOvertime' },
+  ]);
+  if (r) {
+    return {
+      attendance: unwrap(r[0] as SubRes<AttendanceRecord[]>, []),
+      confirmed: unwrap(r[1] as SubRes<ConfirmedShift[]>, []),
+      patterns: unwrap(r[2] as SubRes<ShiftPattern[]>, []),
+      overtime: unwrap(r[3] as SubRes<OvertimeRecord[]>, []).filter(x => x.date.startsWith(month)),
+    };
+  }
+  const [attendance, confirmed, patterns, overtime] = await Promise.all([
+    getMyAttendance(month), getMyConfirmed(month), listShiftPatterns(), getMyOvertime(),
+  ]);
+  return { attendance, confirmed, patterns, overtime: overtime.filter(x => x.date.startsWith(month)) };
+}
+
 export async function punch(punchType: 'in' | 'out'): Promise<{ date: string; time: string; punchType: string }> {
   if (!USE_GAS) return local.punchLocal(staffId(), punchType);
   const res = await gas.punch(punchType, token());
@@ -889,6 +925,50 @@ export async function getAttendancePageData(staffId: string, month: string): Pro
   };
 }
 
+/** 賃金台帳（1職員・1年度）のデータ。打刻の丸めに確定シフトも読む */
+export interface WageLedgerData {
+  staff: Staff | null;
+  attendance: AttendanceRecord[];
+  overtime: OvertimeRecord[];
+  confirmed: ConfirmedShift[];
+  patterns: ShiftPattern[];
+}
+
+export async function getWageLedgerData(staffId: string, fy: number): Promise<WageLedgerData> {
+  const from = `${fy}-04-01`, to = `${fy + 1}-03-31`;
+  if (!USE_GAS) {
+    return {
+      staff: local.getStaff(staffId),
+      attendance: local.listAttendanceRange(staffId, from, to),
+      overtime: local.listOvertimeByStaff(staffId),
+      confirmed: local.listConfirmedRange(staffId, from, to),
+      patterns: local.listShiftPatterns(),
+    };
+  }
+  const r = await batchCall([
+    { action: 'getAttendanceRange', staffId, from, to },
+    { action: 'getOvertimeByStaff', staffId },
+    { action: 'getConfirmedRange', staffId, from, to },
+    { action: 'getShiftPatterns' },
+  ]);
+  const staff = await getStaff(staffId);
+  if (r) {
+    return {
+      staff,
+      attendance: unwrap(r[0] as SubRes<AttendanceRecord[]>, []),
+      overtime: unwrap(r[1] as SubRes<OvertimeRecord[]>, []),
+      confirmed: unwrap(r[2] as SubRes<ConfirmedShift[]>, []),
+      patterns: unwrap(r[3] as SubRes<ShiftPattern[]>, []),
+    };
+  }
+  const [attendance, overtime, confirmed, patterns] = await Promise.all([
+    listAttendanceRange(staffId, from, to), listOvertimeByStaff(staffId),
+    unwrap(await gas.getConfirmedRange(staffId, from, to, token()), [] as ConfirmedShift[]),
+    listShiftPatterns(),
+  ]);
+  return { staff, attendance, overtime, confirmed, patterns };
+}
+
 /** シフト画面のデータ（基礎データ＋その月の希望・確定）を1リクエストで取得する */
 export interface ShiftPageData extends ReferenceData, ShiftMonthData {}
 
@@ -1104,6 +1184,8 @@ export interface PayrollMonthData {
   overtime: OvertimeRecord[];
   leave: LeaveRecord[];
   compUse: CompLeaveUse[];
+  confirmed: ConfirmedShift[];   // 打刻の丸めに使う
+  patterns: ShiftPattern[];
 }
 
 export async function getPayrollMonthData(month: string): Promise<PayrollMonthData> {
@@ -1115,6 +1197,8 @@ export async function getPayrollMonthData(month: string): Promise<PayrollMonthDa
       overtime: local.listOvertimeByMonth(month),
       leave: local.listAllLeave().filter(r => r.date.startsWith(month)),
       compUse: local.listCompUseMonth(month),
+      confirmed: local.listConfirmedByMonth(month),
+      patterns: local.listShiftPatterns(),
     };
   }
   const r = await batchCall([
@@ -1122,6 +1206,8 @@ export async function getPayrollMonthData(month: string): Promise<PayrollMonthDa
     { action: 'getOvertimeMonth', month },
     { action: 'getAllLeave' },
     { action: 'getCompUseMonth', month },
+    { action: 'getConfirmedMonth', month },
+    { action: 'getShiftPatterns' },
   ]);
   if (r) {
     return {
@@ -1130,16 +1216,23 @@ export async function getPayrollMonthData(month: string): Promise<PayrollMonthDa
       overtime: unwrap(r[1] as SubRes<OvertimeRecord[]>, []),
       leave: unwrap(r[2] as SubRes<LeaveRecord[]>, []).filter(x => x.date.startsWith(month)),
       compUse: unwrap(r[3] as SubRes<CompLeaveUse[]>, []),
+      confirmed: unwrap(r[4] as SubRes<ConfirmedShift[]>, []),
+      patterns: unwrap(r[5] as SubRes<ShiftPattern[]>, []),
     };
   }
   // フォールバック（旧GAS: バッチ未対応）
-  const [attendance, overtime, leave, compUse] = await Promise.all([
+  const [attendance, overtime, leave, compUse, confirmed, patterns] = await Promise.all([
     unwrap(await gas.getAttendanceMonthAll(month, token()), [] as AttendanceRecord[]),
     listOvertimeByMonth(month),
     listAllLeave(),
     unwrap(await gas.getCompUseMonth(month, token()), [] as CompLeaveUse[]),
+    listConfirmedByMonth(month),
+    listShiftPatterns(),
   ]);
-  return { staff, attendance, overtime, leave: leave.filter(x => x.date.startsWith(month)), compUse };
+  return {
+    staff, attendance, overtime, leave: leave.filter(x => x.date.startsWith(month)), compUse,
+    confirmed, patterns,
+  };
 }
 
 export async function getAccountingData(fiscalYear: number): Promise<AccountingData> {

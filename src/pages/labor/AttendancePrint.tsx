@@ -9,6 +9,8 @@ import {
 import { DAY_TYPE_LABELS, WEEKDAY_LABELS } from '../../utils/constants';
 import { isNationalHoliday } from '../../utils/holidays';
 import { shiftPlanByDate, isMissingPunch } from '../../utils/shiftPlan';
+import { workMinutesOf, roundedTimesOf, dayShiftMap } from '../../utils/worktime';
+import type { DayShift } from '../../utils/worktime';
 import { overtimeByDate } from '../../utils/overtime';
 import type { Staff, AttendanceRecord, ConfirmedShift, ShiftPattern, OvertimeRecord } from '../../types';
 
@@ -18,16 +20,9 @@ function daysOfMonth(month: string): string[] {
   const last = new Date(y, m, 0).getDate();
   return Array.from({ length: last }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`);
 }
-function parseHM(hm: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hm || '');
-  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
-}
-/** 実働分数＝退勤−出勤−休憩（出勤日で出退勤が入力済みのときのみ） */
-function workMinutes(rec?: AttendanceRecord): number {
-  if (!rec || rec.dayType !== 'work') return 0;
-  const s = parseHM(rec.startTime), e = parseHM(rec.endTime);
-  if (s === null || e === null) return 0;
-  return Math.max(0, e - s - (rec.breakMinutes || 0));
+/** 実働分数。打刻はシフトに合わせて丸めてから計算する（utils/worktime） */
+function workMinutes(rec?: AttendanceRecord, shift?: DayShift): number {
+  return workMinutesOf(rec, shift);
 }
 const hhmm = (min: number) => `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`;
 
@@ -121,6 +116,8 @@ export default function AttendancePrint() {
         const records = sh.records;
         const plans = shiftPlanByDate(sh.confirmed, patterns);
         const missing = days.filter(d => isMissingPunch(records[d], plans.get(d), d, today));
+        // 打刻をシフトに合わせて丸めるための材料
+        const shiftMap = dayShiftMap(sh.confirmed, patterns, sh.overtime, staff.id);
         const otMap = overtimeByDate(sh.overtime);
         const otTotal = Math.round(sh.overtime.filter(r => r.kind === 'overtime')
           .reduce((t, r) => t + (Number(r.resultHours) || 0), 0) * 10) / 10;
@@ -131,7 +128,7 @@ export default function AttendancePrint() {
           work: list.filter(r => r.dayType === 'work').length,
           paid: list.filter(r => r.dayType === 'paid').length,
           absent: list.filter(r => r.dayType === 'absent').length,
-          minutes: list.reduce((s, r) => s + workMinutes(r), 0),
+          minutes: list.reduce((s, r) => s + workMinutes(r, shiftMap.get(r.date)), 0),
         };
         return (
           <section key={staff.id}
@@ -163,6 +160,7 @@ export default function AttendancePrint() {
                   <th className="border border-gray-500 bg-gray-100 px-1 py-1 w-14">区分</th>
                   <th className="border border-gray-500 bg-gray-100 px-1 py-1 w-16">出勤</th>
                   <th className="border border-gray-500 bg-gray-100 px-1 py-1 w-16">退勤</th>
+                  <th className="border border-gray-500 bg-gray-100 px-1 py-1 w-24">計算時刻</th>
                   <th className="border border-gray-500 bg-gray-100 px-1 py-1 w-24">休憩</th>
                   <th className="border border-gray-500 bg-gray-100 px-1 py-1 w-16">実働</th>
                   <th className="border border-gray-500 bg-gray-100 px-1 py-1 w-20">時間外</th>
@@ -190,8 +188,20 @@ export default function AttendancePrint() {
                       <td className="border border-gray-500 px-1 py-0.5 text-center">{rec ? DAY_TYPE_LABELS[rec.dayType] : ''}</td>
                       <td className="border border-gray-500 px-1 py-0.5 text-center">{rec?.dayType === 'work' ? rec.startTime : ''}</td>
                       <td className="border border-gray-500 px-1 py-0.5 text-center">{rec?.dayType === 'work' ? rec.endTime : ''}</td>
+                      <td className="border border-gray-500 px-1 py-0.5 text-center text-[10px] whitespace-nowrap">
+                        {(() => {
+                          if (!rec || rec.dayType !== 'work') return '';
+                          const t = roundedTimesOf(rec, shiftMap.get(date));
+                          return t.startRounded || t.endRounded ? `${t.startTime}〜${t.endTime}` : '';
+                        })()}
+                      </td>
                       <td className="border border-gray-500 px-1 py-0.5 text-center">{rec?.dayType === 'work' ? brk : ''}</td>
-                      <td className="border border-gray-500 px-1 py-0.5 text-right">{rec && rec.dayType === 'work' && workMinutes(rec) > 0 ? hhmm(workMinutes(rec)) : ''}</td>
+                      <td className="border border-gray-500 px-1 py-0.5 text-right">
+                        {(() => {
+                          const min = workMinutes(rec, shiftMap.get(date));
+                          return rec && rec.dayType === 'work' && min > 0 ? hhmm(min) : '';
+                        })()}
+                      </td>
                       <td className="border border-gray-500 px-1 py-0.5 text-right whitespace-nowrap">
                         {(() => {
                           const ot = otMap.get(date);

@@ -797,6 +797,9 @@ function dispatch(action, body) {
       case 'getConfirmedMonth':
         result = handleGetConfirmedMonth(body.month);
         break;
+      case 'getConfirmedRange':
+        result = handleGetConfirmedRange(body.staffId, body.from, body.to);
+        break;
       case 'saveMonthConfirmed':
         result = handleSaveMonthConfirmed(body.month, body.location, body.records);
         break;
@@ -1302,6 +1305,16 @@ function handleSaveMonthAvailability(month, staffIds, records) {
 }
 
 // --- ハンドラー：確定シフト ---
+// 指定職員・期間の確定シフト。賃金台帳（年度分）で打刻の丸めに使う
+function handleGetConfirmedRange(staffId, from, to) {
+  const sheet = getSheet('shifts_confirmed');
+  const records = sheetToObjects(sheet, 'shifts_confirmed').filter(function (r) {
+    const d = String(r.date);
+    return String(r.staffId) === String(staffId) && d >= from && d <= to;
+  });
+  return { success: true, data: records };
+}
+
 function handleGetConfirmedMonth(month) {
   const sheet = getSheet('shifts_confirmed');
   const records = sheetToObjects(sheet, 'shifts_confirmed').filter(function (r) {

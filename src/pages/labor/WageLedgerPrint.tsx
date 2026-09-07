@@ -6,26 +6,17 @@
 // 記入欄だけを設ける。勤怠から算出できる項目は自動で埋める。
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getStaff, listAttendanceRange, listOvertimeByStaff, todayStr } from '../../api/data';
+import { getWageLedgerData, todayStr } from '../../api/data';
 import { EMPLOYMENT_TYPE_LABELS, GENDER_LABELS, fiscalYearLabel, currentFiscalYear } from '../../utils/constants';
 import {
   allowanceDetail, compPremiumDetail, priorOvertimeMap,
   shiftExcessIsPremium, partMonthPremium, nightHoursOf, nightAllowanceOf,
 } from '../../utils/overtime';
-import type { Staff, AttendanceRecord } from '../../types';
+import { workMinutesOf, roundedRecord, dayShiftMap } from '../../utils/worktime';
+import type { Staff } from '../../types';
 
-const parseHM = (hm: string): number | null => {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hm || '');
-  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
-};
-
-/** 実働分数＝退勤−出勤−休憩 */
-function workMinutes(rec: AttendanceRecord): number {
-  if (rec.dayType !== 'work') return 0;
-  const s = parseHM(rec.startTime), e = parseHM(rec.endTime);
-  if (s === null || e === null) return 0;
-  return Math.max(0, e - s - (rec.breakMinutes || 0));
-}
+/** 実働分数＝退勤−出勤−休憩（打刻は丸めた後の値を渡す） */
+const workMinutes = workMinutesOf;
 
 const h1 = (min: number) => Math.round((min / 60) * 10) / 10;
 const r1 = (n: number) => Math.round(n * 10) / 10;
@@ -71,13 +62,13 @@ export default function WageLedgerPrint() {
     if (!staffId) { setLoading(false); return; }
     let alive = true;
     (async () => {
-      const [s, att, ot] = await Promise.all([
-        getStaff(staffId),
-        listAttendanceRange(staffId, `${fy}-04-01`, `${fy + 1}-03-31`),
-        listOvertimeByStaff(staffId),
-      ]);
+      const d0 = await getWageLedgerData(staffId, fy);
       if (!alive) return;
+      const s = d0.staff, ot = d0.overtime;
       setStaff(s);
+      // 打刻をシフトに合わせて丸めてから集計する
+      const roundMap = dayShiftMap(d0.confirmed, d0.patterns, ot, staffId);
+      const att = d0.attendance.map(r => roundedRecord(r, roundMap.get(r.date)));
 
       const built = months.map(month => {
         const a = att.filter(r => r.date.startsWith(month));

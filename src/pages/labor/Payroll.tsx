@@ -13,18 +13,9 @@ import {
   allowanceDetail, compPremiumDetail, priorOvertimeMap,
   shiftExcessIsPremium, partMonthPremium, nightHoursOf, nightAllowanceOf,
 } from '../../utils/overtime';
-import type { AttendanceRecord, Staff } from '../../types';
+import { workMinutesOf, roundedRecord, dayShiftMapByStaff } from '../../utils/worktime';
+import type { Staff } from '../../types';
 
-const parseHM = (hm: string): number | null => {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hm || '');
-  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
-};
-function workMinutes(rec: AttendanceRecord): number {
-  if (rec.dayType !== 'work') return 0;
-  const s = parseHM(rec.startTime), e = parseHM(rec.endTime);
-  if (s === null || e === null) return 0;
-  return Math.max(0, e - s - (rec.breakMinutes || 0));
-}
 const h1 = (n: number) => Math.round(n * 10) / 10;
 const hFromMin = (min: number) => h1(min / 60);
 
@@ -73,8 +64,13 @@ export default function Payroll() {
   const rows: Row[] = useMemo(() => {
     if (!data) return [];
     const fy = currentFiscalYear();
+    // 打刻を丸めるための材料（職員×日付）
+    const roundMap = dayShiftMapByStaff(data.confirmed || [], data.patterns || [], data.overtime);
     return data.staff.filter(s => s.status === 'active').map(s => {
-      const att = data.attendance.filter(r => r.staffId === s.id);
+      // 実働・深夜・割増は、シフトに合わせて丸めた打刻で計算する
+      const att = data.attendance
+        .filter(r => r.staffId === s.id)
+        .map(r => roundedRecord(r, roundMap.get(`${r.staffId}|${r.date}`)));
       const ot = data.overtime.filter(r => r.staffId === s.id && r.status === 'approved');
       const lv = data.leave.filter(r => r.staffId === s.id && r.kind === 'use' && (r.status || 'approved') === 'approved');
       const comp = data.compUse.filter(r => r.staffId === s.id);
@@ -130,8 +126,8 @@ export default function Payroll() {
 
       return {
         staff: s,
-        workDays: att.filter(r => r.dayType === 'work' && workMinutes(r) > 0).length,
-        workHours: hFromMin(att.reduce((t, r) => t + workMinutes(r), 0)),
+        workDays: att.filter(r => r.dayType === 'work' && workMinutesOf(r) > 0).length,
+        workHours: hFromMin(att.reduce((t, r) => t + workMinutesOf(r), 0)),
         nightHours,
         nightAllowance: excessPaid ? nightAllowanceOf(nightHours, s.hourlyWage || 0) : 0,
         bandHours25: band ? h1(band.hours25 + band.weeklyExcessHours) : 0,

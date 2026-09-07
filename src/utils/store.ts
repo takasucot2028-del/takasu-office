@@ -226,6 +226,12 @@ export function listConfirmedByDate(date: string): ConfirmedShift[] {
   return load<ConfirmedShift>(KEY_CONFIRMED).filter(r => r.date === date);
 }
 
+/** 指定職員・期間の確定シフト（賃金台帳で打刻の丸めに使う） */
+export function listConfirmedRange(staffId: string, from: string, to: string): ConfirmedShift[] {
+  return load<ConfirmedShift>(KEY_CONFIRMED)
+    .filter(r => r.staffId === staffId && r.date >= from && r.date <= to);
+}
+
 /** 指定勤務場所・指定月の確定シフトを丸ごと差し替える */
 export function saveMonthConfirmed(month: string, location: WorkLocation, records: ConfirmedShift[]) {
   const all = load<ConfirmedShift>(KEY_CONFIRMED);

@@ -232,6 +232,8 @@ export const saveMonthAvailability = (
 // === 確定シフト ===
 export const getConfirmedMonth = (month: string, token: string) =>
   request<ConfirmedShift[]>('getConfirmedMonth', { month, token });
+export const getConfirmedRange = (staffId: string, from: string, to: string, token: string) =>
+  request<ConfirmedShift[]>('getConfirmedRange', { staffId, from, to, token });
 
 export const saveMonthConfirmed = (
   month: string, location: WorkLocation, records: ConfirmedShift[], token: string

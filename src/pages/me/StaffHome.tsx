@@ -268,7 +268,12 @@ export default function StaffHome() {
           </p>
         </div>
 
-        <p className="text-xs text-gray-400 mt-3">打刻の時刻はサーバー基準で記録されます。修正が必要な場合は事務局へご連絡ください。</p>
+        <p className="text-xs text-gray-400 mt-3">
+          打刻の時刻はサーバー基準で記録されます。修正が必要な場合は事務局へご連絡ください。
+          ここの実働は打刻どおりの目安です。賃金計算に使う実働は
+          <Link to="/me/attendance" className="text-blue-600 underline mx-0.5">出勤簿</Link>
+          をご確認ください（シフトに合わせて丸めます）。
+        </p>
       </Card>
 
       {/* 本日の勤務・休暇（全員分） */}

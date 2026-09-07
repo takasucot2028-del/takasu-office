@@ -19,6 +19,8 @@ import {
   OVERTIME_MONTHLY_THRESHOLD, WEEKLY_LEGAL_HOURS,
   OVERTIME_STATUS_LABELS, OVERTIME_KIND_LABELS,
 } from '../../utils/overtime';
+import { workMinutesOf, roundedRecord, dayShiftMap } from '../../utils/worktime';
+import type { DayShift } from '../../utils/worktime';
 import type { Staff, ShiftPattern, ConfirmedShift, AttendanceRecord, OvertimeRecord, CompLeaveUse, OvertimeDisposition } from '../../types';
 
 function currentMonth(): string { return todayStr().slice(0, 7); }
@@ -27,16 +29,9 @@ function shiftMonth(month: string, delta: number): string {
   const d = new Date(y, m - 1 + delta, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
-function parseHM(hm: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hm);
-  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
-}
-/** 勤怠レコードの実働時間（時間） */
-function workedHoursOf(rec: AttendanceRecord | undefined): number {
-  if (!rec || rec.dayType !== 'work') return 0;
-  const s = parseHM(rec.startTime), e = parseHM(rec.endTime);
-  if (s === null || e === null) return 0;
-  return Math.max(0, e - s - (rec.breakMinutes || 0)) / 60;
+/** 勤怠レコードの実働時間（時間）。打刻はシフトに合わせて丸めてから計算する */
+function workedHoursOf(rec: AttendanceRecord | undefined, shift?: DayShift): number {
+  return workMinutesOf(rec, shift) / 60;
 }
 const yen = (n: number) => `¥${n.toLocaleString()}`;
 const h1 = (n: number) => `${Math.round(n * 10) / 10}h`;
@@ -54,8 +49,8 @@ export default function Overtime() {
   const [allOt, setAllOt] = useState<OvertimeRecord[]>([]);   // 対象職員の全月の時間外
   const [compUse, setCompUse] = useState<CompLeaveUse[]>([]);
   const [records, setRecords] = useState<OvertimeRecord[]>([]); // 当月の編集用コピー
-  const [attMap, setAttMap] = useState<Record<string, number>>({});   // date→実働h
   const [attRecs, setAttRecs] = useState<AttendanceRecord[]>([]);     // 当月の勤怠（時間帯の判定に使う）
+  const [confirmed, setConfirmed] = useState<ConfirmedShift[]>([]);   // 当月の確定シフト（打刻の丸めに使う）
   const [shiftMap, setShiftMap] = useState<Record<string, number>>({}); // date→シフト予定h
 
   const [message, setMessage] = useState('');
@@ -107,20 +102,34 @@ export default function Overtime() {
       if (!alive) return;
       setAllOt(d.overtime);
       setCompUse(d.compUse);
-      const am: Record<string, number> = {};
-      for (const r of d.attendance) am[r.date] = workedHoursOf(r);
       const sm: Record<string, number> = {};
       for (const c of d.confirmed as ConfirmedShift[]) {
         if (c.staffId !== staffId) continue;
         const p = patternMap.get(c.patternId);
         if (p) sm[c.date] = (sm[c.date] || 0) + patternHours(p);
       }
-      setAttMap(am);
       setAttRecs(d.attendance);
+      setConfirmed(d.confirmed as ConfirmedShift[]);
       setShiftMap(sm);
     })();
     return () => { alive = false; };
   }, [staffId, month, reloadKey, patternMap]);
+
+  // 打刻を丸めるための材料（シフトの開始・終了と早出申請の有無）
+  const roundMap = useMemo(
+    () => dayShiftMap(confirmed, patterns, allOt, staffId),
+    [confirmed, patterns, allOt, staffId]
+  );
+  // 丸めた打刻での実働（date→時間）と、丸めた勤怠レコード
+  const attMap = useMemo(() => {
+    const am: Record<string, number> = {};
+    for (const r of attRecs) am[r.date] = workedHoursOf(r, roundMap.get(r.date));
+    return am;
+  }, [attRecs, roundMap]);
+  const roundedAtt = useMemo(
+    () => attRecs.map(r => roundedRecord(r, roundMap.get(r.date))),
+    [attRecs, roundMap]
+  );
 
   // 当月の編集コピー（全時間外から当月を抽出）
   useEffect(() => {
@@ -159,10 +168,10 @@ export default function Overtime() {
     return { kind, worked, standard, result, amount: d.amount, over60Hours: d.over60Hours, premium: p.amount };
   };
 
-  // パート職員の割増（勤怠の時間帯から自動計算。第8条2項・3項）
+  // パート職員の割増（丸めた打刻の時間帯から自動計算。第8条2項・3項）
   const partPrem = useMemo(
-    () => partMonthPremium(isPart ? attRecs : [], staff?.hourlyWage || 0),
-    [isPart, attRecs, staff]
+    () => partMonthPremium(isPart ? roundedAtt : [], staff?.hourlyWage || 0),
+    [isPart, roundedAtt, staff]
   );
 
   const setRec = (id: string, patch: Partial<OvertimeRecord>) =>
@@ -243,7 +252,7 @@ export default function Overtime() {
   // 60時間を超えた分（×1.50 対象）の合計
   const monthOver60 = r1(approvedRecs.reduce((s, r) => s + calc(r).over60Hours, 0));
   // 常勤職員の深夜労働（22:00〜5:00）。加算25%分を手当とする（第37条）
-  const monthNightHours = isPart ? 0 : r1(attRecs.reduce((s, r) => s + nightHoursOf(r), 0));
+  const monthNightHours = isPart ? 0 : r1(roundedAtt.reduce((s, r) => s + nightHoursOf(r), 0));
   const monthNightAllowance = nightAllowanceOf(monthNightHours, staff?.hourlyWage || 0);
   // パート職員の割増対象日（勤怠から自動計算）
   const partDays = Array.from(partPrem.byDate.entries())
@@ -387,7 +396,7 @@ export default function Overtime() {
                   </thead>
                   <tbody>
                     {partDays.map(([date, p]) => {
-                      const rec = attRecs.find(a => a.date === date);
+                      const rec = roundedAtt.find(a => a.date === date);
                       const wd = new Date(`${date}T00:00:00`).getDay();
                       return (
                         <tr key={date}>
