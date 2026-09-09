@@ -6,7 +6,7 @@ import type {
   Staff, AttendanceRecord, LeaveRecord,
   ShiftPattern, AvailabilityRecord, ConfirmedShift, WorkLocation,
   OvertimeRecord, CompLeaveUse, RequestStatus, DocumentItem,
-  ExpenseCategory, Budget, Expense, ShiftChange, AttendanceChange, AuditEntry,
+  ExpenseCategory, Budget, Expense, ShiftChange, AttendanceChange, CompanyHoliday, AuditEntry,
 } from '../types';
 
 /** 本日の勤務・休暇（従業員も閲覧可。氏名・時間のみ、個人情報は含まない） */
@@ -234,6 +234,10 @@ export const getConfirmedMonth = (month: string, token: string) =>
   request<ConfirmedShift[]>('getConfirmedMonth', { month, token });
 export const getConfirmedRange = (staffId: string, from: string, to: string, token: string) =>
   request<ConfirmedShift[]>('getConfirmedRange', { staffId, from, to, token });
+export const getCompanyHolidays = (token: string) =>
+  request<CompanyHoliday[]>('getCompanyHolidays', { token });
+export const saveCompanyHolidays = (records: CompanyHoliday[], token: string) =>
+  request<void>('saveCompanyHolidays', { records, token });
 
 export const saveMonthConfirmed = (
   month: string, location: WorkLocation, records: ConfirmedShift[], token: string

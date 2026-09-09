@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { PageContainer, Card, Button, Alert } from '../../components/UI';
 import { getMyProfile, listShiftPatterns, getMyAvailability, saveMyAvailability, onDataRefresh, genId, todayStr } from '../../api/data';
 import { WEEKDAY_LABELS, UNAVAILABLE_PATTERN_ID } from '../../utils/constants';
-import { isNationalHoliday, holidayName } from '../../utils/holidays';
+import { isSpecialHoliday, closedDayName } from '../../utils/holidays';
 import type { Staff, ShiftPattern, AvailabilityRecord } from '../../types';
 
 function currentMonth(): string { return todayStr().slice(0, 7); }
@@ -138,15 +138,15 @@ export default function StaffShiftRequest() {
           const sel = map[date] || [];
           return (
             <div key={date} className={`flex items-center gap-2 px-3 py-2 ${
-              isNationalHoliday(date) || wd === 0 ? 'bg-red-50/40' : wd === 6 ? 'bg-blue-50/40' : ''}`}>
+              isSpecialHoliday(date) || wd === 0 ? 'bg-red-50/40' : wd === 6 ? 'bg-blue-50/40' : ''}`}>
               <div className="w-14 shrink-0 text-sm">
                 <span className="font-medium">{Number(date.slice(8))}</span>
                 <span className={`ml-1 text-xs ${
-                  isNationalHoliday(date) || wd === 0 ? 'text-red-500' : wd === 6 ? 'text-blue-500' : 'text-gray-400'}`}>
+                  isSpecialHoliday(date) || wd === 0 ? 'text-red-500' : wd === 6 ? 'text-blue-500' : 'text-gray-400'}`}>
                   {WEEKDAY_LABELS[wd]}
                 </span>
-                {isNationalHoliday(date) && (
-                  <span className="block text-[10px] text-red-500 leading-tight" title={holidayName(date)}>祝</span>
+                {isSpecialHoliday(date) && (
+                  <span className="block text-[10px] text-red-500 leading-tight" title={closedDayName(date)}>祝</span>
                 )}
               </div>
               <div className="flex flex-wrap gap-1">

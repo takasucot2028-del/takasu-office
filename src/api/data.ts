@@ -9,9 +9,10 @@ import type {
   Staff, AttendanceRecord, LeaveRecord,
   ShiftPattern, AvailabilityRecord, ConfirmedShift, WorkLocation,
   OvertimeRecord, CompLeaveUse, DocumentItem,
-  ExpenseCategory, Budget, Expense, ShiftChange, AttendanceChange, AuditEntry,
+  ExpenseCategory, Budget, Expense, ShiftChange, AttendanceChange, CompanyHoliday, AuditEntry,
 } from '../types';
 import { DEFAULT_SHIFT_PATTERNS, LEAVE_HOURS_PER_DAY, currentFiscalYear } from '../utils/constants';
+import { setCompanyHolidays } from '../utils/holidays';
 import * as local from '../utils/store';
 import * as gas from './client';
 import type { ExpenseContext, TodayWork, PendingSummary, PendingItem, ShiftBoard } from './client';
@@ -734,10 +735,17 @@ function loadReference(): Promise<ReferenceData> {
   _refInflight = (async (): Promise<ReferenceData> => {
     try {
       if (!USE_GAS) {
+        setCompanyHolidays(local.listCompanyHolidays());
         return { staff: await listStaff(), patterns: await listShiftPatterns(), categories: await listExpenseCategories() };
       }
-      const r = await batchCall([{ action: 'getStaff' }, { action: 'getShiftPatterns' }, { action: 'getExpenseCategories' }]);
+      const r = await batchCall([
+        { action: 'getStaff' }, { action: 'getShiftPatterns' }, { action: 'getExpenseCategories' },
+        { action: 'getCompanyHolidays' }, // 休日判定に使う（同じリクエストのついでに取る）
+      ]);
       if (r) {
+        // 取得できたときだけ反映する（失敗時に前回の内容を消さない）
+        const hRes = r[3] as SubRes<CompanyHoliday[]> | undefined;
+        if (hRes?.success && hRes.data) setCompanyHolidays(hRes.data);
         const staffRes = subOrKeep(r[0] as SubRes<Staff[]>, 'staff', []);
         const staff = staffRes.value.slice().sort((a, b) => (a.lastKana || '').localeCompare(b.lastKana || '', 'ja'));
         const patList = unwrap(r[1] as SubRes<ShiftPattern[]>, []);
@@ -1258,6 +1266,29 @@ export async function markShiftChangesRead(): Promise<void> {
   if (!USE_GAS) { local.markShiftChangesReadLocal(staffId()); return; }
   const res = await gas.markShiftChangesRead(token());
   if (!res.success) throw new Error(res.error || '確認の記録に失敗しました');
+}
+
+// --- 法人が指定する休日（就業規則 第19条④） ---
+/**
+ * 取得した休日は holidays.ts に渡し、画面が同期で参照できるようにする。
+ * 土日・祝日・年末年始は計算で求まるため登録は不要。
+ */
+export async function listCompanyHolidays(): Promise<CompanyHoliday[]> {
+  const list = !USE_GAS
+    ? local.listCompanyHolidays()
+    : unwrap(await gas.getCompanyHolidays(token()), [] as CompanyHoliday[]);
+  setCompanyHolidays(list.map(h => ({ date: h.date, name: h.name })));
+  return list;
+}
+
+export async function saveCompanyHolidays(records: CompanyHoliday[]): Promise<void> {
+  if (!USE_GAS) {
+    local.saveCompanyHolidays(records);
+  } else {
+    const res = await gas.saveCompanyHolidays(records, token());
+    if (!res.success) throw new Error(res.error || '休日の保存に失敗しました');
+  }
+  setCompanyHolidays(records.map(h => ({ date: h.date, name: h.name })));
 }
 
 // --- 勤怠（出退勤）の修正通知（従業員） ---

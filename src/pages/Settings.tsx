@@ -1,8 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageContainer, Card, Field, Input, Button, Alert } from '../components/UI';
 import { getPrefs, setPref } from '../utils/prefs';
-import { changeAdminPassword, usingGas, clearDataCache } from '../api/data';
+import {
+  changeAdminPassword, usingGas, clearDataCache,
+  listCompanyHolidays, saveCompanyHolidays, genId, todayStr,
+} from '../api/data';
+import type { CompanyHoliday } from '../types';
 
 export default function Settings() {
   const [oldPassword, setOldPassword] = useState('');
@@ -12,6 +16,43 @@ export default function Settings() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [showLeaveObligation, setShowLeaveObligation] = useState(() => getPrefs().showLeaveObligation);
+
+  // 法人が指定する休日（就業規則 第19条④）
+  const [holidays, setHolidays] = useState<CompanyHoliday[]>([]);
+  const [hDate, setHDate] = useState(todayStr());
+  const [hName, setHName] = useState('');
+  const [hSaving, setHSaving] = useState(false);
+  const [holidayMsg, setHolidayMsg] = useState('');
+  const [holidayErr, setHolidayErr] = useState('');
+
+  useEffect(() => { listCompanyHolidays().then(setHolidays).catch(() => {}); }, []);
+
+  /** 追加・削除のたびに一覧まるごと保存する（件数が少ないため） */
+  const persistHolidays = async (next: CompanyHoliday[], msg: string) => {
+    const before = holidays;
+    setHolidays(next);
+    setHSaving(true); setHolidayErr(''); setHolidayMsg('');
+    try {
+      await saveCompanyHolidays(next);
+      setHolidayMsg(msg);
+    } catch (err) {
+      setHolidays(before); // 保存できなかったので戻す
+      setHolidayErr(err instanceof Error ? err.message : '休日の保存に失敗しました');
+    } finally { setHSaving(false); }
+  };
+
+  const addHoliday = () => {
+    if (!hDate) { setHolidayErr('日付を入力してください'); return; }
+    if (holidays.some(h => h.date === hDate)) { setHolidayErr('その日はすでに登録されています'); return; }
+    const next = [...holidays, { id: genId('ch'), date: hDate, name: hName.trim() }]
+      .sort((a, b) => a.date.localeCompare(b.date));
+    setHName('');
+    void persistHolidays(next, `${hDate} を休日に登録しました`);
+  };
+
+  const removeHoliday = (id: string) => {
+    void persistHolidays(holidays.filter(h => h.id !== id), '休日を削除しました');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,6 +142,42 @@ export default function Settings() {
               </span>
             </span>
           </label>
+        </Card>
+
+        <Card className="mt-4">
+          <h2 className="font-bold text-gray-800 mb-1">法人が指定する休日</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            就業規則 第19条④の「その他法人が指定する日」を登録します。
+            <b>土日・祝日・年末年始（12/29〜1/4）は自動判定</b>のため、登録は不要です。
+            登録した日はシフト表や出勤簿で休日として扱われます。
+          </p>
+          {holidayMsg && <Alert type="success">{holidayMsg}</Alert>}
+          {holidayErr && <Alert type="error">{holidayErr}</Alert>}
+          <div className="flex items-end gap-2 mb-3">
+            <Field label="日付">
+              <Input type="date" value={hDate} onChange={e => setHDate(e.target.value)} />
+            </Field>
+            <Field label="名称（任意）">
+              <Input value={hName} onChange={e => setHName(e.target.value)} placeholder="例: 創立記念日" />
+            </Field>
+            <div className="mb-4"><Button size="sm" onClick={addHoliday} disabled={hSaving}>追加</Button></div>
+          </div>
+          {holidays.length === 0 ? (
+            <p className="text-xs text-gray-400">登録された休日はありません。</p>
+          ) : (
+            <ul className="divide-y border border-gray-200 rounded-md">
+              {holidays.map(h => (
+                <li key={h.id} className="flex items-center justify-between px-3 py-1.5 text-sm">
+                  <span>
+                    <span className="font-medium text-gray-800">{h.date}</span>
+                    <span className="ml-2 text-gray-500">{h.name || '休業日'}</span>
+                  </span>
+                  <Button variant="ghost" size="sm" disabled={hSaving}
+                    onClick={() => removeHoliday(h.id)}>削除</Button>
+                </li>
+              ))}
+            </ul>
+          )}
         </Card>
 
         <Card className="mt-4">

@@ -43,10 +43,28 @@ export function isOvertimeTarget(staff: Staff): boolean {
   return staff.employmentType === 'fulltime' || staff.employmentType === 'parttime';
 }
 
-/** 常勤の土日・祝日勤務は休日勤務。それ以外（パート、常勤の平日）は時間外 */
-export function overtimeKindOf(staff: Staff, date: string): OvertimeKind {
-  if (staff.employmentType === 'fulltime' && isClosedDay(date)) return 'holiday';
-  return 'overtime';
+/**
+ * その日が所定労働日かどうかの判定材料。
+ * 常勤職員の休日はシフト表で決まるため、確定シフトの有無で判断する。
+ */
+export interface WorkdayContext {
+  hasShift: boolean;   // その日に確定シフトがあるか
+  shiftKnown: boolean; // シフトで判断できるか（その職員のその月に確定シフトが1件でもあるか）
+}
+
+/**
+ * 時間外か休日勤務か。
+ *
+ * 常勤職員: シフト表で休日が決まる（就業規則 第19条）。確定シフトのある日は
+ *   所定労働日なので時間外、シフトのない日に働いた場合は休日勤務。
+ *   その月にシフトが1件も登録されていないときは判断できないため、
+ *   暦（土日・祝日・年末年始・法人指定日）で判定する。
+ * パート職員等: 休日勤務の区分を使わない（パート規則 第8条）。
+ */
+export function overtimeKindOf(staff: Staff, date: string, ctx?: WorkdayContext): OvertimeKind {
+  if (staff.employmentType !== 'fulltime') return 'overtime';
+  if (ctx?.shiftKnown) return ctx.hasShift ? 'overtime' : 'holiday';
+  return isClosedDay(date) ? 'holiday' : 'overtime';
 }
 
 export function rateOf(kind: OvertimeKind): number {
@@ -270,9 +288,9 @@ export function patternHours(p: ShiftPattern): number {
  * - 常勤・土日祝（休日勤務）: 0（実働全部が休日勤務）
  * - パート: その日の確定シフトの合計時間（shiftHours）
  */
-export function standardHoursOf(staff: Staff, date: string, shiftHours: number): number {
+export function standardHoursOf(staff: Staff, date: string, shiftHours: number, ctx?: WorkdayContext): number {
   if (staff.employmentType === 'fulltime') {
-    return overtimeKindOf(staff, date) === 'holiday' ? 0 : FULLTIME_STANDARD_HOURS;
+    return overtimeKindOf(staff, date, ctx) === 'holiday' ? 0 : FULLTIME_STANDARD_HOURS;
   }
   // パート
   return shiftHours;
@@ -296,10 +314,11 @@ export function resultHoursOf(workedHours: number, standardHours: number): numbe
  *     まるごと時間外になってしまうため）
  */
 export function resultHoursFor(
-  staff: Staff, date: string, workedHours: number, shiftHours: number, appliedHours: number
+  staff: Staff, date: string, workedHours: number, shiftHours: number, appliedHours: number,
+  ctx?: WorkdayContext
 ): number {
   if (staff.employmentType === 'fulltime') {
-    return resultHoursOf(workedHours, standardHoursOf(staff, date, shiftHours));
+    return resultHoursOf(workedHours, standardHoursOf(staff, date, shiftHours, ctx));
   }
   return Math.max(0, Math.round((Number(appliedHours) || 0) * 100) / 100);
 }

@@ -217,6 +217,13 @@ export interface ShiftChange {
   readAt: string;             // 従業員が確認した日時（未確認は空）
 }
 
+/** 法人が指定する休日（就業規則 第19条④）。年末年始・土日祝は自動判定のため登録不要 */
+export interface CompanyHoliday {
+  id: string;
+  date: string;               // YYYY-MM-DD
+  name: string;               // 名称（例:「創立記念日」。空欄は「休業日」と表示）
+}
+
 /** 勤怠（出退勤）の修正通知。事務局が打刻を直したときに本人へ知らせる */
 export interface AttendanceChange {
   id: string;

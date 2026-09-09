@@ -3,7 +3,7 @@ import type {
   Staff, AttendanceRecord, LeaveRecord, WorkLocation,
   ShiftPattern, AvailabilityRecord, ConfirmedShift,
   OvertimeRecord, CompLeaveUse, DocumentItem,
-  ExpenseCategory, Budget, Expense, RequestStatus, ShiftChange, AttendanceChange, AuditEntry,
+  ExpenseCategory, Budget, Expense, RequestStatus, ShiftChange, AttendanceChange, CompanyHoliday, AuditEntry,
 } from '../types';
 import { ADMIN_EMAIL, ADMIN_PASSWORD, DEFAULT_SHIFT_PATTERNS, DEFAULT_EXPENSE_CATEGORIES, breakMinutesBetween } from './constants';
 
@@ -185,6 +185,20 @@ export function markAttendanceChangesReadLocal(staffId: string) {
   const d = new Date();
   const now = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   save(KEY_ATT_CHANGES, load<AttendanceChange>(KEY_ATT_CHANGES).map(r => (r.staffId === staffId && !r.readAt ? { ...r, readAt: now } : r)));
+}
+
+// ---- 法人が指定する休日（就業規則 第19条④） ----
+const KEY_COMPANY_HOLIDAYS = 'tof_company_holidays_master';
+
+export function listCompanyHolidays(): CompanyHoliday[] {
+  return load<CompanyHoliday>(KEY_COMPANY_HOLIDAYS)
+    .filter(h => h.date)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export function saveCompanyHolidays(list: CompanyHoliday[]) {
+  save(KEY_COMPANY_HOLIDAYS, list.filter(h => h.date));
+  writeAudit('法人指定休日の保存', '設定', `${list.length}件`);
 }
 
 // ---- シフト区分マスタ ----

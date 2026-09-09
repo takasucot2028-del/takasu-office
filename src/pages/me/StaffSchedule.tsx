@@ -5,7 +5,7 @@ import { PageContainer, Card, Button, Badge } from '../../components/UI';
 import { getShiftBoard, getMyProfile, listShiftPatterns, onDataRefresh, todayStr } from '../../api/data';
 import type { ShiftBoard } from '../../api/data';
 import { WORK_LOCATION_LABELS, WEEKDAY_LABELS, staffInLocation } from '../../utils/constants';
-import { isNationalHoliday } from '../../utils/holidays';
+import { isSpecialHoliday } from '../../utils/holidays';
 import type { ShiftPattern, WorkLocation, Staff } from '../../types';
 
 /** 'YYYY-MM' の日付一覧 */
@@ -116,7 +116,7 @@ export default function StaffSchedule() {
 
   const dayColor = (date: string) => {
     const wd = new Date(`${date}T00:00:00`).getDay();
-    if (isNationalHoliday(date) || wd === 0) return 'text-red-600';
+    if (isSpecialHoliday(date) || wd === 0) return 'text-red-600';
     return wd === 6 ? 'text-blue-600' : 'text-gray-500';
   };
 

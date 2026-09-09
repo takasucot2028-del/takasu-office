@@ -131,6 +131,17 @@ export default function Overtime() {
     [attRecs, roundMap]
   );
 
+  /**
+   * 常勤職員の休日はシフト表で決まる（就業規則 第19条）。
+   * その月にシフトが1件でも登録されていれば、シフトのない日を休日とみなす。
+   * 1件も登録がない月は判断できないため、暦（土日祝・年末年始・法人指定日）で判定する。
+   */
+  const shiftKnown = useMemo(
+    () => confirmed.some(c => c.staffId === staffId && c.date.startsWith(month)),
+    [confirmed, staffId, month]
+  );
+  const workdayCtx = (date: string) => ({ hasShift: (shiftMap[date] || 0) > 0, shiftKnown });
+
   // 当月の編集コピー（全時間外から当月を抽出）
   useEffect(() => {
     setRecords(allOt.filter(r => r.date.startsWith(month)).map(r => ({ ...r })));
@@ -139,11 +150,11 @@ export default function Overtime() {
   // 実績時間だけを求める（累計の計算に使う。手当は含めない）
   const resultOf = (r: { date: string; appliedHours?: number }) => {
     if (!staff) return 0;
-    return resultHoursFor(staff, r.date, attMap[r.date] || 0, shiftMap[r.date] || 0, r.appliedHours || 0);
+    return resultHoursFor(staff, r.date, attMap[r.date] || 0, shiftMap[r.date] || 0, r.appliedHours || 0, workdayCtx(r.date));
   };
   // 各記録の「その記録より前の時間外累計」。月60時間超の割増判定に使う。
   const priorMap = useMemo(
-    () => (staff ? priorOvertimeMap(records, r => overtimeKindOf(staff, r.date), resultOf) : new Map<string, number>()),
+    () => (staff ? priorOvertimeMap(records, r => overtimeKindOf(staff, r.date, workdayCtx(r.date)), resultOf) : new Map<string, number>()),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [staff, records, attMap, shiftMap]
   );
@@ -155,10 +166,10 @@ export default function Overtime() {
    */
   const calc = (r: OvertimeRecord) => {
     if (!staff) return { kind: r.kind, worked: 0, standard: 0, result: 0, amount: 0, over60Hours: 0, premium: 0 };
-    const kind = overtimeKindOf(staff, r.date);
+    const kind = overtimeKindOf(staff, r.date, workdayCtx(r.date));
     const worked = attMap[r.date] || 0;
-    const standard = standardHoursOf(staff, r.date, shiftMap[r.date] || 0);
-    const result = resultHoursFor(staff, r.date, worked, shiftMap[r.date] || 0, r.appliedHours || 0);
+    const standard = standardHoursOf(staff, r.date, shiftMap[r.date] || 0, workdayCtx(r.date));
+    const result = resultHoursFor(staff, r.date, worked, shiftMap[r.date] || 0, r.appliedHours || 0, workdayCtx(r.date));
     const wage = staff.hourlyWage || 0;
     const prior = priorMap.get(r.id) ?? 0;
     // パート職員はシフト超過分が1.0倍のため、この記録からは手当が出ない（第8条1項）
@@ -188,7 +199,7 @@ export default function Overtime() {
     setError('');
     const rec: OvertimeRecord = {
       id: genId('ot'), staffId: staff.id, date: fDate,
-      kind: overtimeKindOf(staff, fDate),
+      kind: overtimeKindOf(staff, fDate, workdayCtx(fDate)),
       appliedHours: Math.round(hrs * 100) / 100, reason: fReason,
       startTime: fStart, endTime: fEnd,
       status: 'applied', disposition: '', resultHours: 0, note: '',
@@ -320,7 +331,8 @@ export default function Overtime() {
                 法定労働時間（1日8時間・週40時間）超と深夜（22:00〜5:00）も＋25%（同3項）。
               </>
             : <>
-                実績時間は「実働−基準」（平日7.5時間、土日祝は休日勤務で実働全部）。実働は「勤怠管理」の出退勤から自動集計。
+                実績時間は「実働−基準」。<span className="font-medium">休日はシフト表で判定します</span>（就業規則 第19条）。
+                シフトのある日は所定労働日で基準7.5時間、<span className="font-medium">シフトのない日に働いた場合は休日勤務</span>（実働全部が対象）。実働は「勤怠管理」の出退勤から自動集計。
                 手当＝時給×割増（時間外×1.25／<span className="font-medium">当月の時間外が60時間を超えた分は×1.50</span>／休日×1.35）。深夜（22:00〜5:00）は＋25%。
               </>}
         </p>
@@ -522,6 +534,12 @@ export default function Overtime() {
             <Alert type="info">
               出退勤が未入力の日があります（下表で <span className="text-red-500 font-medium">勤怠未入力</span> と表示）。「勤怠管理」でその日の出退勤を入力すると、
               {isPart ? '勤務した時間帯から割増が計算されます。' : '実績・手当・代休付与に反映されます。'}
+            </Alert>
+          )}
+          {!isPart && !shiftKnown && (
+            <Alert type="info">
+              この月の確定シフトが登録されていないため、休日の判定を<b>暦（土日・祝日・年末年始・法人が指定する日）</b>で行っています。
+              シフトを確定すると、シフトのない日を休日として判定します（就業規則 第19条）。
             </Alert>
           )}
           {byApplied && (

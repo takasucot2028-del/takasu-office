@@ -7,7 +7,7 @@ import {
   listOvertimeByStaff, listOvertimeByMonth, getMyOvertime,
 } from '../../api/data';
 import { DAY_TYPE_LABELS, WEEKDAY_LABELS } from '../../utils/constants';
-import { isNationalHoliday } from '../../utils/holidays';
+import { isSpecialHoliday } from '../../utils/holidays';
 import { shiftPlanByDate, isMissingPunch } from '../../utils/shiftPlan';
 import { workMinutesOf, roundedTimesOf, dayShiftMap } from '../../utils/worktime';
 import type { DayShift } from '../../utils/worktime';
@@ -171,7 +171,7 @@ export default function AttendancePrint() {
                 {days.map(date => {
                   const rec = records[date];
                   const wd = new Date(`${date}T00:00:00`).getDay();
-                  const holiday = isNationalHoliday(date);
+                  const holiday = isSpecialHoliday(date);
                   const dayColor = holiday || wd === 0 ? 'text-red-600' : wd === 6 ? 'text-blue-600' : '';
                   const brk = rec?.breakStart && rec?.breakEnd
                     ? `${rec.breakStart}〜${rec.breakEnd}`

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Button, Table, Th, Td } from '../../components/UI';
 import { getMyAttendancePageData, todayStr } from '../../api/data';
 import { DAY_TYPE_LABELS, WEEKDAY_LABELS } from '../../utils/constants';
-import { isNationalHoliday } from '../../utils/holidays';
+import { isSpecialHoliday } from '../../utils/holidays';
 import { workMinutesOf, roundedTimesOf, dayShiftMap } from '../../utils/worktime';
 import type { DayShift } from '../../utils/worktime';
 import type { AttendanceRecord } from '../../types';
@@ -99,7 +99,7 @@ export default function StaffAttendance() {
             ) : days.map(date => {
               const rec = records[date];
               const wd = new Date(`${date}T00:00:00`).getDay();
-              const holiday = isNationalHoliday(date);
+              const holiday = isSpecialHoliday(date);
               const brk = rec?.breakStart && rec?.breakEnd
                 ? `${rec.breakStart}〜${rec.breakEnd}`
                 : rec?.breakMinutes ? `${rec.breakMinutes}分` : '';
@@ -108,7 +108,7 @@ export default function StaffAttendance() {
                   <Td className="whitespace-nowrap">
                     {Number(date.slice(8))}日
                     <span className={`ml-1 text-xs ${holiday || wd === 0 ? 'text-red-500' : wd === 6 ? 'text-blue-500' : 'text-gray-400'}`}>
-                      ({WEEKDAY_LABELS[wd]}{holiday ? '・祝' : ''})
+                      ({WEEKDAY_LABELS[wd]}{holiday ? '・休' : ''})
                     </span>
                   </Td>
                   <Td className="whitespace-nowrap">{rec ? DAY_TYPE_LABELS[rec.dayType] : ''}</Td>

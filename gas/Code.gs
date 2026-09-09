@@ -80,6 +80,9 @@ var SHEETS = {
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['location', '勤務場所'],
     ['before', '変更前'], ['after', '変更後'], ['changedAt', '変更日時'], ['readAt', '確認日時'],
   ] },
+  company_holidays: { name: '法人指定休日', columns: [
+    ['id', 'ID'], ['date', '日付'], ['name', '名称'],
+  ] },
   attendance_changes: { name: '勤怠変更履歴', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'],
     ['before', '変更前'], ['after', '変更後'], ['changedAt', '変更日時'], ['readAt', '確認日時'],
@@ -520,7 +523,10 @@ var STAFF_ACTIONS = {
   getExpenseContext: true, getMyExpenses: true, addMyExpense: true,
 };
 // 認証済みなら role を問わず許可（事務局・従業員の両方が閲覧するもの）
-var AUTHED_ACTIONS = { getDocuments: true, getTodayWork: true, getShiftPatterns: true, getShiftBoard: true };
+var AUTHED_ACTIONS = {
+  getDocuments: true, getTodayWork: true, getShiftPatterns: true, getShiftBoard: true,
+  getCompanyHolidays: true, // 従業員側のカレンダー表示にも使う
+};
 function enforceAuth(action, body) {
   if (PUBLIC_ACTIONS[action]) return;
   const session = getSession(body.token);
@@ -799,6 +805,12 @@ function dispatch(action, body) {
         break;
       case 'getConfirmedRange':
         result = handleGetConfirmedRange(body.staffId, body.from, body.to);
+        break;
+      case 'getCompanyHolidays':
+        result = handleGetCompanyHolidays();
+        break;
+      case 'saveCompanyHolidays':
+        result = handleSaveCompanyHolidays(body.records);
         break;
       case 'saveMonthConfirmed':
         result = handleSaveMonthConfirmed(body.month, body.location, body.records);
@@ -1305,6 +1317,23 @@ function handleSaveMonthAvailability(month, staffIds, records) {
 }
 
 // --- ハンドラー：確定シフト ---
+// --- ハンドラー：法人が指定する休日（就業規則 第19条④） ---
+function handleGetCompanyHolidays() {
+  const list = sheetToObjects(getSheet('company_holidays'), 'company_holidays')
+    .filter(function (r) { return String(r.date || '').trim(); });
+  list.sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); });
+  return { success: true, data: list };
+}
+
+// 一覧をまるごと置き換える（追加・削除をまとめて保存する）
+function handleSaveCompanyHolidays(records) {
+  const rows = (records || [])
+    .filter(function (r) { return String(r.date || '').trim(); })
+    .map(function (r) { return objectToRow('company_holidays', r); });
+  replaceSheetRows_('company_holidays', rows);
+  return { success: true };
+}
+
 // 指定職員・期間の確定シフト。賃金台帳（年度分）で打刻の丸めに使う
 function handleGetConfirmedRange(staffId, from, to) {
   const sheet = getSheet('shifts_confirmed');
