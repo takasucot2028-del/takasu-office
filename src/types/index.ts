@@ -35,7 +35,7 @@ export interface Staff {
   qualifications: string;     // 保有資格
   hourlyWage: number;         // 時給（時間外手当の計算に使用。0=未設定）
   monthlyHourLimit: number;   // 月の労働時間の上限（扶養等の制限。0=制限なし）
-  childNursingChildren: number; // 子の看護等休暇（第26条）の対象となる子の人数。0=未設定（1人=年5日/2人以上=年10日）
+  childNursingChildren: number; // 子の看護等休暇（第28条）の対象となる子の人数。0=未設定（1人=年5日/2人以上=年10日）
   weeklyWorkDays: number;     // 週の所定労働日数。年次有給の比例付与の判定に使う（0=未設定＝通常付与で計算）
   defaultBreakStart: string;  // 既定の休憩開始 HH:MM（空=自動入力しない）
   defaultBreakEnd: string;    // 既定の休憩終了 HH:MM
@@ -106,7 +106,7 @@ export interface OvertimeRecord {
   id: string;
   staffId: string;
   date: string;               // YYYY-MM-DD
-  kind: OvertimeKind;         // 追加時に自動判定（常勤の土日祝=holiday）
+  kind: OvertimeKind;         // 自動判定（常勤でシフトのない日=holiday。第19条）
   appliedHours: number;       // 申請（予定）時間。startTime/endTime から算出した値
   startTime?: string;         // 申請の開始 HH:MM（任意。時刻で申請した場合に保持）
   endTime?: string;           // 申請の終了 HH:MM（任意）
@@ -152,22 +152,22 @@ export type LeaveKind = 'grant' | 'use';
 
 /**
  * 休暇の種類。'paid'＝年次有給休暇（従来からの記録はすべてこれ）。
- * それ以外は就業規則の特別休暇（第23〜34条）。
+ * それ以外は就業規則の特別休暇（第24〜35条）。
  */
 export type LeaveType =
   | 'paid'          // 年次有給休暇
-  | 'sick'          // 病気休暇（第30条）
-  | 'refresh'       // リフレッシュ休暇（第32条・年3日）
-  | 'condolence'    // 慶弔休暇（第29条）
-  | 'fertility'     // 不妊治療休暇（第28条）
-  | 'childcareTime' // 育児時間（第24条1項）
-  | 'menstrual'     // 生理休暇（第24条2項）
-  | 'childNursing'  // 子の看護等休暇（第27条）
-  | 'familyCare'    // 介護休暇（第26条）
-  | 'jury'          // 裁判員等のための休暇（第31条）
-  | 'maternityHealth' // 母性健康管理のための休暇（第24条）
-  | 'maternityLeave'  // 産前産後の休業（第23条）
-  | 'healthCheckup';  // 健康診断（第34条・労働時間とみなす）
+  | 'sick'          // 病気休暇（第31条・年30日まで有給）
+  | 'refresh'       // リフレッシュ休暇（第33条・年3日）
+  | 'condolence'    // 慶弔休暇（第31条）
+  | 'fertility'     // 不妊治療休暇（第30条）
+  | 'childcareTime' // 育児時間（第26条1項）
+  | 'menstrual'     // 生理休暇（第26条2項）
+  | 'childNursing'  // 子の看護等休暇（第28条）
+  | 'familyCare'    // 介護休暇（第29条）
+  | 'jury'          // 裁判員等のための休暇（第32条）
+  | 'maternityHealth' // 母性健康管理のための休暇（第25条）
+  | 'maternityLeave'  // 産前産後の休業（第24条）
+  | 'healthCheckup';  // 健康診断（第35条・労働時間とみなす）
 
 /** 有給休暇記録（付与または取得）。取得は日単位・時間単位のどちらも可（1日=7.5時間） */
 export interface LeaveRecord {

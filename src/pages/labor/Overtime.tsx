@@ -162,7 +162,7 @@ export default function Overtime() {
   /**
    * 1レコードの計算（実働・基準・実績・支給額）。
    * 手当は月60時間超の割増を反映する。代休にした分は、賃金の本体を代休に振り替え、
-   * 割増部分だけを支給する（就業規則 第20条2項）。
+   * 割増部分だけを支給する（就業規則 第21条2項）。
    */
   const calc = (r: OvertimeRecord) => {
     if (!staff) return { kind: r.kind, worked: 0, standard: 0, result: 0, amount: 0, over60Hours: 0, premium: 0 };
@@ -246,7 +246,7 @@ export default function Overtime() {
   const monthAllowance = records
     .filter(r => r.status === 'approved' && r.disposition === 'allowance')
     .reduce((s, r) => s + calc(r).amount, 0);
-  // 代休にした分の割増部分（第20条2項）
+  // 代休にした分の割増部分（第21条2項）
   const monthCompPremium = records
     .filter(r => r.status === 'approved' && r.disposition === 'comp')
     .reduce((s, r) => s + calc(r).premium, 0);
@@ -262,7 +262,7 @@ export default function Overtime() {
   const monthCompUsed = r1(compUse.filter(u => u.date.startsWith(month)).reduce((s, u) => s + (u.hours || 0), 0));
   // 60時間を超えた分（×1.50 対象）の合計
   const monthOver60 = r1(approvedRecs.reduce((s, r) => s + calc(r).over60Hours, 0));
-  // 常勤職員の深夜労働（22:00〜5:00）。加算25%分を手当とする（第37条）
+  // 常勤職員の深夜労働（22:00〜5:00）。加算25%分を手当とする（第39条）
   const monthNightHours = isPart ? 0 : r1(roundedAtt.reduce((s, r) => s + nightHoursOf(r), 0));
   const monthNightAllowance = nightAllowanceOf(monthNightHours, staff?.hourlyWage || 0);
   // パート職員の割増対象日（勤怠から自動計算）
@@ -358,7 +358,7 @@ export default function Overtime() {
               {isPart && <Tile label="割増50%対象" value={h1(partPrem.hours50)} />}
               {isPart && <Tile label="割増の加算額" value={yen(partPrem.amount)} highlight />}
               <Tile label="代休付与" value={h1(monthComp)} />
-              <Tile label="代休分の割増（第20条2項）" value={yen(monthCompPremium)} />
+              <Tile label="代休分の割増（第21条2項）" value={yen(monthCompPremium)} />
               <Tile label="当月 代休消化" value={h1(monthCompUsed)} />
               {monthNightHours > 0 && (
                 <Tile label="深夜手当（加算25%）" value={`${yen(monthNightAllowance)} / ${h1(monthNightHours)}`} />

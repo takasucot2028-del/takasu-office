@@ -57,7 +57,7 @@ export default function StaffLeaveRequest() {
     [records, def, annualDays, fy]
   );
   const remainDays = annualDays > 0 ? Math.round((annualDays - usedDays) * 100) / 100 : 0;
-  // 有給で取得できる日数の残（病気休暇の年5日など）。超えても取得はできて、超過分が無給になる
+  // 有給で取得できる日数の残（病気休暇の年30日など）。超えても取得はできて、超過分が無給になる
   const paidLimit = def?.paidDays ?? 0;
   const paidRemain = useMemo(
     () => (def && paidLimit > 0 ? Math.max(0, specialLeavePaidRemain(def, records, fy)) : 0),

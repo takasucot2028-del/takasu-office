@@ -34,7 +34,7 @@ interface Row {
   holidayHours: number;    // 休日労働（×1.35）
   allowance: number;       // 時間外手当の合計
   compGranted: number;     // 当月に代休とした時間
-  compPremium: number;     // 代休にした分の割増部分（第20条2項）
+  compPremium: number;     // 代休にした分の割増部分（第21条2項）
   compUsed: number;        // 当月の代休消化
   paidLeaveDays: number;   // 年次有給（日）
   paidLeaveHours: number;  // 年次有給（時間）
@@ -83,7 +83,7 @@ export default function Payroll() {
       for (const r of ot) {
         const hrs = Number(r.resultHours) || 0;
         if (r.disposition === 'comp') {
-          // 賃金の本体は代休に振り替え、割増部分だけ支給する（第20条2項）
+          // 賃金の本体は代休に振り替え、割増部分だけ支給する（第21条2項）
           compGranted += hrs;
           if (excessPaid) compPremium += compPremiumDetail(hrs, s.hourlyWage || 0, r.kind, prior.get(r.id) ?? 0).amount;
           continue;
@@ -95,7 +95,7 @@ export default function Payroll() {
         else { otNormal += d.normalHours; otOver60 += d.over60Hours; }
       }
 
-      // 休暇。特別休暇は有給／無給に分ける（病気休暇は年5日までが有給）
+      // 休暇。特別休暇は有給／無給に分ける（病気休暇は年30日までが有給）
       let paidDays = 0, paidHours = 0, spPaid = 0, spUnpaid = 0, workTime = 0;
       const unpaidParts: string[] = [];
       for (const r of lv) {
@@ -108,9 +108,10 @@ export default function Payroll() {
         if (def?.asWorkingTime) { workTime += asDays; continue; }
         if (!def || def.paid) { spPaid += asDays; continue; }
         if (!def.paidDays) { spUnpaid += asDays; unpaidParts.push(`${def.name} ${h1(asDays)}日`); continue; }
-        // 年度内の使用状況から、この記録が有給枠に収まるかを判定する
+        // 年度内の使用状況から、この記録が有給枠に収まるかを判定する。
+        // 病気休暇の年30日は月をまたぐため、当月分ではなく年度全体の記録で数える。
         const usedThisFy = specialLeaveUsedDays(
-          data.leave.filter(x => x.staffId === s.id && x.date < r.date), type, fy
+          (data.leaveAll || data.leave).filter(x => x.staffId === s.id && x.date < r.date), type, fy
         );
         const remain = Math.max(0, def.paidDays - usedThisFy);
         const paidPart = Math.min(asDays, remain);
@@ -121,7 +122,7 @@ export default function Payroll() {
 
       const nightHours = h1(att.reduce((t, r) => t + nightHoursOf(r), 0));
       // パート職員の割増は勤務した時間帯から求める（第8条2項・3項）。
-      // 常勤職員は深夜（22:00〜5:00）に25%を加算する（第37条）。
+      // 常勤職員は深夜（22:00〜5:00）に25%を加算する（第39条）。
       const band = excessPaid ? null : partMonthPremium(att, s.hourlyWage || 0);
 
       return {
@@ -203,14 +204,14 @@ export default function Payroll() {
           8:30前・21:30後、法定労働時間（1日8時間・週40時間）超、深夜（22:00〜5:00）は＋25%（同2項・3項）、
           法定時間外かつ深夜は＋50%として「割増の加算額」に計上します。
           <b>常勤職員</b>の深夜手当も加算25%分です。いずれも実働時間分の通常の賃金には含まれていないため、給与計算で上乗せしてください。
-          代休にした時間外は、賃金の本体を代休に振り替え、割増部分だけを「代休分の割増」に計上します（就業規則 第20条2項）。基本給・社会保険料などは給与計算側で扱ってください。
-          健康診断（第34条）は休業ではなく労働時間とみなすため、特別休暇とは分けて「健康診断等」に計上しています。
+          代休にした時間外は、賃金の本体を代休に振り替え、割増部分だけを「代休分の割増」に計上します（就業規則 第21条2項）。基本給・社会保険料などは給与計算側で扱ってください。
+          健康診断（第35条）は休業ではなく労働時間とみなすため、特別休暇とは分けて「健康診断等」に計上しています。
         </p>
       </Card>
 
       {!loading && rows.some(r => r.specialUnpaidDays > 0) && (
         <Alert type="info">
-          無給の特別休暇（病気休暇の年5日を超える分など）があります。給与から控除する日数として「特別休暇 無給(日)」を確認してください。
+          無給の特別休暇（病気休暇の年30日を超える分など）があります。給与から控除する日数として「特別休暇 無給(日)」を確認してください。
         </Alert>
       )}
 

@@ -3,7 +3,7 @@ import type { Staff, ShiftPattern, OvertimeKind, OvertimeStatus, OvertimeDisposi
 import { isClosedDay } from './holidays';
 
 export const FULLTIME_STANDARD_HOURS = 7.5;   // 常勤の1日の所定（これを超えた分が時間外）
-// 割増率（就業規則 第37条。時間外25%・月60時間超50%・休日35%・深夜25%）
+// 割増率（就業規則 第39条。時間外25%・月60時間超50%・休日35%・深夜25%）
 export const OVERTIME_RATE = 1.25;            // 時間外（×1.25）
 export const OVERTIME_RATE_OVER60 = 1.50;     // 月60時間を超えた分の時間外（×1.50）
 export const OVERTIME_MONTHLY_THRESHOLD = 60; // 割増率が上がる月間時間外の境目（時間）
@@ -12,12 +12,12 @@ export const NIGHT_RATE = 1.25;               // 深夜（22:00〜5:00）×1.25
 export const NIGHT_RATE_ADD = 0.25;           // 深夜の加算部分（通常の賃金に上乗せする分）
 
 /**
- * 代休にしたときの支給率（就業規則 第20条2項）。
+ * 代休にしたときの支給率（就業規則 第21条2項）。
  * 賃金の本体部分は代休に振り替えるが、割増部分は支給する。
  */
 export const compRateOf = (rate: number) => Math.round((rate - 1) * 100) / 100;
 
-/** 代休を取得できる期限（第20条3項）。勤務日の属する賃金計算期間の翌月末日まで */
+/** 代休を取得できる期限（第21条3項）。勤務日の属する賃金計算期間の翌月末日まで */
 export function compDeadlineOf(date: string): string {
   const [y, m] = date.split('-').map(Number);
   const d = new Date(y, m + 1, 0); // 翌月の末日
@@ -82,7 +82,7 @@ export function shiftExcessIsPremium(staff: Staff): boolean {
   return staff.employmentType === 'fulltime';
 }
 
-/* ---- 深夜労働（22:00〜翌5:00）。就業規則 第37条／パート規則 第8条3項 ---- */
+/* ---- 深夜労働（22:00〜翌5:00）。就業規則 第39条／パート規則 第8条3項 ---- */
 
 const hm = (t: string): number | null => {
   const m = /^(\d{1,2}):(\d{2})$/.exec(t || '');
@@ -354,7 +354,7 @@ export function allowanceDetail(
 }
 
 /**
- * 代休にした勤務に支給する割増部分（第20条2項）。
+ * 代休にした勤務に支給する割増部分（第21条2項）。
  * 時間外は当月60時間までが25%、超えた分は50%。休日勤務は35%。
  */
 export function compPremiumDetail(

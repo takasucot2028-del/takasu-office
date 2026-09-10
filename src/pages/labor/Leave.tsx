@@ -31,7 +31,7 @@ export default function Leave() {
   const [leaveType, setLeaveType] = useState<LeaveType>('paid');   // 休暇の種類（取得のみ）
   // 事由の選択が要る休暇（慶弔休暇・子の看護等休暇）
   const reasons = subReasonsFor(leaveType);
-  // 有給で取得できる日数の残（病気休暇の年5日など）。超過分は無給になるだけで登録は止めない
+  // 有給で取得できる日数の残（病気休暇の年30日など）。超過分は無給になるだけで登録は止めない
   const typeDef = specialLeaveDef(leaveType);
   const paidRemain = typeDef?.paidDays
     ? Math.max(0, specialLeavePaidRemain(typeDef, records, currentFiscalYear()))

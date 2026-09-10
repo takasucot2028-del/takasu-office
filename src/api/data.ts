@@ -1190,7 +1190,8 @@ export interface PayrollMonthData {
   staff: Staff[];
   attendance: AttendanceRecord[];
   overtime: OvertimeRecord[];
-  leave: LeaveRecord[];
+  leave: LeaveRecord[];          // 当月の休暇
+  leaveAll: LeaveRecord[];       // 全期間の休暇（年度内の有給枠の消化を数えるため）
   compUse: CompLeaveUse[];
   confirmed: ConfirmedShift[];   // 打刻の丸めに使う
   patterns: ShiftPattern[];
@@ -1204,6 +1205,7 @@ export async function getPayrollMonthData(month: string): Promise<PayrollMonthDa
       attendance: local.listAttendanceMonthAll(month),
       overtime: local.listOvertimeByMonth(month),
       leave: local.listAllLeave().filter(r => r.date.startsWith(month)),
+      leaveAll: local.listAllLeave(),
       compUse: local.listCompUseMonth(month),
       confirmed: local.listConfirmedByMonth(month),
       patterns: local.listShiftPatterns(),
@@ -1223,6 +1225,7 @@ export async function getPayrollMonthData(month: string): Promise<PayrollMonthDa
       attendance: unwrap(r[0] as SubRes<AttendanceRecord[]>, []),
       overtime: unwrap(r[1] as SubRes<OvertimeRecord[]>, []),
       leave: unwrap(r[2] as SubRes<LeaveRecord[]>, []).filter(x => x.date.startsWith(month)),
+      leaveAll: unwrap(r[2] as SubRes<LeaveRecord[]>, []),
       compUse: unwrap(r[3] as SubRes<CompLeaveUse[]>, []),
       confirmed: unwrap(r[4] as SubRes<ConfirmedShift[]>, []),
       patterns: unwrap(r[5] as SubRes<ShiftPattern[]>, []),
@@ -1238,7 +1241,7 @@ export async function getPayrollMonthData(month: string): Promise<PayrollMonthDa
     listShiftPatterns(),
   ]);
   return {
-    staff, attendance, overtime, leave: leave.filter(x => x.date.startsWith(month)), compUse,
+    staff, attendance, overtime, leave: leave.filter(x => x.date.startsWith(month)), leaveAll: leave, compUse,
     confirmed, patterns,
   };
 }

@@ -80,7 +80,7 @@ export default function WageLedgerPrint() {
         const excessPaid = s ? shiftExcessIsPremium(s) : true;
         const allowance = !excessPaid ? 0 : o.reduce((sum, r) => {
           const hrs = Number(r.resultHours) || 0;
-          // 代休にしたものは割増部分のみ支給する（就業規則 第20条2項）
+          // 代休にしたものは割増部分のみ支給する（就業規則 第21条2項）
           const d = r.disposition === 'comp'
             ? compPremiumDetail(hrs, wage, r.kind, prior.get(r.id) ?? 0)
             : allowanceDetail(hrs, wage, r.kind, prior.get(r.id) ?? 0);
@@ -213,7 +213,7 @@ export default function WageLedgerPrint() {
 
           <p className="text-xs text-gray-500 mt-2">
             労働日数・労働時間数・深夜労働は勤怠の記録から集計しています。
-            <b>常勤職員</b>は時間外・休日労働と時間外手当を承認済みの時間外実績から集計し（代休にした分は第20条2項により割増部分のみ）、
+            <b>常勤職員</b>は時間外・休日労働と時間外手当を承認済みの時間外実績から集計し（代休にした分は第21条2項により割増部分のみ）、
             「割増の加算」は深夜25%分です。
             <b>パート職員</b>はシフト超過だけでは割増がつかないため（1.0倍・パート規則 第8条1項）時間外手当は計上せず、
             時間外の欄には法定時間外（1日8時間・週40時間超）を、「割増の加算」には 8:30前・21:30後／法定時間外／深夜の加算分（25%、法定時間外かつ深夜は50%）を記載しています。
