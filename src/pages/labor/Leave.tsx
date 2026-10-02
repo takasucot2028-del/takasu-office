@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import { listStaff, listLeave, addLeave, deleteLeave, setLeaveStatus, computeLeaveBalance, genId, todayStr } from '../../api/data';
-import { EMPLOYMENT_TYPE_LABELS, LEAVE_HOURS_PER_DAY , canUseSpecialLeave, SPECIAL_LEAVE_TYPES, specialLeaveDef, specialLeaveOptionLabel, specialLeaveAnnualDays, specialLeaveUsedDays, specialLeavePaidRemain, paymentLabel, subReasonsFor, subReasonLabel, leaveTypeLabel, currentFiscalYear } from '../../utils/constants';
+import { EMPLOYMENT_TYPE_LABELS, LEAVE_HOURS_PER_DAY , canUseSpecialLeave, SPECIAL_LEAVE_TYPES, specialLeaveDef, specialLeaveOptionLabel, specialLeaveAnnualDays, specialLeaveUsedDays, specialLeavePaidRemain, paymentLabel, subReasonsFor, subReasonLabel, leaveTypeLabel, currentFiscalYear, hourlyPaidLeaveRemainHours, HOURLY_LEAVE_LIMIT_DAYS, HOURLY_LEAVE_LIMIT_HOURS } from '../../utils/constants';
 import {
   statutoryGrantSchedule, computeLeaveLedger, currentObligation, isProportional,
   OBLIGATION_REQUIRED_DAYS, LEAVE_EXPIRY_MONTHS,
@@ -119,6 +119,14 @@ export default function Leave() {
     if (kind === 'use' && leaveType === 'paid' && useHours > summary.balanceHours) {
       setError(`残（${balText(summary.balanceDays, summary.balanceHours)}）を超えています`);
       return;
+    }
+    // 時間単位の年次有給は1年に5日ぶんまで（就業規則 第23条1項）
+    if (kind === 'use' && leaveType === 'paid' && effUnit === 'hour') {
+      const remainH = hourlyPaidLeaveRemainHours(records, currentFiscalYear());
+      if (v > remainH) {
+        setError(`時間単位で取得できるのは1年に${HOURLY_LEAVE_LIMIT_DAYS}日ぶん（${HOURLY_LEAVE_LIMIT_HOURS}時間）までです。今年度の残りは${remainH}時間です（就業規則 第23条）`);
+        return;
+      }
     }
     const rec: LeaveRecord = {
       id: genId('lv'), staffId, kind, date, note,

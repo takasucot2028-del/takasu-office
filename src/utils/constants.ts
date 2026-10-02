@@ -260,6 +260,35 @@ export function specialLeaveUsedDays(
   return Math.round(used * 100) / 100;
 }
 
+/* ---- 時間単位の年次有給休暇（就業規則 第23条） ---- */
+
+/** 時間単位で取得できるのは1年に5日ぶんまで（第23条1項） */
+export const HOURLY_LEAVE_LIMIT_DAYS = 5;
+export const HOURLY_LEAVE_LIMIT_HOURS = HOURLY_LEAVE_LIMIT_DAYS * LEAVE_HOURS_PER_DAY;
+
+/** その年度に時間単位で取得した年次有給休暇の合計（時間） */
+export function hourlyPaidLeaveUsedHours(
+  records: { kind: string; date: string; hours: number; status?: string; leaveType?: string }[],
+  fiscalYear: number
+): number {
+  const used = records
+    .filter(r => r.kind === 'use'
+      && (r.leaveType || 'paid') === 'paid'
+      && (r.status || 'approved') === 'approved'
+      && fiscalYearOf(r.date) === fiscalYear)
+    .reduce((s, r) => s + (Number(r.hours) || 0), 0);
+  return Math.round(used * 100) / 100;
+}
+
+/** その年度に時間単位で取得できる残り（時間）。第23条の年5日ぶんが上限 */
+export function hourlyPaidLeaveRemainHours(
+  records: { kind: string; date: string; hours: number; status?: string; leaveType?: string }[],
+  fiscalYear: number
+): number {
+  const remain = HOURLY_LEAVE_LIMIT_HOURS - hourlyPaidLeaveUsedHours(records, fiscalYear);
+  return Math.round(Math.max(0, remain) * 100) / 100;
+}
+
 /** 事由の表示名（慶弔休暇・子の看護等休暇のどちらでも引ける） */
 export function subReasonLabel(id?: string): string {
   if (!id) return '';

@@ -10,7 +10,7 @@ import { getWageLedgerData, todayStr } from '../../api/data';
 import { EMPLOYMENT_TYPE_LABELS, GENDER_LABELS, fiscalYearLabel, currentFiscalYear } from '../../utils/constants';
 import {
   allowanceDetail, compPremiumDetail, priorOvertimeMap,
-  shiftExcessIsPremium, partMonthPremium, nightHoursOf, nightAllowanceOf,
+  shiftExcessIsPremium, usesPartTimeRules, partMonthPremium, nightHoursOf, nightAllowanceOf,
 } from '../../utils/overtime';
 import { workMinutesOf, roundedRecord, dayShiftMap, monthHoursOf } from '../../utils/worktime';
 import type { Staff } from '../../types';
@@ -87,7 +87,8 @@ export default function WageLedgerPrint() {
         }, 0);
         const nightHours = r1(a.reduce((x, r) => x + nightHoursOf(r), 0));
         // パート職員は勤務した時間帯から割増を求める（第8条2項・3項）
-        const band = excessPaid ? null : partMonthPremium(a, wage);
+        // 業務委託は労働者ではないため割増の対象外（パート規則 第2条）
+        const band = excessPaid || !s || !usesPartTimeRules(s) ? null : partMonthPremium(a, wage);
         return {
           month,
           days: a.filter(r => r.dayType === 'work' && workMinutes(r) > 0).length,

@@ -11,7 +11,7 @@ import {
 } from '../../utils/constants';
 import {
   allowanceDetail, compPremiumDetail, priorOvertimeMap,
-  shiftExcessIsPremium, partMonthPremium, nightHoursOf, nightAllowanceOf,
+  shiftExcessIsPremium, usesPartTimeRules, partMonthPremium, nightHoursOf, nightAllowanceOf,
 } from '../../utils/overtime';
 import { workMinutesOf, roundedRecord, dayShiftMapByStaff, monthHoursOf } from '../../utils/worktime';
 import type { Staff } from '../../types';
@@ -123,7 +123,8 @@ export default function Payroll() {
       const nightHours = h1(att.reduce((t, r) => t + nightHoursOf(r), 0));
       // パート職員の割増は勤務した時間帯から求める（第8条2項・3項）。
       // 常勤職員は深夜（22:00〜5:00）に25%を加算する（第39条）。
-      const band = excessPaid ? null : partMonthPremium(att, s.hourlyWage || 0);
+      // 業務委託は労働者ではないため割増の対象外（パート規則 第2条）
+      const band = excessPaid || !usesPartTimeRules(s) ? null : partMonthPremium(att, s.hourlyWage || 0);
 
       return {
         staff: s,

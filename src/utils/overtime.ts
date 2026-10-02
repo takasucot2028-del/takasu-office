@@ -82,6 +82,22 @@ export function shiftExcessIsPremium(staff: Staff): boolean {
   return staff.employmentType === 'fulltime';
 }
 
+/**
+ * パートタイム労働者就業規則が適用される雇用区分か。
+ * 同規則 第2条は「パートタイム労働者とは、時間給制の労働者をいう」と定めるため、
+ * 時給制のパート職員・指導員が対象。業務委託は労働者ではないので割増の対象外。
+ */
+export function usesPartTimeRules(staff: Staff): boolean {
+  return staff.employmentType === 'parttime' || staff.employmentType === 'instructor';
+}
+
+/** 労働時間に応じて必要な休憩時間（分）。労基法第34条・パート規則 第4条1項 */
+export function requiredBreakMinutes(workedMinutes: number): number {
+  if (workedMinutes > 8 * 60) return 60;
+  if (workedMinutes > 6 * 60) return 45;
+  return 0;
+}
+
 /* ---- 深夜労働（22:00〜翌5:00）。就業規則 第39条／パート規則 第8条3項 ---- */
 
 const hm = (t: string): number | null => {

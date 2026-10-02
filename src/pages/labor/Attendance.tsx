@@ -5,7 +5,7 @@ import { PageContainer, Card, Select, Input, Button, Table, Th, Td, Alert } from
 import { listStaff, saveMonthAttendance, getAttendancePageData, listShiftPatterns, todayStr } from '../../api/data';
 import { DAY_TYPE_LABELS, WEEKDAY_LABELS, breakMinutesBetween } from '../../utils/constants';
 import { shiftPlanByDate, isMissingPunch } from '../../utils/shiftPlan';
-import { overtimeByDate, OVERTIME_KIND_LABELS } from '../../utils/overtime';
+import { overtimeByDate, requiredBreakMinutes, OVERTIME_KIND_LABELS } from '../../utils/overtime';
 import { workMinutesOf, roundedTimesOf, dayShiftMap, roundMonthMinutes } from '../../utils/worktime';
 import type { DayShift } from '../../utils/worktime';
 import type { AttendanceRecord, AttendanceDayType, Staff, ShiftPattern, ConfirmedShift, OvertimeRecord } from '../../types';
@@ -148,6 +148,12 @@ export default function Attendance() {
 
   // 月次集計
   const recList = Object.values(records);
+  // 休憩が法定の下限に足りない日（労基法第34条・パート規則 第4条1項）
+  const shortBreakDays = recList
+    .filter(r => r.dayType === 'work' && workMinutes(r, shiftMap.get(r.date)) > 0)
+    .map(r => ({ date: r.date, required: requiredBreakMinutes(workMinutes(r, shiftMap.get(r.date))) }))
+    .filter(d => d.required > 0 && (records[d.date]?.breakMinutes || 0) < d.required)
+    .sort((a, b) => a.date.localeCompare(b.date));
   const workDays = recList.filter(r => r.dayType === 'work').length;
   const paidDays = recList.filter(r => r.dayType === 'paid').length;
   const absentDays = recList.filter(r => r.dayType === 'absent').length;
@@ -221,6 +227,13 @@ export default function Attendance() {
               シフトが入っているのに出退勤が未入力の日が <b>{missingDays.length}日</b> あります
               （{missingDays.map(d => `${Number(d.slice(8))}日`).join('、')}）。
               表の該当行を色付きで表示しています。出退勤を入力するか、有給・欠勤として登録してください。
+            </Alert>
+          )}
+          {shortBreakDays.length > 0 && (
+            <Alert type="error">
+              休憩が足りない日が <b>{shortBreakDays.length}日</b> あります
+              （{shortBreakDays.map(d => `${Number(d.date.slice(8))}日は${d.required}分必要`).join('、')}）。
+              労働時間が6時間を超える場合は45分以上、8時間を超える場合は1時間以上の休憩が必要です（労基法第34条）。
             </Alert>
           )}
 

@@ -3,6 +3,7 @@ import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge
 import { getMyLeave, getMyProfile, addMyLeaveRequest, computeLeaveBalance, todayStr } from '../../api/data';
 import {
   LEAVE_HOURS_PER_DAY, hoursBetween, currentFiscalYear, fiscalYearLabel,
+  hourlyPaidLeaveRemainHours, HOURLY_LEAVE_LIMIT_DAYS, HOURLY_LEAVE_LIMIT_HOURS,
   SPECIAL_LEAVE_TYPES, specialLeaveDef, specialLeaveOptionLabel, specialLeaveUsedDays, specialLeaveAnnualDays,
   subReasonsFor, subReasonLabel, leaveTypeLabel, canUseSpecialLeave, EMPLOYMENT_TYPE_LABELS,
   specialLeavePaidRemain, paymentLabel,
@@ -65,6 +66,8 @@ export default function StaffLeaveRequest() {
   );
   // 今回の申請のうち無給になる分
   const requestDays = unit === 'hour' ? hourAmt / LEAVE_HOURS_PER_DAY : Number(amount) || 0;
+  // 時間単位の年次有給は1年に5日ぶんまで（就業規則 第23条1項）
+  const hourlyRemain = useMemo(() => hourlyPaidLeaveRemainHours(records, fy), [records, fy]);
   const unpaidDays = paidLimit > 0 ? Math.max(0, Math.round((requestDays - paidRemain) * 100) / 100) : 0;
   // 事由の選択が要る休暇（慶弔休暇・子の看護等休暇）
   const reasons = subReasonsFor(leaveType);
@@ -112,6 +115,11 @@ export default function StaffLeaveRequest() {
       const useHours = unit === 'hour' ? v : v * LEAVE_HOURS_PER_DAY;
       if (useHours > balanceHours) {
         setError(`有効な残（${balanceDays}日 / ${balanceHours}h）を超えています`);
+        return;
+      }
+      // 時間単位で取得できるのは1年に5日ぶんまで（就業規則 第23条1項）
+      if (unit === 'hour' && v > hourlyRemain) {
+        setError(`時間単位で取得できるのは1年に${HOURLY_LEAVE_LIMIT_DAYS}日ぶん（${HOURLY_LEAVE_LIMIT_HOURS}時間）までです。今年度の残りは${hourlyRemain}時間です`);
         return;
       }
     } else if (def && annualDays > 0) {
@@ -230,7 +238,7 @@ export default function StaffLeaveRequest() {
           <div className="mb-4"><Button type="submit" className="w-full" disabled={saving}>{saving ? '申請中…' : '申請する'}</Button></div>
         </form>
         <p className="text-xs text-gray-400">
-          1日＝{LEAVE_HOURS_PER_DAY}時間。時間単位は開始〜終了で申請（現在: <span className="font-medium text-gray-600">{unit === 'hour' ? (hourAmt > 0 ? `${hourAmt}h` : '—') : `${amount || 0}日`}</span>）。申請は事務局の承認後に反映されます。
+          1日＝{LEAVE_HOURS_PER_DAY}時間。時間単位の年次有給は1年に{HOURLY_LEAVE_LIMIT_DAYS}日ぶん（残り{hourlyRemain}時間）まで。時間単位は開始〜終了で申請（現在: <span className="font-medium text-gray-600">{unit === 'hour' ? (hourAmt > 0 ? `${hourAmt}h` : '—') : `${amount || 0}日`}</span>）。申請は事務局の承認後に反映されます。
         </p>
         {!specialOk && me && (
           <p className="mt-3 text-xs bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-gray-600">
