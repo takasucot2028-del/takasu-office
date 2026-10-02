@@ -33,6 +33,16 @@ function shiftMonth(month: string, delta: number): string {
 function workedHoursOf(rec: AttendanceRecord | undefined, shift?: DayShift): number {
   return workMinutesOf(rec, shift) / 60;
 }
+/** 2つの時間帯が重なるか（時刻が未入力のものは重なり判定をしない） */
+function overlaps(aStart?: string, aEnd?: string, bStart?: string, bEnd?: string): boolean {
+  const hm = (t?: string) => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(t || '');
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  };
+  const a1 = hm(aStart), a2 = hm(aEnd), b1 = hm(bStart), b2 = hm(bEnd);
+  if (a1 === null || a2 === null || b1 === null || b2 === null) return false;
+  return a1 < b2 && b1 < a2;
+}
 const yen = (n: number) => `¥${n.toLocaleString()}`;
 const h1 = (n: number) => `${Math.round(n * 10) / 10}h`;
 
@@ -147,9 +157,24 @@ export default function Overtime() {
     setRecords(allOt.filter(r => r.date.startsWith(month)).map(r => ({ ...r })));
   }, [allOt, month]);
 
+  /**
+   * 常勤職員の実績は「その日の実働−基準」で日ごとに決まるため、同じ日に
+   * 申請が複数あっても（従業員側からは1日に何件でも申請できる）実績は
+   * その日の先頭の1件にだけ計上し、二重計上を防ぐ。
+   * パート職員等は申請1件ごとに実績が決まるので、この判定は使わない。
+   */
+  const primaryIdOfDay = useMemo(() => {
+    const m = new Map<string, string>();
+    [...records]
+      .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || '') || a.id.localeCompare(b.id))
+      .forEach(r => { if (!m.has(r.date)) m.set(r.date, r.id); });
+    return m;
+  }, [records]);
+
   // 実績時間だけを求める（累計の計算に使う。手当は含めない）
-  const resultOf = (r: { date: string; appliedHours?: number }) => {
+  const resultOf = (r: OvertimeRecord) => {
     if (!staff) return 0;
+    if (!byApplied && primaryIdOfDay.get(r.date) !== r.id) return 0; // 同じ日の2件目以降
     return resultHoursFor(staff, r.date, attMap[r.date] || 0, shiftMap[r.date] || 0, r.appliedHours || 0, workdayCtx(r.date));
   };
   // 各記録の「その記録より前の時間外累計」。月60時間超の割増判定に使う。
@@ -169,7 +194,7 @@ export default function Overtime() {
     const kind = overtimeKindOf(staff, r.date, workdayCtx(r.date));
     const worked = attMap[r.date] || 0;
     const standard = standardHoursOf(staff, r.date, shiftMap[r.date] || 0, workdayCtx(r.date));
-    const result = resultHoursFor(staff, r.date, worked, shiftMap[r.date] || 0, r.appliedHours || 0, workdayCtx(r.date));
+    const result = resultOf(r);
     const wage = staff.hourlyWage || 0;
     const prior = priorMap.get(r.id) ?? 0;
     // パート職員はシフト超過分が1.0倍のため、この記録からは手当が出ない（第8条1項）
@@ -193,9 +218,19 @@ export default function Overtime() {
     if (!staff) return;
     const hrs = breakMinutesBetween(fStart, fEnd) / 60; // 終了−開始（時間）
     if (!fDate.startsWith(month)) { setError('申請日は表示中の月の日付にしてください'); return; }
-    if (records.some(r => r.date === fDate)) { setError('その日の時間外はすでにあります'); return; }
     if (!fStart || !fEnd) { setError('開始と終了の時刻を入力してください'); return; }
     if (hrs <= 0) { setError('終了は開始より後の時刻にしてください'); return; }
+    // パート職員等は申請した時間がそのまま実績になるため、1日に何件でも登録できる
+    // （例: 早出 8:00〜8:30 と 残業 18:00〜18:30）。時間帯が重なるものだけを弾く。
+    const sameDay = records.filter(r => r.date === fDate);
+    if (byApplied) {
+      if (sameDay.some(r => overlaps(r.startTime, r.endTime, fStart, fEnd))) {
+        setError('同じ日の重なる時間帯がすでに申請されています'); return;
+      }
+    } else if (sameDay.length > 0) {
+      // 常勤職員の実績は「その日の実働−基準」で日ごとに決まるため、1日1件にする
+      setError('常勤職員は1日1件です（実績はその日の実働からまとめて計算します）。事由を書き足してください'); return;
+    }
     setError('');
     const rec: OvertimeRecord = {
       id: genId('ot'), staffId: staff.id, date: fDate,
@@ -546,6 +581,7 @@ export default function Overtime() {
             <Alert type="info">
               この職員は<b>申請した時間がそのまま実績</b>になります。
               シフト表の勤務時間を超えて勤務した分（例: シフトが8:30からの日に7:30から勤務した場合の 7:30〜8:30）を申請してください。
+              <b>1日に複数（早出と残業など）申請できます</b>（例: 8:00〜8:30 と 18:00〜18:30）。
               {isPart && <>　<b>シフト超過そのものには割増がつきません（1.0倍・第8条1項）。</b>
                 割増は上の「割増の内訳」のとおり、勤務した時間帯から自動計算します。</>}
             </Alert>

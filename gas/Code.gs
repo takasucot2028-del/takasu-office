@@ -1479,8 +1479,8 @@ function handleSaveMonthOvertime(staffId, month, records) {
   sheet.getRange(1, 1, sheet.getMaxRows(), ncol).setNumberFormat('@');
   sheet.getRange(1, 1, out.length, ncol).setValues(out);
   sheet.setFrozenRows(1);
-  return { success: true };
   forgetHeader_(sheet.getSheetName()); // 見出しを書き換えたので確認し直す
+  return { success: true };
 }
 
 // --- ハンドラー：代休取得（消化） ---
