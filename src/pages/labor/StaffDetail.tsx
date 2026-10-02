@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PageContainer, Card, Field, Input, Select, Button, Alert, Modal } from '../../components/UI';
 import { getStaff, upsertStaff, setStaffPassword, genId } from '../../api/data';
-import { EMPLOYMENT_TYPE_LABELS, WORK_LOCATION_LABELS, GENDER_LABELS } from '../../utils/constants';
+import { EMPLOYMENT_TYPE_LABELS, WORK_LOCATION_LABELS, GENDER_LABELS, leaveDayHours } from '../../utils/constants';
 import type { Staff, EmploymentType, WorkLocation, Gender } from '../../types';
 
 function emptyStaff(): Staff {
@@ -14,7 +14,7 @@ function emptyStaff(): Staff {
     employmentType: 'fulltime', workLocation: '', position: '',
     hireDate: '', retireDate: '', status: 'active',
     phone: '', email: '', address: '', qualifications: '', hourlyWage: 0, monthlyHourLimit: 0,
-    childNursingChildren: 0, weeklyWorkDays: 0, defaultBreakStart: '', defaultBreakEnd: '', note: '',
+    childNursingChildren: 0, weeklyWorkDays: 0, weeklyWorkHours: 0, defaultBreakStart: '', defaultBreakEnd: '', note: '',
     createdAt: '', updatedAt: '',
   };
 }
@@ -231,6 +231,16 @@ export default function StaffDetail() {
               <Input type="number" min={0} max={7} step={1} value={form.weeklyWorkDays || ''}
                 onChange={e => set('weeklyWorkDays', Number(e.target.value) || 0)}
                 placeholder="年次有給の比例付与の判定に使用（空欄=通常付与で計算）" />
+            </Field>
+            <Field label="週の所定労働時間（時間）">
+              <Input type="number" min={0} max={60} step={0.5} value={form.weeklyWorkHours || ''}
+                onChange={e => set('weeklyWorkHours', Number(e.target.value) || 0)}
+                placeholder="雇用契約書の週の所定労働時間（常勤は37.5。空欄=未設定）" />
+              <p className="text-xs text-gray-400 mt-1">
+                年次有給の比例付与の判定（週30時間未満かつ週4日以下）と、時間単位年休の
+                <b>1日の時間数</b>（週の所定労働時間÷週の所定労働日数・端数切り上げ）に使います。
+                現在の設定では<b>1日＝{leaveDayHours(form as Staff)}時間</b>です。
+              </p>
             </Field>
             <Field label="子の看護等休暇の対象の子（人）">
               <Input type="number" min={0} step={1} value={form.childNursingChildren || ''}

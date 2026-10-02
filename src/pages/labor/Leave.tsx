@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import { listStaff, listLeave, addLeave, deleteLeave, setLeaveStatus, computeLeaveBalance, genId, todayStr } from '../../api/data';
-import { EMPLOYMENT_TYPE_LABELS, LEAVE_HOURS_PER_DAY , canUseSpecialLeave, SPECIAL_LEAVE_TYPES, specialLeaveDef, specialLeaveOptionLabel, specialLeaveAnnualDays, specialLeaveUsedDays, specialLeavePaidRemain, paymentLabel, subReasonsFor, subReasonLabel, leaveTypeLabel, currentFiscalYear, hourlyPaidLeaveRemainHours, HOURLY_LEAVE_LIMIT_DAYS, HOURLY_LEAVE_LIMIT_HOURS } from '../../utils/constants';
+import { EMPLOYMENT_TYPE_LABELS, canUseSpecialLeave, SPECIAL_LEAVE_TYPES, specialLeaveDef, specialLeaveOptionLabel, specialLeaveAnnualDays, specialLeaveUsedDays, specialLeavePaidRemain, paymentLabel, subReasonsFor, subReasonLabel, leaveTypeLabel, currentFiscalYear, hourlyPaidLeaveRemainHours, HOURLY_LEAVE_LIMIT_DAYS, hourlyLeaveLimitHours, leaveDayHours } from '../../utils/constants';
 import {
   statutoryGrantSchedule, computeLeaveLedger, currentObligation, isProportional,
   OBLIGATION_REQUIRED_DAYS, LEAVE_EXPIRY_MONTHS,
@@ -22,6 +22,7 @@ export default function Leave() {
   const staff = useMemo(() => allStaff.filter(s => s.status === 'active'), [allStaff]);
   const [staffId, setStaffId] = useState('');
   const selectedStaff = useMemo(() => staff.find(s => s.id === staffId) ?? null, [staff, staffId]);
+  const dayHours = leaveDayHours(selectedStaff);   // 時間単位年休の1日の時間数（労基則第24条の4）
   // 特別休暇（第23〜34条）は常勤職員のみ
   const specialOk = selectedStaff ? canUseSpecialLeave(selectedStaff) : false;
   const [version, setVersion] = useState(0); // 追加・削除後の再読込用
@@ -44,10 +45,10 @@ export default function Leave() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const summary = computeLeaveBalance(records);
+  const summary = computeLeaveBalance(records, dayHours);
   const today = todayStr();
   // 2年の時効を考慮した残（法定どおり古い付与から消化する）
-  const ledger = useMemo(() => computeLeaveLedger(records, today), [records, today]);
+  const ledger = useMemo(() => computeLeaveLedger(records, today, dayHours), [records, today, dayHours]);
   // 法定付与のスケジュールと、まだ登録していない付与
   const schedule = useMemo(
     () => (selectedStaff ? statutoryGrantSchedule(selectedStaff, today, records) : []),
@@ -56,7 +57,7 @@ export default function Leave() {
   const missingGrants = schedule.filter(g => !g.registered);
   // 年5日取得義務の状況
   const obligation = useMemo(() => currentObligation(records, today), [records, today]);
-  const d1 = (h: number) => Math.round((h / LEAVE_HOURS_PER_DAY) * 10) / 10;
+  const d1 = (h: number) => Math.round((h / dayHours) * 10) / 10;
 
   // 職員一覧を初回に読み込む
   useEffect(() => {
@@ -100,7 +101,7 @@ export default function Leave() {
       setError(effUnit === 'hour' ? '時間は1時間単位の正の数で入力してください' : '日数は0.5日単位の正の数で入力してください');
       return;
     }
-    const useHours = effUnit === 'hour' ? v : v * LEAVE_HOURS_PER_DAY;
+    const useHours = effUnit === 'hour' ? v : v * dayHours;
     // 年次有給のみ残数で制限する（特別休暇は種類ごとの上限で運用）
     if (kind === 'use' && leaveType !== 'paid' && !specialOk) {
       setError('特別休暇は常勤職員のみに付与されます'); return;
@@ -109,8 +110,8 @@ export default function Leave() {
     const limit = useDef ? specialLeaveAnnualDays(useDef, selectedStaff) : 0;
     if (kind === 'use' && useDef && limit > 0) {
       const fy = currentFiscalYear();
-      const remain = limit - specialLeaveUsedDays(records, useDef.id, fy);
-      const useDays = effUnit === 'hour' ? v / LEAVE_HOURS_PER_DAY : v;
+      const remain = limit - specialLeaveUsedDays(records, useDef.id, fy, dayHours);
+      const useDays = effUnit === 'hour' ? v / dayHours : v;
       if (useDays > Math.round(remain * 100) / 100) {
         setError(`${useDef.name}の今年度の残（${Math.round(remain * 100) / 100}日 / ${limit}日）を超えています`);
         return;
@@ -122,9 +123,9 @@ export default function Leave() {
     }
     // 時間単位の年次有給は1年に5日ぶんまで（就業規則 第23条1項）
     if (kind === 'use' && leaveType === 'paid' && effUnit === 'hour') {
-      const remainH = hourlyPaidLeaveRemainHours(records, currentFiscalYear());
+      const remainH = hourlyPaidLeaveRemainHours(records, currentFiscalYear(), selectedStaff);
       if (v > remainH) {
-        setError(`時間単位で取得できるのは1年に${HOURLY_LEAVE_LIMIT_DAYS}日ぶん（${HOURLY_LEAVE_LIMIT_HOURS}時間）までです。今年度の残りは${remainH}時間です（就業規則 第23条）`);
+        setError(`時間単位で取得できるのは1年に${HOURLY_LEAVE_LIMIT_DAYS}日ぶん（${hourlyLeaveLimitHours(selectedStaff)}時間）までです。今年度の残りは${remainH}時間です（就業規則 第23条）`);
         return;
       }
     }
@@ -286,10 +287,20 @@ export default function Leave() {
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
                     {EMPLOYMENT_TYPE_LABELS[selectedStaff.employmentType]}・入職日 {selectedStaff.hireDate || '未設定'}
+                    ／1日＝{dayHours}時間
                     {selectedStaff.employmentType !== 'fulltime' && !selectedStaff.weeklyWorkDays && (
                       <span className="text-amber-700">　※週の所定労働日数が未設定のため通常付与で計算しています（職員名簿で設定してください）</span>
                     )}
                   </p>
+                  {/* 比例付与は「週30時間未満」かつ「週4日以下」の両方が条件（第22条2項） */}
+                  {selectedStaff.employmentType !== 'fulltime'
+                    && (selectedStaff.weeklyWorkDays || 0) >= 1 && (selectedStaff.weeklyWorkDays || 0) <= 4
+                    && !selectedStaff.weeklyWorkHours && (
+                    <p className="text-xs text-amber-700 mt-1">
+                      ※週の所定労働時間が未設定です。<b>週30時間以上の場合は比例付与ではなく通常付与</b>になります（第22条2項）。
+                      職員名簿で設定してください。
+                    </p>
+                  )}
                 </div>
                 <Button variant="secondary" onClick={handleStatutoryGrant} disabled={saving || missingGrants.length === 0}>
                   {missingGrants.length > 0 ? `未登録の付与 ${missingGrants.length}件を登録` : '未登録の付与はありません'}
@@ -411,7 +422,12 @@ export default function Leave() {
                 <Button type="submit" className="w-full" disabled={saving}>{saving ? '追加中…' : '追加'}</Button>
               </div>
             </form>
-            {kind === 'use' && <p className="text-xs text-gray-400 mt-1">1日＝{LEAVE_HOURS_PER_DAY}時間で残から差し引きます。時間単位は1時間から取得できます。</p>}
+            {kind === 'use' && (
+              <p className="text-xs text-gray-400 mt-1">
+                1日＝{dayHours}時間で残から差し引きます（週の所定労働時間÷週の所定労働日数・端数切り上げ）。
+                時間単位は1時間から、年に{HOURLY_LEAVE_LIMIT_DAYS}日ぶん（{hourlyLeaveLimitHours(selectedStaff)}時間）まで。
+              </p>
+            )}
           </Card>
 
           {/* 履歴 */}

@@ -600,7 +600,7 @@ function seedDemo() {
       hireDate: '2015-04-01', retireDate: '', status: 'active',
       phone: '0166-87-1111', email: 'taro@takasu-sc.jp',
       address: '北海道上川郡鷹栖町南1条2丁目', qualifications: 'スポーツ指導員',
-      hourlyWage: 1500, monthlyHourLimit: 0, childNursingChildren: 2, weeklyWorkDays: 5, defaultBreakStart: '12:00', defaultBreakEnd: '13:00', note: '', createdAt: now, updatedAt: now,
+      hourlyWage: 1500, monthlyHourLimit: 0, childNursingChildren: 2, weeklyWorkDays: 5, weeklyWorkHours: 37.5, defaultBreakStart: '12:00', defaultBreakEnd: '13:00', note: '', createdAt: now, updatedAt: now,
     },
     {
       id: 'stf002', employeeNumber: '1002',
@@ -610,7 +610,7 @@ function seedDemo() {
       hireDate: '2020-06-01', retireDate: '', status: 'active',
       phone: '0166-87-2222', email: 'hanako@takasu-sc.jp',
       address: '北海道上川郡鷹栖町北3条4丁目', qualifications: '簿記2級',
-      hourlyWage: 1100, monthlyHourLimit: 88, childNursingChildren: 0, weeklyWorkDays: 4, defaultBreakStart: '', defaultBreakEnd: '', note: '週4日勤務', createdAt: now, updatedAt: now,
+      hourlyWage: 1100, monthlyHourLimit: 88, childNursingChildren: 0, weeklyWorkDays: 4, weeklyWorkHours: 0, defaultBreakStart: '', defaultBreakEnd: '', note: '週4日勤務', createdAt: now, updatedAt: now,
     },
     {
       id: 'stf003', employeeNumber: '1003',
@@ -620,7 +620,7 @@ function seedDemo() {
       hireDate: '2022-04-01', retireDate: '', status: 'active',
       phone: '090-1234-5678', email: 'ken@example.com',
       address: '北海道旭川市', qualifications: '水泳指導員資格',
-      hourlyWage: 1200, monthlyHourLimit: 0, childNursingChildren: 0, weeklyWorkDays: 2, defaultBreakStart: '', defaultBreakEnd: '', note: '', createdAt: now, updatedAt: now,
+      hourlyWage: 1200, monthlyHourLimit: 0, childNursingChildren: 0, weeklyWorkDays: 2, weeklyWorkHours: 0, defaultBreakStart: '', defaultBreakEnd: '', note: '', createdAt: now, updatedAt: now,
     },
   ];
   save(KEY_STAFF, demo);

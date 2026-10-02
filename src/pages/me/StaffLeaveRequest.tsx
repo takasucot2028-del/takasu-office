@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import { getMyLeave, getMyProfile, addMyLeaveRequest, computeLeaveBalance, todayStr } from '../../api/data';
 import {
-  LEAVE_HOURS_PER_DAY, hoursBetween, currentFiscalYear, fiscalYearLabel,
-  hourlyPaidLeaveRemainHours, HOURLY_LEAVE_LIMIT_DAYS, HOURLY_LEAVE_LIMIT_HOURS,
+  hoursBetween, currentFiscalYear, fiscalYearLabel,
+  hourlyPaidLeaveRemainHours, HOURLY_LEAVE_LIMIT_DAYS, hourlyLeaveLimitHours, leaveDayHours,
   SPECIAL_LEAVE_TYPES, specialLeaveDef, specialLeaveOptionLabel, specialLeaveUsedDays, specialLeaveAnnualDays,
   subReasonsFor, subReasonLabel, leaveTypeLabel, canUseSpecialLeave, EMPLOYMENT_TYPE_LABELS,
   specialLeavePaidRemain, paymentLabel,
@@ -37,12 +37,13 @@ export default function StaffLeaveRequest() {
   // 特別休暇（第23〜34条）は常勤職員のみ。それ以外は年次有給休暇だけ申請できる
   const specialOk = me ? canUseSpecialLeave(me) : true;
 
-  const summary = useMemo(() => computeLeaveBalance(records), [records]);
+  const dayHours = leaveDayHours(me);   // 時間単位年休の1日の時間数（労基則第24条の4）
+  const summary = useMemo(() => computeLeaveBalance(records, dayHours), [records, dayHours]);
   const pending = records.filter(r => r.status === 'requested');
   // 2年の時効を考慮した有効残（古い付与から消化）
-  const ledger = useMemo(() => computeLeaveLedger(records, todayStr()), [records]);
+  const ledger = useMemo(() => computeLeaveLedger(records, todayStr(), dayHours), [records, dayHours]);
   const balanceHours = ledger.balanceHours;
-  const balanceDays = Math.round((balanceHours / LEAVE_HOURS_PER_DAY) * 10) / 10;
+  const balanceDays = Math.round((balanceHours / dayHours) * 10) / 10;
   // 年5日取得義務の状況
   const obligation = useMemo(() => currentObligation(records, todayStr()), [records]);
   // 時効が近い付与（90日以内）
@@ -54,7 +55,7 @@ export default function StaffLeaveRequest() {
   // 年度あたりの上限日数。子の看護等休暇は対象の子の人数で 5日／10日 に分かれる
   const annualDays = def ? specialLeaveAnnualDays(def, me) : 0;
   const usedDays = useMemo(
-    () => (def && annualDays > 0 ? specialLeaveUsedDays(records, def.id, fy) : 0),
+    () => (def && annualDays > 0 ? specialLeaveUsedDays(records, def.id, fy, dayHours) : 0),
     [records, def, annualDays, fy]
   );
   const remainDays = annualDays > 0 ? Math.round((annualDays - usedDays) * 100) / 100 : 0;
@@ -65,9 +66,9 @@ export default function StaffLeaveRequest() {
     [def, paidLimit, records, fy]
   );
   // 今回の申請のうち無給になる分
-  const requestDays = unit === 'hour' ? hourAmt / LEAVE_HOURS_PER_DAY : Number(amount) || 0;
+  const requestDays = unit === 'hour' ? hourAmt / dayHours : Number(amount) || 0;
   // 時間単位の年次有給は1年に5日ぶんまで（就業規則 第23条1項）
-  const hourlyRemain = useMemo(() => hourlyPaidLeaveRemainHours(records, fy), [records, fy]);
+  const hourlyRemain = useMemo(() => hourlyPaidLeaveRemainHours(records, fy, me), [records, fy, me]);
   const unpaidDays = paidLimit > 0 ? Math.max(0, Math.round((requestDays - paidRemain) * 100) / 100) : 0;
   // 事由の選択が要る休暇（慶弔休暇・子の看護等休暇）
   const reasons = subReasonsFor(leaveType);
@@ -112,19 +113,19 @@ export default function StaffLeaveRequest() {
     }
     if (isPaid) {
       // 年次有給は残数を超えられない
-      const useHours = unit === 'hour' ? v : v * LEAVE_HOURS_PER_DAY;
+      const useHours = unit === 'hour' ? v : v * dayHours;
       if (useHours > balanceHours) {
         setError(`有効な残（${balanceDays}日 / ${balanceHours}h）を超えています`);
         return;
       }
       // 時間単位で取得できるのは1年に5日ぶんまで（就業規則 第23条1項）
       if (unit === 'hour' && v > hourlyRemain) {
-        setError(`時間単位で取得できるのは1年に${HOURLY_LEAVE_LIMIT_DAYS}日ぶん（${HOURLY_LEAVE_LIMIT_HOURS}時間）までです。今年度の残りは${hourlyRemain}時間です`);
+        setError(`時間単位で取得できるのは1年に${HOURLY_LEAVE_LIMIT_DAYS}日ぶん（${hourlyLeaveLimitHours(me)}時間）までです。今年度の残りは${hourlyRemain}時間です`);
         return;
       }
     } else if (def && annualDays > 0) {
       // 年間の上限がある特別休暇は残日数を超えられない
-      const useDays = unit === 'hour' ? v / LEAVE_HOURS_PER_DAY : v;
+      const useDays = unit === 'hour' ? v / dayHours : v;
       if (useDays > remainDays) {
         setError(`${def.name}の今年度の残（${remainDays}日 / ${annualDays}日）を超えています`);
         return;
@@ -184,7 +185,7 @@ export default function StaffLeaveRequest() {
       {isPaid && soonExpiring.length > 0 && (
         <Alert type="info">
           まもなく期限を迎える年休があります：
-          {soonExpiring.map(l => ` ${l.expiry} までに ${Math.round((l.remainHours / LEAVE_HOURS_PER_DAY) * 10) / 10}日`).join('、')}
+          {soonExpiring.map(l => ` ${l.expiry} までに ${Math.round((l.remainHours / dayHours) * 10) / 10}日`).join('、')}
           （付与から2年で消滅します）
         </Alert>
       )}
@@ -238,7 +239,7 @@ export default function StaffLeaveRequest() {
           <div className="mb-4"><Button type="submit" className="w-full" disabled={saving}>{saving ? '申請中…' : '申請する'}</Button></div>
         </form>
         <p className="text-xs text-gray-400">
-          1日＝{LEAVE_HOURS_PER_DAY}時間。時間単位の年次有給は1年に{HOURLY_LEAVE_LIMIT_DAYS}日ぶん（残り{hourlyRemain}時間）まで。時間単位は開始〜終了で申請（現在: <span className="font-medium text-gray-600">{unit === 'hour' ? (hourAmt > 0 ? `${hourAmt}h` : '—') : `${amount || 0}日`}</span>）。申請は事務局の承認後に反映されます。
+          1日＝{dayHours}時間。時間単位の年次有給は1年に{HOURLY_LEAVE_LIMIT_DAYS}日ぶん（残り{hourlyRemain}時間）まで。時間単位は開始〜終了で申請（現在: <span className="font-medium text-gray-600">{unit === 'hour' ? (hourAmt > 0 ? `${hourAmt}h` : '—') : `${amount || 0}日`}</span>）。申請は事務局の承認後に反映されます。
         </p>
         {!specialOk && me && (
           <p className="mt-3 text-xs bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-gray-600">

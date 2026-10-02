@@ -149,8 +149,8 @@ export interface LeaveBalance {
 }
 
 /** 有給の残数を時間換算で計算（1日=7.5時間）。日数・時間の両方を返す */
-export function computeLeaveBalance(records: LeaveRecord[]): LeaveBalance {
-  const hpd = LEAVE_HOURS_PER_DAY;
+export function computeLeaveBalance(records: LeaveRecord[], dayHours: number = LEAVE_HOURS_PER_DAY): LeaveBalance {
+  const hpd = dayHours;
   const toHours = (r: LeaveRecord) => (r.days || 0) * hpd + (r.hours || 0);
   const r1 = (n: number) => Math.round(n * 10) / 10;
   const approved = (r: LeaveRecord) => !r.status || r.status === 'approved'; // 旧データ（空）は承認扱い

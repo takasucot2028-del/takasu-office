@@ -249,22 +249,51 @@ export function specialLeaveDef(id?: string): SpecialLeaveDef | undefined {
 export function specialLeaveUsedDays(
   records: { kind: string; date: string; days: number; hours: number; status?: string; leaveType?: string }[],
   typeId: string,
-  fiscalYear: number
+  fiscalYear: number,
+  dayHours: number = LEAVE_HOURS_PER_DAY
 ): number {
   const used = records
     .filter(r => r.kind === 'use'
       && (r.leaveType || 'paid') === typeId
       && (r.status || 'approved') === 'approved'
       && fiscalYearOf(r.date) === fiscalYear)
-    .reduce((s, r) => s + (Number(r.days) || 0) + (Number(r.hours) || 0) / LEAVE_HOURS_PER_DAY, 0);
+    .reduce((s, r) => s + (Number(r.days) || 0) + (Number(r.hours) || 0) / dayHours, 0);
   return Math.round(used * 100) / 100;
 }
 
-/* ---- 時間単位の年次有給休暇（就業規則 第23条） ---- */
+/* ---- 所定労働時間と、時間単位の年次有給休暇（就業規則 第22条2項・第23条） ---- */
+
+export const FULLTIME_WEEKLY_HOURS = 37.5;      // 常勤の週の所定労働時間（第18条）
+export const FULLTIME_WEEKLY_DAYS = 5;          // 常勤の週の所定労働日数
+export const PROPORTIONAL_WEEKLY_HOURS = 30;    // 比例付与の境目（第22条2項）
+
+/**
+ * 時間単位年休の「1日の時間数」。
+ * 労基則第24条の4により、その労働者の1日の所定労働時間数（週所定労働時間÷週所定労働日数）とし、
+ * 1時間未満の端数は切り上げる（常勤は 37.5÷5＝7.5 → 8時間。就業規則 第23条2項③）。
+ * 週の所定が未設定の職員は8時間として扱う。
+ */
+export function leaveDayHours(
+  staff?: Pick<Staff, 'employmentType' | 'weeklyWorkDays' | 'weeklyWorkHours'> | null
+): number {
+  const fallback = Math.ceil(LEAVE_HOURS_PER_DAY); // 8時間
+  if (!staff) return fallback;
+  const isFull = staff.employmentType === 'fulltime';
+  const wh = Number(staff.weeklyWorkHours) || (isFull ? FULLTIME_WEEKLY_HOURS : 0);
+  const wd = Number(staff.weeklyWorkDays) || (isFull ? FULLTIME_WEEKLY_DAYS : 0);
+  if (wh > 0 && wd > 0) return Math.max(1, Math.ceil(wh / wd));
+  return fallback;
+}
 
 /** 時間単位で取得できるのは1年に5日ぶんまで（第23条1項） */
 export const HOURLY_LEAVE_LIMIT_DAYS = 5;
-export const HOURLY_LEAVE_LIMIT_HOURS = HOURLY_LEAVE_LIMIT_DAYS * LEAVE_HOURS_PER_DAY;
+
+/** その職員が時間単位で取得できる年間上限（時間）＝5日×1日の時間数 */
+export function hourlyLeaveLimitHours(
+  staff?: Pick<Staff, 'employmentType' | 'weeklyWorkDays' | 'weeklyWorkHours'> | null
+): number {
+  return HOURLY_LEAVE_LIMIT_DAYS * leaveDayHours(staff);
+}
 
 /** その年度に時間単位で取得した年次有給休暇の合計（時間） */
 export function hourlyPaidLeaveUsedHours(
@@ -283,9 +312,10 @@ export function hourlyPaidLeaveUsedHours(
 /** その年度に時間単位で取得できる残り（時間）。第23条の年5日ぶんが上限 */
 export function hourlyPaidLeaveRemainHours(
   records: { kind: string; date: string; hours: number; status?: string; leaveType?: string }[],
-  fiscalYear: number
+  fiscalYear: number,
+  staff?: Pick<Staff, 'employmentType' | 'weeklyWorkDays' | 'weeklyWorkHours'> | null
 ): number {
-  const remain = HOURLY_LEAVE_LIMIT_HOURS - hourlyPaidLeaveUsedHours(records, fiscalYear);
+  const remain = hourlyLeaveLimitHours(staff) - hourlyPaidLeaveUsedHours(records, fiscalYear);
   return Math.round(Math.max(0, remain) * 100) / 100;
 }
 

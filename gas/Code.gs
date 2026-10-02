@@ -27,7 +27,7 @@ var SHEETS = {
     ['phone', '電話番号'], ['email', 'メールアドレス'], ['address', '住所'],
     ['qualifications', '保有資格'], ['note', '備考'], ['createdAt', '作成日時'], ['updatedAt', '更新日時'],
     ['hourlyWage', '時給'], ['employeeNumber', '職員番号'], ['passwordHash', 'パスワードハッシュ'],
-    ['gender', '性別'], ['retireReason', '退職事由'], ['monthlyHourLimit', '月間上限時間'], ['childNursingChildren', '看護休暇対象の子'], ['weeklyWorkDays', '週所定労働日数'], ['defaultBreakStart', '既定休憩開始'], ['defaultBreakEnd', '既定休憩終了'],
+    ['gender', '性別'], ['retireReason', '退職事由'], ['monthlyHourLimit', '月間上限時間'], ['childNursingChildren', '看護休暇対象の子'], ['weeklyWorkDays', '週所定労働日数'], ['weeklyWorkHours', '週所定労働時間'], ['defaultBreakStart', '既定休憩開始'], ['defaultBreakEnd', '既定休憩終了'],
   ] },
   overtime: { name: '時間外', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['kind', '種別'],

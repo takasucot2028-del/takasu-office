@@ -7,7 +7,7 @@
 //
 // 日数と時間の換算は 1日 = LEAVE_HOURS_PER_DAY 時間で統一する。
 
-import { LEAVE_HOURS_PER_DAY, addMonths } from './constants';
+import { LEAVE_HOURS_PER_DAY, PROPORTIONAL_WEEKLY_HOURS, addMonths } from './constants';
 import type { Staff, LeaveRecord } from '../types';
 
 /** 付与の節目。0=6か月、以降は1年6か月、2年6か月…6年6か月以上 */
@@ -35,14 +35,23 @@ export const OBLIGATION_TRIGGER_DAYS = 10;
 export const OBLIGATION_REQUIRED_DAYS = 5;
 
 /** その職員が比例付与の対象か。常勤は常に通常付与 */
-export function isProportional(staff: Pick<Staff, 'employmentType' | 'weeklyWorkDays'>): boolean {
+export function isProportional(
+  staff: Pick<Staff, 'employmentType' | 'weeklyWorkDays' | 'weeklyWorkHours'>
+): boolean {
   if (staff.employmentType === 'fulltime') return false;
   const d = Number(staff.weeklyWorkDays) || 0;
-  return d >= 1 && d <= 4;
+  if (!(d >= 1 && d <= 4)) return false;
+  // 第22条2項は「週所定労働時間30時間未満」かつ「週4日以下」の両方が条件。
+  // 週30時間以上なら、週4日以下でも通常付与になる。未設定（0）は日数だけで判定する。
+  const h = Number(staff.weeklyWorkHours) || 0;
+  if (h >= PROPORTIONAL_WEEKLY_HOURS) return false;
+  return true;
 }
 
 /** 勤続年数の節目ごとの法定付与日数 */
-export function statutoryDaysAt(staff: Pick<Staff, 'employmentType' | 'weeklyWorkDays'>, index: number): number {
+export function statutoryDaysAt(
+  staff: Pick<Staff, 'employmentType' | 'weeklyWorkDays' | 'weeklyWorkHours'>, index: number
+): number {
   const i = Math.min(Math.max(index, 0), STATUTORY_DAYS_FULL.length - 1);
   if (!isProportional(staff)) return STATUTORY_DAYS_FULL[i];
   const table = STATUTORY_DAYS_PROPORTIONAL[Number(staff.weeklyWorkDays)];
@@ -63,7 +72,7 @@ export interface LeaveGrantPlan {
  * 6年6か月以降は毎年同じ日数（通常付与なら20日）を付与し続ける。
  */
 export function statutoryGrantSchedule(
-  staff: Pick<Staff, 'employmentType' | 'weeklyWorkDays' | 'hireDate' | 'retireDate' | 'status'>,
+  staff: Pick<Staff, 'employmentType' | 'weeklyWorkDays' | 'weeklyWorkHours' | 'hireDate' | 'retireDate' | 'status'>,
   asOf: string,
   records: LeaveRecord[] = []
 ): LeaveGrantPlan[] {
@@ -112,7 +121,7 @@ export interface LeaveLedger {
   overusedHours: number; // 付与を超えて取得している分（データの不整合）
 }
 
-const hoursOf = (r: LeaveRecord) => (Number(r.days) || 0) * LEAVE_HOURS_PER_DAY + (Number(r.hours) || 0);
+const hoursOf = (r: LeaveRecord, dayHours: number) => (Number(r.days) || 0) * dayHours + (Number(r.hours) || 0);
 const approved = (r: LeaveRecord) => !r.status || r.status === 'approved';
 /** 年次有給休暇の記録か（leaveType 未設定の旧データは年次有給として扱う） */
 export const isAnnualPaid = (r: LeaveRecord) => (r.leaveType || 'paid') === 'paid';
@@ -121,20 +130,22 @@ export const isAnnualPaid = (r: LeaveRecord) => (r.leaveType || 'paid') === 'pai
  * 付与を古い順に消化していき、asOf 時点の有効残を求める。
  * 取得日に有効だった付与からのみ消化する（時効後の付与は使えない）。
  */
-export function computeLeaveLedger(records: LeaveRecord[], asOf: string): LeaveLedger {
+export function computeLeaveLedger(
+  records: LeaveRecord[], asOf: string, dayHours: number = LEAVE_HOURS_PER_DAY
+): LeaveLedger {
   const paid = records.filter(r => approved(r) && isAnnualPaid(r));
   const lots: LeaveLot[] = paid
     .filter(r => r.kind === 'grant')
     .sort((a, b) => a.date.localeCompare(b.date))
     .map(r => ({
       date: r.date, expiry: addMonths(r.date, LEAVE_EXPIRY_MONTHS),
-      hours: hoursOf(r), usedHours: 0, expiredHours: 0, remainHours: hoursOf(r),
+      hours: hoursOf(r, dayHours), usedHours: 0, expiredHours: 0, remainHours: hoursOf(r, dayHours),
     }));
 
   let overusedHours = 0;
   const uses = paid.filter(r => r.kind === 'use').sort((a, b) => a.date.localeCompare(b.date));
   for (const u of uses) {
-    let rest = hoursOf(u);
+    let rest = hoursOf(u, dayHours);
     for (const lot of lots) {
       if (rest <= 0) break;
       // その取得日に有効な付与だけを消化に使う

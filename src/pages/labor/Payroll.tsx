@@ -6,7 +6,7 @@ import { PageContainer, Card, Input, Field, Button, Table, Th, Td, Alert } from 
 import { getPayrollMonthData, todayStr } from '../../api/data';
 import type { PayrollMonthData } from '../../api/data';
 import {
-  EMPLOYMENT_TYPE_LABELS, LEAVE_HOURS_PER_DAY,
+  EMPLOYMENT_TYPE_LABELS, leaveDayHours,
   specialLeaveDef, leaveTypeLabel, currentFiscalYear, specialLeaveUsedDays,
 } from '../../utils/constants';
 import {
@@ -103,7 +103,7 @@ export default function Payroll() {
         const days = Number(r.days) || 0, hours = Number(r.hours) || 0;
         if (type === 'paid') { paidDays += days; paidHours += hours; continue; }
         const def = specialLeaveDef(type);
-        const asDays = days + hours / LEAVE_HOURS_PER_DAY;
+        const asDays = days + hours / leaveDayHours(s);
         // 健康診断などは休業ではなく労働時間とみなすため、休暇とは分けて集計する
         if (def?.asWorkingTime) { workTime += asDays; continue; }
         if (!def || def.paid) { spPaid += asDays; continue; }
@@ -111,7 +111,7 @@ export default function Payroll() {
         // 年度内の使用状況から、この記録が有給枠に収まるかを判定する。
         // 病気休暇の年30日は月をまたぐため、当月分ではなく年度全体の記録で数える。
         const usedThisFy = specialLeaveUsedDays(
-          (data.leaveAll || data.leave).filter(x => x.staffId === s.id && x.date < r.date), type, fy
+          (data.leaveAll || data.leave).filter(x => x.staffId === s.id && x.date < r.date), type, fy, leaveDayHours(s)
         );
         const remain = Math.max(0, def.paidDays - usedThisFy);
         const paidPart = Math.min(asDays, remain);
