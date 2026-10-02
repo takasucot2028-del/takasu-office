@@ -8,7 +8,7 @@
 import type {
   Staff, AttendanceRecord, LeaveRecord,
   ShiftPattern, AvailabilityRecord, ConfirmedShift, WorkLocation,
-  OvertimeRecord, CompLeaveUse, DocumentItem,
+  OvertimeRecord, CompLeaveUse, RequestStatus, DocumentItem,
   ExpenseCategory, Budget, Expense, ShiftChange, AttendanceChange, CompanyHoliday, AuditEntry,
 } from '../types';
 import { DEFAULT_SHIFT_PATTERNS, LEAVE_HOURS_PER_DAY, currentFiscalYear } from '../utils/constants';
@@ -628,6 +628,33 @@ export async function addCompUse(record: CompLeaveUse): Promise<void> {
   if (!USE_GAS) { local.addCompUse(record); return; }
   const res = await gas.addCompUse(record, token());
   if (!res.success) throw new Error(res.error || '代休取得の記録に失敗しました');
+}
+
+/** 従業員：自分の代休取得（申請中を含む） */
+export async function getMyCompUse(): Promise<CompLeaveUse[]> {
+  if (!USE_GAS) return local.listCompUse(staffId());
+  return unwrap(await gas.getMyCompUse(token()), []);
+}
+
+/** 従業員：代休の取得を申請する（事務局の承認待ち） */
+export async function addMyCompUse(record: Partial<CompLeaveUse>): Promise<void> {
+  const rec: Partial<CompLeaveUse> = { id: local.genId('cu'), ...record }; // クライアント採番（リトライ冪等化）
+  if (!USE_GAS) {
+    local.addCompUse({
+      id: rec.id!, staffId: staffId(), date: rec.date || '', hours: Number(rec.hours) || 0,
+      startTime: rec.startTime || '', endTime: rec.endTime || '', status: 'requested', note: rec.note || '',
+    });
+    return;
+  }
+  const res = await gas.addMyCompUse(rec, token());
+  if (!res.success) throw new Error(res.error || '代休の申請に失敗しました');
+}
+
+/** 事務局：代休申請の承認・却下 */
+export async function setCompUseStatus(id: string, status: RequestStatus): Promise<void> {
+  if (!USE_GAS) { local.setCompUseStatus(id, status); return; }
+  const res = await gas.setCompUseStatus(id, status, token());
+  if (!res.success) throw new Error(res.error || '承認に失敗しました');
 }
 
 export async function deleteCompUse(id: string): Promise<void> {

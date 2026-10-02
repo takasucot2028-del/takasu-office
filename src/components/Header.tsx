@@ -18,7 +18,7 @@ const STAFF_NAV = [
   { to: '/me/attendance', label: '出勤簿', short: '出勤簿' },
   { to: '/me/schedule', label: 'シフト表', short: 'シフト表' },
   { to: '/me/shifts', label: 'シフト希望', short: '希望' },
-  { to: '/me/overtime', label: '時間外申請', short: '時間外' },
+  { to: '/me/overtime', label: '時間外・代休', short: '時間外' },
   { to: '/me/leave', label: '休暇申請', short: '休暇' },
   { to: '/me/expense', label: '経費申請', short: '経費' },
   { to: '/me/documents', label: '文書', short: '文書' },

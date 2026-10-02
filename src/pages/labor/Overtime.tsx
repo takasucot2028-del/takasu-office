@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
 import {
   getReference, getOvertimeMonthData,
-  saveMonthOvertime, addCompUse, deleteCompUse,
+  saveMonthOvertime, addCompUse, deleteCompUse, setCompUseStatus,
   genId, todayStr,
 } from '../../api/data';
 import { WEEKDAY_LABELS, breakMinutesBetween, fiscalYearOf, fiscalYearLabel } from '../../utils/constants';
@@ -21,7 +21,7 @@ import {
 } from '../../utils/overtime';
 import { workMinutesOf, roundedRecord, dayShiftMap } from '../../utils/worktime';
 import type { DayShift } from '../../utils/worktime';
-import type { Staff, ShiftPattern, ConfirmedShift, AttendanceRecord, OvertimeRecord, CompLeaveUse, OvertimeDisposition } from '../../types';
+import type { Staff, ShiftPattern, ConfirmedShift, AttendanceRecord, OvertimeRecord, CompLeaveUse, OvertimeDisposition, RequestStatus } from '../../types';
 
 function currentMonth(): string { return todayStr().slice(0, 7); }
 function shiftMonth(month: string, delta: number): string {
@@ -274,7 +274,10 @@ export default function Overtime() {
   const compGranted = allOt
     .filter(r => r.status === 'approved' && r.disposition === 'comp')
     .reduce((s, r) => s + (r.resultHours || 0), 0);
-  const compUsed = compUse.reduce((s, r) => s + (r.hours || 0), 0);
+  // 承認済だけを消化とみなす。従業員から申請中のものは別に示す
+  const compStatus = (r: CompLeaveUse) => r.status || 'approved';
+  const compUsed = compUse.filter(r => compStatus(r) === 'approved').reduce((s, r) => s + (r.hours || 0), 0);
+  const compRequested = compUse.filter(r => compStatus(r) === 'requested').reduce((s, r) => s + (r.hours || 0), 0);
   const compBalance = Math.round((compGranted - compUsed) * 10) / 10;
 
   // 当月集計
@@ -321,7 +324,7 @@ export default function Overtime() {
     try {
       await addCompUse({
         id: genId('cu'), staffId: staff.id, date: cDate,
-        hours: hrs, startTime: cStart, endTime: cEnd, note: cNote,
+        hours: hrs, startTime: cStart, endTime: cEnd, status: 'approved', note: cNote,
       });
       setCNote('');
       setReloadKey(k => k + 1);
@@ -333,6 +336,11 @@ export default function Overtime() {
     if (!confirm('この代休取得を削除しますか？')) return;
     try { await deleteCompUse(id); setReloadKey(k => k + 1); }
     catch (err) { setError(err instanceof Error ? err.message : '削除に失敗しました'); }
+  };
+  /** 従業員から申請された代休を承認・却下する */
+  const decideCompUse = async (id: string, status: RequestStatus) => {
+    try { await setCompUseStatus(id, status); setReloadKey(k => k + 1); }
+    catch (err) { setError(err instanceof Error ? err.message : '承認に失敗しました'); }
   };
 
   return (
@@ -655,7 +663,15 @@ export default function Overtime() {
           {/* 代休取得 */}
           <Card>
             <h2 className="font-bold text-gray-800 mb-1">代休の取得（消化）</h2>
-            <p className="text-xs text-gray-500 mb-3">代休にした時間外の合計 {h1(compGranted)} − 取得 {h1(compUsed)} ＝ 残 <span className="font-medium text-emerald-700">{h1(compBalance)}</span></p>
+            <p className="text-xs text-gray-500 mb-3">
+              代休にした時間外の合計 {h1(compGranted)} − 取得（承認済）{h1(compUsed)} ＝ 残 <span className="font-medium text-emerald-700">{h1(compBalance)}</span>
+              {compRequested > 0 && <span className="text-amber-700">　／ 申請中 {h1(compRequested)}（承認すると残から引かれます）</span>}
+            </p>
+            {compRequested > 0 && (
+              <Alert type="info">
+                この職員から<b>代休の取得申請</b>が届いています。下の表の「承認」を押すと確定します。
+              </Alert>
+            )}
             <div className="grid sm:grid-cols-5 gap-3 items-end mb-1">
               <Field label="取得日"><Input type="date" value={cDate} onChange={e => setCDate(e.target.value)} /></Field>
               <Field label="開始"><Input type="time" value={cStart} onChange={e => setCStart(e.target.value)} /></Field>
@@ -674,21 +690,37 @@ export default function Overtime() {
               ）。終日の代休は所定の勤務時間帯を入力してください。
             </p>
             <Table>
-              <thead><tr><Th>取得日</Th><Th>時間帯</Th><Th>時間</Th><Th>備考</Th><Th></Th></tr></thead>
+              <thead><tr><Th>取得日</Th><Th>時間帯</Th><Th>時間</Th><Th>状態</Th><Th>備考</Th><Th></Th></tr></thead>
               <tbody>
-                {compUse.map(r => (
-                  <tr key={r.id}>
+                {compUse.map(r => {
+                  const st = compStatus(r);
+                  return (
+                  <tr key={r.id} className={st === 'requested' ? 'bg-amber-50' : undefined}>
                     <Td>{r.date}</Td>
                     <Td className="whitespace-nowrap">
                       {r.startTime && r.endTime
                         ? `${r.startTime}〜${r.endTime}`
                         : <span className="text-gray-300">—</span>}
                     </Td>
-                    <Td>{h1(r.hours)}</Td><Td>{r.note}</Td>
+                    <Td>{h1(r.hours)}</Td>
+                    <Td className="whitespace-nowrap">
+                      {st === 'requested' ? (
+                        <span className="flex items-center gap-1">
+                          <Button size="sm" onClick={() => decideCompUse(r.id, 'approved')}>承認</Button>
+                          <Button size="sm" variant="ghost" onClick={() => decideCompUse(r.id, 'rejected')}>却下</Button>
+                        </span>
+                      ) : st === 'rejected' ? (
+                        <button onClick={() => decideCompUse(r.id, 'requested')}><Badge color="red">却下</Badge></button>
+                      ) : (
+                        <Badge color="green">承認済</Badge>
+                      )}
+                    </Td>
+                    <Td>{r.note}</Td>
                     <Td><Button variant="ghost" size="sm" onClick={() => removeCompUse(r.id)}>削除</Button></Td>
                   </tr>
-                ))}
-                {compUse.length === 0 && <tr><Td className="text-center text-gray-400 py-6" colSpan={5}>取得記録はありません</Td></tr>}
+                  );
+                })}
+                {compUse.length === 0 && <tr><Td className="text-center text-gray-400 py-6" colSpan={6}>取得記録はありません</Td></tr>}
               </tbody>
             </Table>
           </Card>

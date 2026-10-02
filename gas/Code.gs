@@ -37,7 +37,7 @@ var SHEETS = {
   ] },
   comp_leave_use: { name: '代休取得', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['hours', '時間'], ['note', '備考'],
-    ['startTime', '開始'], ['endTime', '終了'],
+    ['startTime', '開始'], ['endTime', '終了'], ['status', '状態'],
   ] },
   documents: { name: '文書', columns: [
     ['id', 'ID'], ['type', '種別'], ['title', 'タイトル'], ['url', '共有リンク'], ['createdAt', '作成日時'], ['updatedAt', '更新日時'],
@@ -518,7 +518,7 @@ var STAFF_ACTIONS = {
   getMyShiftChanges: true, markShiftChangesRead: true,
   getMyAttendanceChanges: true, markAttendanceChangesRead: true,
   getMyAvailability: true, saveMyAvailability: true, getMyConfirmed: true,
-  getMyOvertime: true, addMyOvertime: true,
+  getMyOvertime: true, addMyOvertime: true, getMyCompUse: true, addMyCompUse: true,
   getMyLeave: true, addMyLeaveRequest: true, staffChangePassword: true,
   getExpenseContext: true, getMyExpenses: true, addMyExpense: true,
 };
@@ -583,6 +583,8 @@ var AUDIT_ACTIONS = {
   addMyOvertime:        { label: '時間外の申請',          target: '時間外' },
   addCompUse:           { label: '代休取得の記録',        target: '代休' },
   deleteCompUse:        { label: '代休取得の削除',        target: '代休' },
+  addMyCompUse:         { label: '代休取得の申請',        target: '代休' },
+  setCompUseStatus:     { label: '代休申請の承認・却下',   target: '代休' },
   addLeave:             { label: '休暇記録の追加',        target: '休暇' },
   deleteLeave:          { label: '休暇記録の削除',        target: '休暇' },
   setLeaveStatus:       { label: '休暇申請の承認・却下',   target: '休暇' },
@@ -841,6 +843,15 @@ function dispatch(action, body) {
         break;
       case 'deleteCompUse':
         result = handleDeleteCompUse(body.id);
+        break;
+      case 'setCompUseStatus':
+        result = handleSetCompUseStatus(body.id, body.status);
+        break;
+      case 'getMyCompUse':
+        result = handleGetMyCompUse(getSession(body.token));
+        break;
+      case 'addMyCompUse':
+        result = handleAddMyCompUse(getSession(body.token), body.record);
         break;
       case 'getAbsencesByDate':
         result = handleGetAbsencesByDate(body.date);
@@ -1500,21 +1511,57 @@ function handleGetCompUseMonth(month) {
   const records = dedupeById_(sheetToObjects(sheet, 'comp_leave_use').filter(function (r) {
     return String(r.date).slice(0, 7) === month;
   }));
-  records.forEach(function (r) { r.hours = Number(r.hours) || 0; });
+  records.forEach(function (r) { r.hours = Number(r.hours) || 0; r.status = String(r.status || 'approved'); });
   return { success: true, data: records };
 }
 
 function handleGetCompUse(staffId) {
   const sheet = getSheet('comp_leave_use');
   const records = sheetToObjects(sheet, 'comp_leave_use').filter(function (r) { return String(r.staffId) === String(staffId); });
-  records.forEach(function (r) { r.hours = Number(r.hours) || 0; });
+  records.forEach(function (r) { r.hours = Number(r.hours) || 0; r.status = String(r.status || 'approved'); });
   records.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
   return { success: true, data: records };
 }
 
 function handleAddCompUse(record) {
   if (!record || !record.id) return { success: false, error: '代休取得の記録が不正です' };
+  record.status = String(record.status || 'approved'); // 事務局の登録はその場で承認済
   appendUnique_('comp_leave_use', record);
+  return { success: true };
+}
+
+// 従業員：自分の代休取得（申請中を含む）
+function handleGetMyCompUse(session) {
+  const staff = staffOf_(session);
+  const records = sheetToObjects(getSheet('comp_leave_use'), 'comp_leave_use')
+    .filter(function (r) { return String(r.staffId) === staff.id; });
+  records.forEach(function (r) { r.hours = Number(r.hours) || 0; r.status = String(r.status || 'approved'); });
+  records.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+  return { success: true, data: records };
+}
+
+// 従業員：代休の取得を申請する（事務局の承認待ちで登録される）
+function handleAddMyCompUse(session, record) {
+  const staff = staffOf_(session);
+  if (!record || !record.date) return { success: false, error: '申請内容が不正です' };
+  const rec = {
+    id: record.id || genId('cu'), staffId: staff.id, date: record.date,
+    hours: Number(record.hours) || 0, note: record.note || '',
+    startTime: String(record.startTime || ''), endTime: String(record.endTime || ''),
+    status: 'requested',
+  };
+  if (rec.hours <= 0) return { success: false, error: '取得時間が不正です' };
+  appendUnique_('comp_leave_use', rec);
+  return { success: true };
+}
+
+// 事務局：代休申請の承認・却下
+function handleSetCompUseStatus(id, status) {
+  const sheet = getSheet('comp_leave_use');
+  const rows = findAllRowIndexes_(sheet, 0, id); // 重複行があっても状態が食い違わないよう全行更新
+  if (!rows.length) return { success: false, error: '代休取得の記録が見つかりません' };
+  const col = colNum('comp_leave_use', 'status');
+  rows.forEach(function (r) { sheet.getRange(r, col).setValue(status); });
   return { success: true };
 }
 
@@ -1530,6 +1577,7 @@ function handleGetAbsencesByDate(date) {
   });
   leave.forEach(function (r) { r.days = Number(r.days) || 0; r.hours = Number(r.hours) || 0; });
   var comp = sheetToObjects(getSheet('comp_leave_use'), 'comp_leave_use').filter(function (r) {
+    if (String(r.status || 'approved') !== 'approved') return false;
     return String(r.date) === String(date);
   });
   comp.forEach(function (r) { r.hours = Number(r.hours) || 0; });
@@ -1624,7 +1672,7 @@ function handleGetTodayWork(date) {
     .filter(function (r) { return String(r.date) === d && r.kind === 'use' && String(r.status || 'approved') === 'approved'; })
     .map(function (r) { return { staffName: nameOf[r.staffId] || '(不明)', days: Number(r.days) || 0, hours: Number(r.hours) || 0, note: r.note || '' }; });
   var comp = sheetToObjects(getSheet('comp_leave_use'), 'comp_leave_use')
-    .filter(function (r) { return String(r.date) === d; })
+    .filter(function (r) { return String(r.date) === d && String(r.status || 'approved') === 'approved'; })
     .map(function (r) { return { staffName: nameOf[r.staffId] || '(不明)', hours: Number(r.hours) || 0, note: r.note || '' }; });
   return { success: true, data: { shifts: shifts, leave: leave, comp: comp } };
 }

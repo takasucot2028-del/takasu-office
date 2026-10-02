@@ -450,6 +450,11 @@ export function addCompUse(record: CompLeaveUse) {
   writeAudit('代休取得の記録', '代休', `${record.date} / ${record.hours}h`);
 }
 
+export function setCompUseStatus(id: string, status: RequestStatus) {
+  save(KEY_COMP_USE, load<CompLeaveUse>(KEY_COMP_USE).map(r => (r.id === id ? { ...r, status } : r)));
+  writeAudit('代休申請の承認・却下', '代休', `${id} → ${status}`);
+}
+
 export function deleteCompUse(id: string) {
   save(KEY_COMP_USE, load<CompLeaveUse>(KEY_COMP_USE).filter(r => r.id !== id));
   writeAudit('代休取得の削除', '代休', `id=${id}`);

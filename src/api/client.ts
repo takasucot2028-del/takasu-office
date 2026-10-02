@@ -58,7 +58,7 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 // 上記以外の追加系(add*)・打刻(punch)はサーバー側で重複しうるため再試行しない（業務エラーは元々再試行しない）。
 const IDEMPOTENT_ADDS = new Set([
   'addExpense', 'addCompUse', 'addLeave',
-  'addMyExpense', 'addMyOvertime', 'addMyLeaveRequest', // 従業員申請もクライアント採番＋GAS側冪等化済み
+  'addMyExpense', 'addMyOvertime', 'addMyLeaveRequest', 'addMyCompUse', // 従業員申請もクライアント採番＋GAS側冪等化済み
   // 打刻は職員×日付の1行を書き換えるだけで、何度実行しても行が増えない。
   // 通信が一時的に失敗しただけで打刻できないのは困るため再試行する。
   'punch',
@@ -281,6 +281,12 @@ export const addCompUse = (record: CompLeaveUse, token: string) =>
 
 export const deleteCompUse = (id: string, token: string) =>
   request<void>('deleteCompUse', { id, token });
+export const setCompUseStatus = (id: string, status: RequestStatus, token: string) =>
+  request<void>('setCompUseStatus', { id, status, token });
+export const getMyCompUse = (token: string) =>
+  request<CompLeaveUse[]>('getMyCompUse', { token });
+export const addMyCompUse = (record: Partial<CompLeaveUse>, token: string) =>
+  request<void>('addMyCompUse', { record, token });
 
 // === 本日の休暇（有給取得・代休取得） ===
 export const getAbsencesByDate = (date: string, token: string) =>
