@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../components/AuthContext';
 import {
@@ -28,6 +28,12 @@ const hhmm = (min: number) => `${Math.floor(min / 60)}:${String(min % 60).padSta
 
 interface Sheet { staff: Staff; records: Record<string, AttendanceRecord>; confirmed: ConfirmedShift[]; overtime: OvertimeRecord[] }
 
+// A4縦（210×297mm）。余白を引いた範囲に1人ぶんを収める
+const PAGE_MARGIN_MM = 10;
+const PAGE_WIDTH_MM = 210 - PAGE_MARGIN_MM * 2;
+const PAGE_HEIGHT_MM = 297 - PAGE_MARGIN_MM * 2;
+const PX_PER_MM = 96 / 25.4;
+
 export default function AttendancePrint() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -40,10 +46,21 @@ export default function AttendancePrint() {
   const [patterns, setPatterns] = useState<ShiftPattern[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 印刷はA4縦（このページにいる間だけ @page を縦に上書き）
+  // 印刷はA4縦1枚。用紙の幅に合わせて組み、はみ出す場合は縮小して必ず1枚に収める
   useEffect(() => {
     const style = document.createElement('style');
-    style.textContent = '@page { size: A4 portrait; margin: 12mm; }';
+    style.textContent = `
+      @page { size: A4 portrait; margin: ${PAGE_MARGIN_MM}mm; }
+      .att-page { width: ${PAGE_WIDTH_MM}mm; overflow: hidden; margin: 0 auto 8mm; }
+      .att-page h1 { font-size: 12pt; }
+      .att-page table { font-size: 8.5pt; }
+      .att-page td, .att-page th { padding: 0.5mm 1mm; line-height: 1.25; }
+      /* 備考が長くても行が増えないようにする（1枚に収めるため） */
+      .att-page .att-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 38mm; }
+      @media print {
+        .att-page { margin: 0 auto; break-inside: avoid; }
+      }
+    `;
     document.head.appendChild(style);
     return () => { document.head.removeChild(style); };
   }, []);
@@ -93,6 +110,36 @@ export default function AttendancePrint() {
 
   useEffect(() => { listShiftPatterns().then(setPatterns).catch(() => {}); }, []);
 
+  /**
+   * 1枚に収める。用紙の高さを超える職員だけ、その人のぶんを縮小する。
+   * 画面と印刷で同じ幅（190mm）・同じ文字サイズで組んでいるため、
+   * 画面で測った高さがそのまま印刷時の高さになる。
+   */
+  useLayoutEffect(() => {
+    if (loading) return;
+    const avail = PAGE_HEIGHT_MM * PX_PER_MM;
+    const fit = () => {
+      document.querySelectorAll<HTMLElement>('.att-page').forEach(page => {
+        const inner = page.querySelector<HTMLElement>('.att-fit');
+        if (!inner) return;
+        inner.style.transform = '';            // 測る前に前回の縮小を解除する
+        page.style.height = '';
+        const h = inner.getBoundingClientRect().height;
+        const scale = h > avail ? avail / h : 1;
+        inner.style.transformOrigin = 'top left';
+        if (scale < 1) inner.style.transform = `scale(${scale})`;
+        page.style.height = `${h * scale}px`;  // 縮小した分の余白を残さない
+      });
+    };
+    fit();
+    const t = setTimeout(fit, 150);            // 文字の読み込み後にもう一度測る
+    window.addEventListener('beforeprint', fit);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('beforeprint', fit);
+    };
+  }, [loading, sheets, patterns, month]);
+
   const days = useMemo(() => daysOfMonth(month), [month]);
   const today = todayStr();
   const [y, m] = month.split('-');
@@ -132,8 +179,10 @@ export default function AttendancePrint() {
           minutes: roundMonthMinutes(list.reduce((s, r) => s + workMinutes(r, shiftMap.get(r.date)), 0)),
         };
         return (
-          <section key={staff.id}
-            style={{ breakAfter: idx < sheets.length - 1 ? 'page' : 'auto', printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
+          <div key={staff.id} className="att-page"
+            style={{ breakAfter: idx < sheets.length - 1 ? 'page' : 'auto' }}>
+          <section className="att-fit"
+            style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
             <h1 className="text-lg font-bold text-center mb-1">出勤簿</h1>
             <p className="text-sm text-center mb-3">{Number(y)}年{Number(m)}月</p>
 
@@ -210,7 +259,7 @@ export default function AttendancePrint() {
                           return `${ot.hours}${ot.kind === 'holiday' ? '（休日）' : ''}`;
                         })()}
                       </td>
-                      <td className="border border-gray-500 px-2 py-0.5">{rec?.note || ''}</td>
+                      <td className="att-note border border-gray-500 px-2 py-0.5" title={rec?.note || ''}>{rec?.note || ''}</td>
                     </tr>
                   );
                 })}
@@ -262,6 +311,7 @@ export default function AttendancePrint() {
               ))}
             </div>
           </section>
+          </div>
         );
       })}
     </div>
