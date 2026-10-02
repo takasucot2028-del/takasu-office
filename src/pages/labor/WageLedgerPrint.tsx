@@ -12,13 +12,12 @@ import {
   allowanceDetail, compPremiumDetail, priorOvertimeMap,
   shiftExcessIsPremium, partMonthPremium, nightHoursOf, nightAllowanceOf,
 } from '../../utils/overtime';
-import { workMinutesOf, roundedRecord, dayShiftMap } from '../../utils/worktime';
+import { workMinutesOf, roundedRecord, dayShiftMap, monthHoursOf } from '../../utils/worktime';
 import type { Staff } from '../../types';
 
 /** 実働分数＝退勤−出勤−休憩（打刻は丸めた後の値を渡す） */
 const workMinutes = workMinutesOf;
 
-const h1 = (min: number) => Math.round((min / 60) * 10) / 10;
 const r1 = (n: number) => Math.round(n * 10) / 10;
 const yen = (n: number) => `¥${n.toLocaleString()}`;
 
@@ -92,7 +91,8 @@ export default function WageLedgerPrint() {
         return {
           month,
           days: a.filter(r => r.dayType === 'work' && workMinutes(r) > 0).length,
-          workHours: h1(a.reduce((x, r) => x + workMinutes(r), 0)),
+          // 月の合計は15分単位で切り上げる（0.25時間刻み）
+          workHours: monthHoursOf(a.reduce((x, r) => x + workMinutes(r), 0)),
           // 時間外の労働時間数。パート職員は法定時間外（1日8時間・週40時間超）を記載する
           overtimeHours: band
             ? r1(band.legalHours + band.weeklyExcessHours)
@@ -111,7 +111,7 @@ export default function WageLedgerPrint() {
 
   const total = rows.reduce((t, r) => ({
     days: t.days + r.days,
-    workHours: Math.round((t.workHours + r.workHours) * 10) / 10,
+    workHours: Math.round((t.workHours + r.workHours) * 100) / 100,
     overtimeHours: Math.round((t.overtimeHours + r.overtimeHours) * 10) / 10,
     holidayHours: Math.round((t.holidayHours + r.holidayHours) * 10) / 10,
     nightHours: Math.round((t.nightHours + r.nightHours) * 10) / 10,
@@ -212,7 +212,7 @@ export default function WageLedgerPrint() {
           </table>
 
           <p className="text-xs text-gray-500 mt-2">
-            労働日数・労働時間数・深夜労働は勤怠の記録から集計しています。
+            労働日数・労働時間数・深夜労働は勤怠の記録から集計しています。労働時間数は月ごとに15分（0.25時間）単位で切り上げています。
             <b>常勤職員</b>は時間外・休日労働と時間外手当を承認済みの時間外実績から集計し（代休にした分は第21条2項により割増部分のみ）、
             「割増の加算」は深夜25%分です。
             <b>パート職員</b>はシフト超過だけでは割増がつかないため（1.0倍・パート規則 第8条1項）時間外手当は計上せず、

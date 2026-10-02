@@ -6,7 +6,7 @@ import { listStaff, saveMonthAttendance, getAttendancePageData, listShiftPattern
 import { DAY_TYPE_LABELS, WEEKDAY_LABELS, breakMinutesBetween } from '../../utils/constants';
 import { shiftPlanByDate, isMissingPunch } from '../../utils/shiftPlan';
 import { overtimeByDate, OVERTIME_KIND_LABELS } from '../../utils/overtime';
-import { workMinutesOf, roundedTimesOf, dayShiftMap } from '../../utils/worktime';
+import { workMinutesOf, roundedTimesOf, dayShiftMap, roundMonthMinutes } from '../../utils/worktime';
 import type { DayShift } from '../../utils/worktime';
 import type { AttendanceRecord, AttendanceDayType, Staff, ShiftPattern, ConfirmedShift, OvertimeRecord } from '../../types';
 
@@ -151,7 +151,8 @@ export default function Attendance() {
   const workDays = recList.filter(r => r.dayType === 'work').length;
   const paidDays = recList.filter(r => r.dayType === 'paid').length;
   const absentDays = recList.filter(r => r.dayType === 'absent').length;
-  const totalMinutes = recList.reduce((s, r) => s + workMinutes(r, shiftMap.get(r.date)), 0);
+  // 月の合計は15分単位で切り上げる（給与計算で端数を切り捨てないため）
+  const totalMinutes = roundMonthMinutes(recList.reduce((s, r) => s + workMinutes(r, shiftMap.get(r.date)), 0));
 
   const exportExcel = () => {
     if (!selectedStaff) return;
@@ -237,6 +238,7 @@ export default function Attendance() {
             実働は打刻をシフトに合わせて丸めて計算します（<span className="text-blue-600">青字</span>が計算に使った時刻）。
             シフト開始前の打刻は、早出の申請がなければシフト開始から。シフト終了後の打刻は15分単位で切り上げ。
             シフト開始以降の出勤打刻と早退は実時刻のままです。
+            総実働時間は日ごとの実働を合計し、15分単位で切り上げます。
           </p>
 
           <div className="flex justify-end gap-2 mb-3">

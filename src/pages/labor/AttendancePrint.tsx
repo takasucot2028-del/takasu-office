@@ -9,7 +9,7 @@ import {
 import { DAY_TYPE_LABELS, WEEKDAY_LABELS } from '../../utils/constants';
 import { isSpecialHoliday } from '../../utils/holidays';
 import { shiftPlanByDate, isMissingPunch } from '../../utils/shiftPlan';
-import { workMinutesOf, roundedTimesOf, dayShiftMap } from '../../utils/worktime';
+import { workMinutesOf, roundedTimesOf, dayShiftMap, roundMonthMinutes } from '../../utils/worktime';
 import type { DayShift } from '../../utils/worktime';
 import { overtimeByDate } from '../../utils/overtime';
 import type { Staff, AttendanceRecord, ConfirmedShift, ShiftPattern, OvertimeRecord } from '../../types';
@@ -128,7 +128,8 @@ export default function AttendancePrint() {
           work: list.filter(r => r.dayType === 'work').length,
           paid: list.filter(r => r.dayType === 'paid').length,
           absent: list.filter(r => r.dayType === 'absent').length,
-          minutes: list.reduce((s, r) => s + workMinutes(r, shiftMap.get(r.date)), 0),
+          // 月の合計は15分単位で切り上げる（給与計算で端数を切り捨てないため）
+          minutes: roundMonthMinutes(list.reduce((s, r) => s + workMinutes(r, shiftMap.get(r.date)), 0)),
         };
         return (
           <section key={staff.id}
@@ -217,7 +218,8 @@ export default function AttendancePrint() {
             </table>
 
             <p className="text-xs text-gray-500 mt-2">
-              ※ 時間外・休日勤務は「時間外」で登録された実績です。休日勤務の日は「（休日）」と記載しています。
+              ※ 時間外・休日勤務は「時間外」で登録された実績です。休日勤務の日は「（休日）」と記載しています。<br />
+              ※ 総実働時間は日ごとの実働を合計し、15分単位で切り上げています。
             </p>
 
             {missing.length > 0 && (

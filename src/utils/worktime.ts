@@ -26,6 +26,22 @@ export function roundUpMinutes(min: number, unit = ROUND_UNIT_MINUTES): number {
   return Math.ceil(min / unit) * unit;
 }
 
+/**
+ * 月の総労働時間を15分単位で切り上げる（例: 69時間43分 → 69時間45分）。
+ * 給与計算では分単位の端数を切り捨てられないため、従業員に有利な
+ * 切り上げだけを行う。日ごとの実働は分単位のまま残し、月の合計にだけ使う。
+ */
+export const MONTH_ROUND_UNIT_MINUTES = 15;
+
+export function roundMonthMinutes(min: number): number {
+  return Math.ceil(Math.max(0, min) / MONTH_ROUND_UNIT_MINUTES) * MONTH_ROUND_UNIT_MINUTES;
+}
+
+/** 月の総労働時間（時間）。15分単位なので必ず0.25刻みになる */
+export function monthHoursOf(min: number): number {
+  return roundMonthMinutes(min) / 60;
+}
+
 /** その日のシフトと申請の有無 */
 export interface DayShift {
   start: string;          // シフト開始（最も早い区分の開始）

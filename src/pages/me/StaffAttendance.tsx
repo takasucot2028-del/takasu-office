@@ -4,7 +4,7 @@ import { PageContainer, Card, Button, Table, Th, Td } from '../../components/UI'
 import { getMyAttendancePageData, todayStr } from '../../api/data';
 import { DAY_TYPE_LABELS, WEEKDAY_LABELS } from '../../utils/constants';
 import { isSpecialHoliday } from '../../utils/holidays';
-import { workMinutesOf, roundedTimesOf, dayShiftMap } from '../../utils/worktime';
+import { workMinutesOf, roundedTimesOf, dayShiftMap, roundMonthMinutes } from '../../utils/worktime';
 import type { DayShift } from '../../utils/worktime';
 import type { AttendanceRecord } from '../../types';
 
@@ -55,7 +55,8 @@ export default function StaffAttendance() {
       work: list.filter(r => r.dayType === 'work').length,
       paid: list.filter(r => r.dayType === 'paid').length,
       absent: list.filter(r => r.dayType === 'absent').length,
-      minutes: list.reduce((s, r) => s + workMinutes(r, shiftMap.get(r.date)), 0),
+      // 月の合計は15分単位で切り上げる（給与計算で端数を切り捨てないため）
+      minutes: roundMonthMinutes(list.reduce((s, r) => s + workMinutes(r, shiftMap.get(r.date)), 0)),
     };
   }, [days, records, shiftMap]);
 
@@ -86,6 +87,7 @@ export default function StaffAttendance() {
         実働は打刻をシフトに合わせて計算します。シフト開始より早く打刻した日は、時間外の申請がなければ
         <b>シフト開始から</b>。シフト終了より遅く打刻した日は<b>15分単位で切り上げ</b>ます
         （<span className="text-blue-600">青字</span>が計算に使った時刻）。
+        総実働時間は日ごとの実働を合計し、<b>15分単位で切り上げ</b>ます。
       </p>
 
       <Card className="p-0 overflow-x-auto">

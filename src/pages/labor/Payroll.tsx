@@ -13,11 +13,11 @@ import {
   allowanceDetail, compPremiumDetail, priorOvertimeMap,
   shiftExcessIsPremium, partMonthPremium, nightHoursOf, nightAllowanceOf,
 } from '../../utils/overtime';
-import { workMinutesOf, roundedRecord, dayShiftMapByStaff } from '../../utils/worktime';
+import { workMinutesOf, roundedRecord, dayShiftMapByStaff, monthHoursOf } from '../../utils/worktime';
 import type { Staff } from '../../types';
 
 const h1 = (n: number) => Math.round(n * 10) / 10;
-const hFromMin = (min: number) => h1(min / 60);
+
 
 interface Row {
   staff: Staff;
@@ -128,7 +128,8 @@ export default function Payroll() {
       return {
         staff: s,
         workDays: att.filter(r => r.dayType === 'work' && workMinutesOf(r) > 0).length,
-        workHours: hFromMin(att.reduce((t, r) => t + workMinutesOf(r), 0)),
+        // 月の合計は15分単位で切り上げる（0.25時間刻み）
+        workHours: monthHoursOf(att.reduce((t, r) => t + workMinutesOf(r), 0)),
         nightHours,
         nightAllowance: excessPaid ? nightAllowanceOf(nightHours, s.hourlyWage || 0) : 0,
         bandHours25: band ? h1(band.hours25 + band.weeklyExcessHours) : 0,
@@ -178,7 +179,7 @@ export default function Payroll() {
 
   const totals = rows.reduce((t, r) => ({
     workDays: t.workDays + r.workDays,
-    workHours: h1(t.workHours + r.workHours),
+    workHours: Math.round((t.workHours + r.workHours) * 100) / 100,
     allowance: t.allowance + r.allowance,
     unpaid: h1(t.unpaid + r.specialUnpaidDays),
   }), { workDays: 0, workHours: 0, allowance: 0, unpaid: 0 });
@@ -203,6 +204,7 @@ export default function Payroll() {
           <b>パート職員</b>はシフトを超えて働いても 8:30〜21:30 の範囲内なら割増なし（1.0倍・パートタイム労働者就業規則 第8条1項）。
           8:30前・21:30後、法定労働時間（1日8時間・週40時間）超、深夜（22:00〜5:00）は＋25%（同2項・3項）、
           法定時間外かつ深夜は＋50%として「割増の加算額」に計上します。
+実働時間は日ごとの実働を合計し、15分（0.25時間）単位で切り上げています。
           <b>常勤職員</b>の深夜手当も加算25%分です。いずれも実働時間分の通常の賃金には含まれていないため、給与計算で上乗せしてください。
           代休にした時間外は、賃金の本体を代休に振り替え、割増部分だけを「代休分の割増」に計上します（就業規則 第21条2項）。基本給・社会保険料などは給与計算側で扱ってください。
           健康診断（第35条）は休業ではなく労働時間とみなすため、特別休暇とは分けて「健康診断等」に計上しています。
