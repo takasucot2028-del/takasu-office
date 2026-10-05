@@ -291,6 +291,8 @@ export const addCompUse = (record: CompLeaveUse, token: string) =>
 
 export const deleteCompUse = (id: string, token: string) =>
   request<void>('deleteCompUse', { id, token });
+export const initPunchPins = (token: string) =>
+  request<{ updated: number; skipped: string[] }>('initPunchPins', { token });
 export const setCompUseStatus = (id: string, status: RequestStatus, token: string) =>
   request<void>('setCompUseStatus', { id, status, token });
 export const getMyCompUse = (token: string) =>

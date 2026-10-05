@@ -599,6 +599,7 @@ var AUDIT_ACTIONS = {
   addMyExpense:         { label: '経費の申請',            target: '会計' },
   saveExpenseCategories:{ label: '費目マスタの保存',       target: '会計' },
   saveDocuments:        { label: '文書の保存',            target: '文書' },
+  initPunchPins:        { label: '打刻PINの一括初期設定',  target: '職員' },
 };
 
 /** 操作した人の表示名（事務局はメール、従業員は氏名） */
@@ -780,6 +781,9 @@ function dispatch(action, body) {
         break;
       case 'upsertStaff':
         result = handleUpsertStaff(body.staff);
+        break;
+      case 'initPunchPins':
+        result = handleInitPunchPins();
         break;
       case 'getAttendanceRange':
         result = handleGetAttendanceRange(body.staffId, body.from, body.to);
@@ -1114,6 +1118,39 @@ function handleGetStaff() {
     delete s.passwordHash; // ハッシュは返さない
   });
   return { success: true, data: list };
+}
+
+/**
+ * 打刻PINの一括初期設定。PINが空の在職者に、その職員の職員番号を設定する。
+ * すでにPINがある職員はそのまま。重複する番号は設定せず、理由を返す。
+ */
+function handleInitPunchPins() {
+  const sheet = getSheet('staff');
+  const list = sheetToObjects(sheet, 'staff');
+  const col = colNumForSheet_(sheet, 'staff', 'punchPin');
+  // すでに使われているPIN（在職者ぶん）
+  const used = {};
+  list.forEach(function (s) {
+    const p = String(s.punchPin || '').trim();
+    if (p) used[p] = true;
+  });
+  let updated = 0;
+  const skipped = [];
+  list.forEach(function (s) {
+    if (String(s.status) !== 'active') return;
+    if (String(s.punchPin || '').trim()) return;           // 設定済みは触らない
+    const num = String(s.employeeNumber || '').trim();
+    const name = s.lastName + ' ' + s.firstName;
+    if (!num) { skipped.push(name + '（職員番号が未設定）'); return; }
+    if (used[num]) { skipped.push(name + '（番号 ' + num + ' は他の職員と重複）'); return; }
+    const row = findRowIndex(sheet, 0, s.id);
+    if (row < 0) { skipped.push(name + '（行が見つかりません）'); return; }
+    sheet.getRange(row, col).setNumberFormat('@');
+    sheet.getRange(row, col).setValue(num);
+    used[num] = true;
+    updated++;
+  });
+  return { success: true, data: { updated: updated, skipped: skipped } };
 }
 
 function handleUpsertStaff(staff) {

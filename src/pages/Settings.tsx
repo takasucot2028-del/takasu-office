@@ -4,7 +4,7 @@ import { PageContainer, Card, Field, Input, Button, Alert } from '../components/
 import { getPrefs, setPref } from '../utils/prefs';
 import {
   changeAdminPassword, usingGas, clearDataCache,
-  listCompanyHolidays, saveCompanyHolidays, genId, todayStr,
+  listCompanyHolidays, saveCompanyHolidays, initPunchPins, genId, todayStr,
 } from '../api/data';
 import type { CompanyHoliday } from '../types';
 
@@ -24,6 +24,12 @@ export default function Settings() {
   const [hSaving, setHSaving] = useState(false);
   const [holidayMsg, setHolidayMsg] = useState('');
   const [holidayErr, setHolidayErr] = useState('');
+
+  // 打刻PINの一括設定
+  const [pinBusy, setPinBusy] = useState(false);
+  const [pinMsg, setPinMsg] = useState('');
+  const [pinErr, setPinErr] = useState('');
+  const [pinSkipped, setPinSkipped] = useState<string[]>([]);
 
   useEffect(() => { listCompanyHolidays().then(setHolidays).catch(() => {}); }, []);
 
@@ -142,6 +148,36 @@ export default function Settings() {
               </span>
             </span>
           </label>
+        </Card>
+
+        <Card className="mt-4">
+          <h2 className="font-bold text-gray-800 mb-1">打刻PINの一括設定</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            打刻専用画面で使うPINを、<b>職員番号と同じ番号</b>でまとめて設定します。
+            PINが未設定の在職者だけが対象で、すでに設定済みの職員は変更しません。
+            職員番号は他の人にも分かるため、運用が落ち着いたら職員名簿で別の番号に変えることをおすすめします。
+          </p>
+          {pinMsg && <Alert type="success">{pinMsg}</Alert>}
+          {pinErr && <Alert type="error">{pinErr}</Alert>}
+          {pinSkipped.length > 0 && (
+            <div className="text-xs text-amber-700 bg-amber-50 rounded px-3 py-2 mb-3">
+              次の職員は設定できませんでした。職員名簿で個別に設定してください。
+              <ul className="list-disc ml-4 mt-1">{pinSkipped.map(s => <li key={s}>{s}</li>)}</ul>
+            </div>
+          )}
+          <Button variant="secondary" disabled={pinBusy} onClick={async () => {
+            if (!window.confirm('打刻PINが未設定の職員に、職員番号をPINとして設定します。よろしいですか。')) return;
+            setPinBusy(true); setPinMsg(''); setPinErr(''); setPinSkipped([]);
+            try {
+              const r = await initPunchPins();
+              setPinMsg(`${r.updated}名に打刻PINを設定しました。`);
+              setPinSkipped(r.skipped);
+            } catch (err) {
+              setPinErr(err instanceof Error ? err.message : '設定に失敗しました');
+            } finally { setPinBusy(false); }
+          }}>
+            {pinBusy ? '設定中…' : '職員番号を打刻PINに設定する'}
+          </Button>
         </Card>
 
         <Card className="mt-4">

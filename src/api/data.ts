@@ -638,6 +638,18 @@ export async function addCompUse(record: CompLeaveUse): Promise<void> {
   if (!res.success) throw new Error(res.error || '代休取得の記録に失敗しました');
 }
 
+/**
+ * 打刻PINの一括初期設定。PINが空の在職者に職員番号をPINとして設定する。
+ * すでに設定済みの職員は変更しない。
+ */
+export async function initPunchPins(): Promise<{ updated: number; skipped: string[] }> {
+  if (!USE_GAS) return local.initPunchPinsLocal();
+  const res = await gas.initPunchPins(token());
+  if (!res.success || !res.data) throw new Error(res.error || '打刻PINの設定に失敗しました');
+  clearDataCache();   // 職員名簿の表示を最新にする
+  return res.data;
+}
+
 /** 従業員：自分の代休取得（申請中を含む） */
 export async function getMyCompUse(): Promise<CompLeaveUse[]> {
   if (!USE_GAS) return local.listCompUse(staffId());

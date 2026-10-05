@@ -350,6 +350,27 @@ function applyDefaultBreak(rec: AttendanceRecord, staff: Staff | undefined, type
   rec.breakMinutes = be - bs;
 }
 
+/** 打刻PINの一括初期設定（デモ）。PINが空の在職者に職員番号を設定する */
+export function initPunchPinsLocal(): { updated: number; skipped: string[] } {
+  const all = load<Staff>(KEY_STAFF);
+  const used = new Set(all.map(s => String(s.punchPin || '').trim()).filter(Boolean));
+  let updated = 0;
+  const skipped: string[] = [];
+  for (const s of all) {
+    if (s.status !== 'active' || String(s.punchPin || '').trim()) continue;
+    const num = String(s.employeeNumber || '').trim();
+    const name = `${s.lastName} ${s.firstName}`;
+    if (!num) { skipped.push(`${name}（職員番号が未設定）`); continue; }
+    if (used.has(num)) { skipped.push(`${name}（番号 ${num} は他の職員と重複）`); continue; }
+    s.punchPin = num;
+    used.add(num);
+    updated++;
+  }
+  if (updated) save(KEY_STAFF, all);
+  writeAudit('打刻PINの一括初期設定', '職員', `${updated}件`);
+  return { updated, skipped };
+}
+
 /** 打刻専用画面（デモ）。PINから職員を探して打刻する */
 export function punchByPinLocal(pin: string, type: 'in' | 'out') {
   const p = String(pin || '').trim();
