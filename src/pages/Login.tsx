@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Navigate } from 'react-router-dom';
+import { useNavigate, Navigate, Link } from 'react-router-dom';
 import { useAuth } from '../components/AuthContext';
 import { PageContainer, Card, Field, Input, Button, Alert } from '../components/UI';
 import { adminLogin, staffLogin, usingGas } from '../api/data';
@@ -87,6 +87,11 @@ export default function Login() {
               </Field>
               <Button type="submit" className="w-full" disabled={loading}>{loading ? 'ログイン中…' : 'ログイン'}</Button>
               <p className="text-xs text-gray-400 mt-3">職員番号とパスワードは事務局にお問い合わせください。</p>
+              <p className="text-xs text-gray-500 mt-2">
+                出退勤の打刻だけなら、ログインなしで使える
+                <Link to="/punch" className="text-blue-600 underline mx-1">打刻専用画面</Link>
+                が便利です。
+              </p>
             </form>
           ) : (
             <form onSubmit={handleAdmin}>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PageContainer, Card, Field, Input, Select, Button, Alert, Modal } from '../../components/UI';
-import { getStaff, upsertStaff, setStaffPassword, genId } from '../../api/data';
+import { getStaff, listStaff, upsertStaff, setStaffPassword, genId } from '../../api/data';
 import { EMPLOYMENT_TYPE_LABELS, WORK_LOCATION_LABELS, GENDER_LABELS, leaveDayHours } from '../../utils/constants';
 import type { Staff, EmploymentType, WorkLocation, Gender } from '../../types';
 
@@ -14,7 +14,7 @@ function emptyStaff(): Staff {
     employmentType: 'fulltime', workLocation: '', position: '',
     hireDate: '', retireDate: '', status: 'active',
     phone: '', email: '', address: '', qualifications: '', hourlyWage: 0, monthlyHourLimit: 0,
-    childNursingChildren: 0, weeklyWorkDays: 0, weeklyWorkHours: 0, defaultBreakStart: '', defaultBreakEnd: '', note: '',
+    childNursingChildren: 0, weeklyWorkDays: 0, weeklyWorkHours: 0, punchPin: '', defaultBreakStart: '', defaultBreakEnd: '', note: '',
     createdAt: '', updatedAt: '',
   };
 }
@@ -32,6 +32,7 @@ export default function StaffDetail() {
   const [retireDate, setRetireDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [retireReason, setRetireReason] = useState('');
   const [newPw, setNewPw] = useState('');
+  const [otherPins, setOtherPins] = useState<string[]>([]);
   const [pwMsg, setPwMsg] = useState('');
 
   const issuePassword = async () => {
@@ -60,6 +61,16 @@ export default function StaffDetail() {
     return () => { alive = false; };
   }, [id, isNew]);
 
+  // 打刻PINの重複チェック用に、他の職員のPINを読み込む
+  useEffect(() => {
+    let alive = true;
+    listStaff().then(list => {
+      if (!alive) return;
+      setOtherPins(list.filter(s => s.id !== id && String(s.punchPin || '').trim()).map(s => String(s.punchPin).trim()));
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [id]);
+
   if (loading) {
     return (
       <PageContainer title="職員詳細">
@@ -77,6 +88,8 @@ export default function StaffDetail() {
     );
   }
 
+  const pinDuplicated = !!(form.punchPin || '').trim() && otherPins.includes(String(form.punchPin).trim());
+
   const set = <K extends keyof Staff>(key: K, value: Staff[K]) =>
     setForm(prev => (prev ? { ...prev, [key]: value } : prev));
 
@@ -91,6 +104,9 @@ export default function StaffDetail() {
       setError('入職日は必須です');
       return;
     }
+    const pin = String(form.punchPin || '').trim();
+    if (pin && pin.length < 4) { setError('打刻PINは4桁以上にしてください'); return; }
+    if (pinDuplicated) { setError('打刻PINが他の職員と重複しています。別の番号にしてください'); return; }
     setSaving(true);
     try {
       await upsertStaff(form);
@@ -231,6 +247,15 @@ export default function StaffDetail() {
               <Input type="number" min={0} max={7} step={1} value={form.weeklyWorkDays || ''}
                 onChange={e => set('weeklyWorkDays', Number(e.target.value) || 0)}
                 placeholder="年次有給の比例付与の判定に使用（空欄=通常付与で計算）" />
+            </Field>
+            <Field label="打刻PIN（打刻専用画面で使用）">
+              <Input inputMode="numeric" maxLength={8} value={form.punchPin || ''}
+                onChange={e => set('punchPin', e.target.value.replace(/[^0-9]/g, ''))}
+                placeholder="数字4〜8桁（空欄=打刻専用画面を使わない）" />
+              <p className="text-xs text-gray-400 mt-1">
+                職員ごとに違う番号にしてください。職員番号と同じ番号は避けてください（他の人が打刻できてしまいます）。
+                {pinDuplicated && <span className="block text-red-600 font-medium">このPINは他の職員と重複しています</span>}
+              </p>
             </Field>
             <Field label="週の所定労働時間（時間）">
               <Input type="number" min={0} max={60} step={0.5} value={form.weeklyWorkHours || ''}

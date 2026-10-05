@@ -27,7 +27,7 @@ var SHEETS = {
     ['phone', '電話番号'], ['email', 'メールアドレス'], ['address', '住所'],
     ['qualifications', '保有資格'], ['note', '備考'], ['createdAt', '作成日時'], ['updatedAt', '更新日時'],
     ['hourlyWage', '時給'], ['employeeNumber', '職員番号'], ['passwordHash', 'パスワードハッシュ'],
-    ['gender', '性別'], ['retireReason', '退職事由'], ['monthlyHourLimit', '月間上限時間'], ['childNursingChildren', '看護休暇対象の子'], ['weeklyWorkDays', '週所定労働日数'], ['weeklyWorkHours', '週所定労働時間'], ['defaultBreakStart', '既定休憩開始'], ['defaultBreakEnd', '既定休憩終了'],
+    ['gender', '性別'], ['retireReason', '退職事由'], ['monthlyHourLimit', '月間上限時間'], ['childNursingChildren', '看護休暇対象の子'], ['weeklyWorkDays', '週所定労働日数'], ['weeklyWorkHours', '週所定労働時間'], ['defaultBreakStart', '既定休憩開始'], ['defaultBreakEnd', '既定休憩終了'], ['punchPin', '打刻PIN'],
   ] },
   overtime: { name: '時間外', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['kind', '種別'],
@@ -512,7 +512,7 @@ function getSession(token) {
 }
 
 // 認可: 公開＝ログイン系。従業員アクションは role=staff（自分のデータのみ）。それ以外は管理者専用。
-var PUBLIC_ACTIONS = { adminLogin: true, staffLogin: true };
+var PUBLIC_ACTIONS = { adminLogin: true, staffLogin: true, punchByPin: true };
 var STAFF_ACTIONS = {
   getMyProfile: true, getMyAttendance: true, punch: true, setMyBreak: true,
   getMyShiftChanges: true, markShiftChangesRead: true,
@@ -683,6 +683,9 @@ function dispatch(action, body) {
         break;
       case 'punch':
         result = handlePunch(getSession(body.token), body.punchType);
+        break;
+      case 'punchByPin':
+        result = handlePunchByPin(body.pin, body.punchType);
         break;
       case 'setMyBreak':
         result = handleSetMyBreak(getSession(body.token), body.breakStart, body.breakEnd);
@@ -1936,7 +1939,27 @@ function applyDefaultBreak_(rec, staff, punchType) {
 }
 
 function handlePunch(session, punchType) {
-  const staff = staffOf_(session);
+  return punchFor_(staffOf_(session), punchType);
+}
+
+/**
+ * 打刻専用画面（PIN入力）からの打刻。ログインは不要。
+ * PINは職員ごとに重複しない値を事務局が設定する。
+ */
+function handlePunchByPin(pin, punchType) {
+  const p = String(pin == null ? '' : pin).trim();
+  if (!p) return { success: false, error: 'PINを入力してください' };
+  const found = sheetToObjects(getSheet('staff'), 'staff').filter(function (s) {
+    return String(s.punchPin || '').trim() === p && String(s.status) === 'active';
+  });
+  if (found.length === 0) return { success: false, error: 'PINが違います。事務局にご確認ください' };
+  if (found.length > 1) return { success: false, error: 'このPINは複数の職員に設定されています。事務局にご連絡ください' };
+  const res = punchFor_(found[0], punchType);
+  if (res && res.success) res.data.staffName = found[0].lastName + ' ' + found[0].firstName;
+  return res;
+}
+
+function punchFor_(staff, punchType) {
   const tz = Session.getScriptTimeZone();
   const today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
   const now = Utilities.formatDate(new Date(), tz, 'HH:mm');
@@ -1966,7 +1989,14 @@ function handlePunch(session, punchType) {
     breakMinutes: Number(firstOf('breakMinutes')) || 0, note: firstOf('note'),
     breakStart: firstOf('breakStart'), breakEnd: firstOf('breakEnd'),
   };
-  if (punchType === 'in') rec.startTime = now; else rec.endTime = now;
+  // 出勤は最初に押した時刻を残す（打刻専用画面で続けて押しても上書きしない）。
+  // 退勤はあとから押した時刻を採用する（戻ってきて押し直す運用のため）。
+  var already = false;
+  if (punchType === 'in') {
+    if (rec.startTime) already = true; else rec.startTime = now;
+  } else {
+    rec.endTime = now;
+  }
   applyDefaultBreak_(rec, staff, punchType);
 
   const target = rows.length ? rows[0] : sheet.getLastRow() + 1;
@@ -1975,7 +2005,14 @@ function handlePunch(session, punchType) {
   // 重複行（2件目以降）を削除。行番号の大きい方から消す。
   for (let k = rows.length - 1; k >= 1; k--) sheet.deleteRow(rows[k]);
 
-  return { success: true, data: { date: today, time: now, punchType: punchType } };
+  return {
+    success: true,
+    data: {
+      date: today, punchType: punchType,
+      time: punchType === 'in' ? rec.startTime : rec.endTime,
+      already: already, // すでに記録済みだった（出勤の押し直し）
+    },
+  };
 }
 
 // 従業員が当日の休憩を時刻（開始〜終了）で保存する。休憩分＝終了−開始 を計算。

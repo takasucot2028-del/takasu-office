@@ -350,7 +350,21 @@ function applyDefaultBreak(rec: AttendanceRecord, staff: Staff | undefined, type
   rec.breakMinutes = be - bs;
 }
 
-export function punchLocal(staffId: string, type: 'in' | 'out'): { date: string; time: string; punchType: 'in' | 'out' } {
+/** 打刻専用画面（デモ）。PINから職員を探して打刻する */
+export function punchByPinLocal(pin: string, type: 'in' | 'out') {
+  const p = String(pin || '').trim();
+  if (!p) throw new Error('PINを入力してください');
+  const found = listStaff().filter(s => String(s.punchPin || '').trim() === p && s.status === 'active');
+  if (found.length === 0) throw new Error('PINが違います。事務局にご確認ください');
+  if (found.length > 1) throw new Error('このPINは複数の職員に設定されています。事務局にご連絡ください');
+  const staff = found[0];
+  const before = load<AttendanceRecord>(KEY_ATTENDANCE).find(r => r.staffId === staff.id && r.date === todayStr());
+  const already = type === 'in' && !!before?.startTime;
+  const res = punchLocal(staff.id, type, already);
+  return { ...res, staffName: `${staff.lastName} ${staff.firstName}`, already };
+}
+
+export function punchLocal(staffId: string, type: 'in' | 'out', keepStart = false): { date: string; time: string; punchType: 'in' | 'out' } {
   const date = todayStr();
   const d = new Date();
   const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -360,12 +374,14 @@ export function punchLocal(staffId: string, type: 'in' | 'out'): { date: string;
     rec = { id: `${staffId}_${date}`, staffId, date, dayType: 'work', startTime: type === 'in' ? time : '', endTime: type === 'out' ? time : '', breakMinutes: 0, note: '' };
     all.push(rec);
   } else {
-    if (type === 'in') rec.startTime = time; else rec.endTime = time;
+    // 出勤は最初に押した時刻を残す（押し直しで上書きしない）
+    if (type === 'in') { if (!keepStart || !rec.startTime) rec.startTime = time; }
+    else rec.endTime = time;
     rec.dayType = 'work';
   }
   applyDefaultBreak(rec, load<Staff>(KEY_STAFF).find(s => s.id === staffId), type);
   save(KEY_ATTENDANCE, all);
-  return { date, time, punchType: type };
+  return { date, time: type === 'in' ? rec.startTime : rec.endTime, punchType: type };
 }
 
 // 従業員が当日の休憩を時刻（開始〜終了）で入力・保存する
@@ -600,7 +616,7 @@ function seedDemo() {
       hireDate: '2015-04-01', retireDate: '', status: 'active',
       phone: '0166-87-1111', email: 'taro@takasu-sc.jp',
       address: '北海道上川郡鷹栖町南1条2丁目', qualifications: 'スポーツ指導員',
-      hourlyWage: 1500, monthlyHourLimit: 0, childNursingChildren: 2, weeklyWorkDays: 5, weeklyWorkHours: 37.5, defaultBreakStart: '12:00', defaultBreakEnd: '13:00', note: '', createdAt: now, updatedAt: now,
+      hourlyWage: 1500, monthlyHourLimit: 0, childNursingChildren: 2, weeklyWorkDays: 5, weeklyWorkHours: 37.5, punchPin: '1001', defaultBreakStart: '12:00', defaultBreakEnd: '13:00', note: '', createdAt: now, updatedAt: now,
     },
     {
       id: 'stf002', employeeNumber: '1002',
@@ -610,7 +626,7 @@ function seedDemo() {
       hireDate: '2020-06-01', retireDate: '', status: 'active',
       phone: '0166-87-2222', email: 'hanako@takasu-sc.jp',
       address: '北海道上川郡鷹栖町北3条4丁目', qualifications: '簿記2級',
-      hourlyWage: 1100, monthlyHourLimit: 88, childNursingChildren: 0, weeklyWorkDays: 4, weeklyWorkHours: 0, defaultBreakStart: '', defaultBreakEnd: '', note: '週4日勤務', createdAt: now, updatedAt: now,
+      hourlyWage: 1100, monthlyHourLimit: 88, childNursingChildren: 0, weeklyWorkDays: 4, weeklyWorkHours: 0, punchPin: '1002', defaultBreakStart: '', defaultBreakEnd: '', note: '週4日勤務', createdAt: now, updatedAt: now,
     },
     {
       id: 'stf003', employeeNumber: '1003',
@@ -620,7 +636,7 @@ function seedDemo() {
       hireDate: '2022-04-01', retireDate: '', status: 'active',
       phone: '090-1234-5678', email: 'ken@example.com',
       address: '北海道旭川市', qualifications: '水泳指導員資格',
-      hourlyWage: 1200, monthlyHourLimit: 0, childNursingChildren: 0, weeklyWorkDays: 2, weeklyWorkHours: 0, defaultBreakStart: '', defaultBreakEnd: '', note: '', createdAt: now, updatedAt: now,
+      hourlyWage: 1200, monthlyHourLimit: 0, childNursingChildren: 0, weeklyWorkDays: 2, weeklyWorkHours: 0, punchPin: '1003', defaultBreakStart: '', defaultBreakEnd: '', note: '', createdAt: now, updatedAt: now,
     },
   ];
   save(KEY_STAFF, demo);

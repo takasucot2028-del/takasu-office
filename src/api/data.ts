@@ -15,7 +15,7 @@ import { DEFAULT_SHIFT_PATTERNS, LEAVE_HOURS_PER_DAY, currentFiscalYear } from '
 import { setCompanyHolidays } from '../utils/holidays';
 import * as local from '../utils/store';
 import * as gas from './client';
-import type { ExpenseContext, TodayWork, PendingSummary, PendingItem, ShiftBoard } from './client';
+import type { ExpenseContext, TodayWork, PendingSummary, PendingItem, ShiftBoard, PunchResult } from './client';
 export type { TodayWork, PendingSummary, PendingItem, ShiftBoard, ShiftBoardStaff, ShiftBoardShift } from './client';
 
 const USE_GAS = !!import.meta.env.VITE_GAS_URL;
@@ -249,6 +249,14 @@ export async function getMyAttendancePageData(month: string): Promise<MyAttendan
     getMyAttendance(month), getMyConfirmed(month), listShiftPatterns(), getMyOvertime(),
   ]);
   return { attendance, confirmed, patterns, overtime: overtime.filter(x => x.date.startsWith(month)) };
+}
+
+/** 打刻専用画面：PINで打刻する（ログイン不要。ここだけはトークンを使わない） */
+export async function punchByPin(pin: string, punchType: 'in' | 'out'): Promise<PunchResult> {
+  if (!USE_GAS) return local.punchByPinLocal(pin, punchType);
+  const res = await gas.punchByPin(pin, punchType);
+  if (!res.success || !res.data) throw new Error(res.error || '打刻に失敗しました');
+  return res.data;
 }
 
 export async function punch(punchType: 'in' | 'out'): Promise<{ date: string; time: string; punchType: string }> {

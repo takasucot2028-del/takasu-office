@@ -38,6 +38,7 @@ export interface Staff {
   childNursingChildren: number; // 子の看護等休暇（第28条）の対象となる子の人数。0=未設定（1人=年5日/2人以上=年10日）
   weeklyWorkDays: number;     // 週の所定労働日数。年次有給の比例付与の判定に使う（0=未設定＝通常付与で計算）
   weeklyWorkHours: number;    // 週の所定労働時間。比例付与の判定と時間単位年休の1日の時間数に使う（0=未設定）
+  punchPin: string;           // 打刻専用画面のPIN（職員ごとに重複しない数字。空=打刻専用画面を使わない）
   defaultBreakStart: string;  // 既定の休憩開始 HH:MM（空=自動入力しない）
   defaultBreakEnd: string;    // 既定の休憩終了 HH:MM
   hasPassword?: boolean;      // 従業員ログイン用パスワードが設定済みか（サーバー算出・読取専用）

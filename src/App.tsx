@@ -1,8 +1,9 @@
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './components/AuthContext';
 import Header from './components/Header';
 
 import Login from './pages/Login';
+import Punch from './pages/Punch';
 import Dashboard from './pages/Dashboard';
 import StaffList from './pages/labor/StaffList';
 import StaffDetail from './pages/labor/StaffDetail';
@@ -51,11 +52,15 @@ function StaffGuard({ children }: { children: React.ReactNode }) {
 }
 
 function AppRoutes() {
+  const { pathname } = useLocation();
+  const kiosk = pathname === "/punch";   // 打刻専用画面はヘッダーを出さない
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header />
+      {!kiosk && <Header />}
       <Routes>
         <Route path="/" element={<Login />} />
+        {/* 打刻専用画面。ログイン不要で、事務所のタブレット等に置く */}
+        <Route path="/punch" element={<Punch />} />
 
         {/* 事務局 */}
         <Route path="/dashboard" element={<AdminGuard><Dashboard /></AdminGuard>} />

@@ -40,6 +40,13 @@ export interface ExpenseContext {
   lines: { project: string; categoryId: string; budget: number; used: number; remaining: number }[];
 }
 
+/** 打刻の結果（打刻専用画面で氏名を表示するため staffName を含む） */
+export interface PunchResult {
+  date: string; time: string; punchType: 'in' | 'out';
+  staffName?: string;
+  already?: boolean;   // 出勤がすでに記録済みだった（押し直し）
+}
+
 export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
@@ -132,6 +139,9 @@ export const getMyAttendance = (month: string, token: string) =>
   request<AttendanceRecord[]>('getMyAttendance', { month, token });
 export const punch = (punchType: 'in' | 'out', token: string) =>
   request<{ date: string; time: string; punchType: string }>('punch', { punchType, token });
+/** 打刻専用画面：PINで打刻する（ログイン不要） */
+export const punchByPin = (pin: string, punchType: 'in' | 'out') =>
+  request<PunchResult>('punchByPin', { pin, punchType });
 export const setMyBreak = (breakStart: string, breakEnd: string, token: string) =>
   request<{ date: string; breakMinutes: number; breakStart: string; breakEnd: string }>(
     'setMyBreak', { breakStart, breakEnd, token });
