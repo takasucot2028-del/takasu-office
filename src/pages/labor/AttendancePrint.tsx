@@ -242,7 +242,7 @@ export default function AttendancePrint() {
                         {(() => {
                           if (!rec || rec.dayType !== 'work') return '';
                           const t = roundedTimesOf(rec, shiftMap.get(date));
-                          return t.startRounded || t.endRounded ? `${t.startTime}〜${t.endTime}` : '';
+                          return t.startRounded ? `${t.startTime}〜${t.endTime}` : '';
                         })()}
                       </td>
                       <td className="border border-gray-500 px-1 py-0.5 text-center">{rec?.dayType === 'work' ? brk : ''}</td>
@@ -268,7 +268,7 @@ export default function AttendancePrint() {
 
             <p className="text-xs text-gray-500 mt-2">
               ※ 時間外・休日勤務は「時間外」で登録された実績です。休日勤務の日は「（休日）」と記載しています。<br />
-              ※ 総実働時間は日ごとの実働を合計し、15分単位で切り上げています。
+              ※ 実働は1分単位で計算し、総実働時間はその合計を15分単位で切り上げています。
             </p>
 
             {missing.length > 0 && (

@@ -5,26 +5,17 @@
 //     （指示のない早入りは労働時間としない。申請がある日は打刻どおり計算する）
 //  2. 出勤：シフト開始以降の打刻は実時刻のまま。遅刻を15分単位に切り上げると
 //     実際に働いた分を切り捨てることになり、労基法第24条に反するため。
-//  3. 退勤：シフト終了より後の打刻は15分単位で切り上げる（切り捨てない）。
-//     シフト終了以前（早退）は実時刻のまま。
+//  3. 退勤：打刻した実時刻のまま。日ごとの実働は1分単位で数える。
+//     端数の処理は月の総労働時間でだけ行う（roundMonthMinutes）。
 //  4. 確定シフトのない日は、比べる基準がないため打刻をそのまま使う。
 //
 // 打刻そのものは書き換えない。画面や帳票で計算するときにこの関数を通す。
 import type { AttendanceRecord, ConfirmedShift, ShiftPattern, OvertimeRecord } from '../types';
 
-export const ROUND_UNIT_MINUTES = 15; // 退勤の切り上げ単位
-
 const hm = (t: string): number | null => {
   const m = /^(\d{1,2}):(\d{2})$/.exec(t || '');
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 };
-const toHM = (min: number): string =>
-  `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
-
-/** 15分単位で切り上げる（12:10 → 12:15、12:15 → 12:15） */
-export function roundUpMinutes(min: number, unit = ROUND_UNIT_MINUTES): number {
-  return Math.ceil(min / unit) * unit;
-}
 
 /**
  * 月の総労働時間を15分単位で切り上げる（例: 69時間43分 → 69時間45分）。
@@ -53,8 +44,7 @@ export interface DayShift {
 export interface RoundedTimes {
   startTime: string;
   endTime: string;
-  startRounded: boolean;  // 出勤をシフト開始に合わせた
-  endRounded: boolean;    // 退勤を15分単位で切り上げた
+  startRounded: boolean;  // 出勤をシフト開始に合わせた（退勤は常に実時刻）
 }
 
 /**
@@ -64,22 +54,17 @@ export interface RoundedTimes {
 export function roundedTimesOf(rec: AttendanceRecord | undefined, shift?: DayShift): RoundedTimes {
   const startTime = rec?.startTime || '';
   const endTime = rec?.endTime || '';
-  const base: RoundedTimes = { startTime, endTime, startRounded: false, endRounded: false };
+  const base: RoundedTimes = { startTime, endTime, startRounded: false };
   if (!rec || rec.dayType !== 'work' || !shift) return base;
 
-  const s = hm(startTime), e = hm(endTime);
-  const ss = hm(shift.start), se = hm(shift.end);
+  const s = hm(startTime), ss = hm(shift.start);
 
   // 出勤：申請のない早入りはシフト開始から計算する
   if (s !== null && ss !== null && s < ss && !shift.hasApplication) {
     base.startTime = shift.start;
     base.startRounded = true;
   }
-  // 退勤：シフト終了より後は15分単位で切り上げる
-  if (e !== null && se !== null && e > se) {
-    const up = roundUpMinutes(e);
-    if (up !== e) { base.endTime = toHM(up); base.endRounded = true; }
-  }
+  // 退勤は打刻した実時刻のまま（1分単位）。端数は月の合計でだけ処理する
   return base;
 }
 
@@ -95,7 +80,7 @@ export function workMinutesOf(rec: AttendanceRecord | undefined, shift?: DayShif
 /** 丸めを反映した勤怠レコード。既存の計算にそのまま渡せる */
 export function roundedRecord(rec: AttendanceRecord, shift?: DayShift): AttendanceRecord {
   const t = roundedTimesOf(rec, shift);
-  if (!t.startRounded && !t.endRounded) return rec;
+  if (!t.startRounded) return rec;
   return { ...rec, startTime: t.startTime, endTime: t.endTime };
 }
 

@@ -184,7 +184,7 @@ export default function Attendance() {
           DAY_TYPE_LABELS[rec.dayType],
           rec.startTime,
           rec.endTime,
-          t.startRounded || t.endRounded ? `${t.startTime}〜${t.endTime}` : '',
+          t.startRounded ? `${t.startTime}〜${t.endTime}` : '',
           rec.breakStart && rec.breakEnd ? `${rec.breakStart}〜${rec.breakEnd}` : '',
           rec.breakMinutes || '',
           rec.dayType === 'work' ? formatMinutes(workMinutes(rec, sh)) : '',
@@ -249,9 +249,8 @@ export default function Attendance() {
           <p className="text-xs text-gray-400 -mt-2 mb-4">
             時間外・休日勤務は「時間外」画面で登録された実績です。この画面では変更できません。<br />
             実働は打刻をシフトに合わせて丸めて計算します（<span className="text-blue-600">青字</span>が計算に使った時刻）。
-            シフト開始前の打刻は、早出の申請がなければシフト開始から。シフト終了後の打刻は15分単位で切り上げ。
-            シフト開始以降の出勤打刻と早退は実時刻のままです。
-            総実働時間は日ごとの実働を合計し、15分単位で切り上げます。
+            シフト開始前の打刻は、早出の申請がなければシフト開始から。それ以外の打刻（退勤・遅刻・早退）は実時刻のままです。
+            日ごとの実働は1分単位で数え、総実働時間はその合計を15分単位で切り上げます。
           </p>
 
           <div className="flex justify-end gap-2 mb-3">
@@ -358,7 +357,7 @@ export default function Attendance() {
                         {/* 打刻をシフトに合わせて丸めた日は、計算に使った時刻を添える */}
                         {rec && isWork && (() => {
                           const t = roundedTimesOf(rec, shiftMap.get(date));
-                          if (!t.startRounded && !t.endRounded) return null;
+                          if (!t.startRounded) return null;
                           return (
                             <div className="text-[10px] text-blue-600 leading-tight" title="打刻をシフトに合わせて丸めた時刻で計算しています">
                               {t.startTime}〜{t.endTime}

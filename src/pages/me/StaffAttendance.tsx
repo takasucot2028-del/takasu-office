@@ -84,9 +84,8 @@ export default function StaffAttendance() {
       </div>
 
       <p className="text-xs text-gray-500 mb-3">
-        実働は打刻をシフトに合わせて計算します。シフト開始より早く打刻した日は、時間外の申請がなければ
-        <b>シフト開始から</b>。シフト終了より遅く打刻した日は<b>15分単位で切り上げ</b>ます
-        （<span className="text-blue-600">青字</span>が計算に使った時刻）。
+        実働は打刻どおり<b>1分単位</b>で計算します。ただしシフト開始より早く打刻した日は、時間外の申請がなければ
+        <b>シフト開始から</b>になります（<span className="text-blue-600">青字</span>が計算に使った時刻）。
         総実働時間は日ごとの実働を合計し、<b>15分単位で切り上げ</b>ます。
       </p>
 
@@ -127,7 +126,7 @@ export default function StaffAttendance() {
                       return (
                         <>
                           {hhmm(min)}
-                          {(t.startRounded || t.endRounded) && (
+                          {t.startRounded && (
                             <div className="text-[10px] font-normal text-blue-600 leading-tight">
                               {t.startTime}〜{t.endTime}
                             </div>
