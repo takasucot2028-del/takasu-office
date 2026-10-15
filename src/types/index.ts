@@ -108,7 +108,7 @@ export interface OvertimeRecord {
   id: string;
   staffId: string;
   date: string;               // YYYY-MM-DD
-  kind: OvertimeKind;         // 自動判定（常勤でシフトのない日=holiday。第19条）
+  kind: OvertimeKind;         // 自動判定（常勤は暦の休日、または平日でシフトのない日=holiday。第19条）
   appliedHours: number;       // 申請（予定）時間。startTime/endTime から算出した値
   startTime?: string;         // 申請の開始 HH:MM（任意。時刻で申請した場合に保持）
   endTime?: string;           // 申請の終了 HH:MM（任意）

@@ -55,16 +55,19 @@ export interface WorkdayContext {
 /**
  * 時間外か休日勤務か。
  *
- * 常勤職員: シフト表で休日が決まる（就業規則 第19条）。確定シフトのある日は
- *   所定労働日なので時間外、シフトのない日に働いた場合は休日勤務。
- *   その月にシフトが1件も登録されていないときは判断できないため、
- *   暦（土日・祝日・年末年始・法人指定日）で判定する。
+ * 常勤職員:
+ *   1. 就業規則 第19条の休日（土曜・日曜・祝日・年末年始・法人指定日）に働いた日は、
+ *      シフトが入っていても休日勤務。
+ *   2. それ以外の日は、シフト表で所定労働日が決まるため、確定シフトのある日は時間外、
+ *      シフトのない日に働いた場合は休日勤務。
+ *      その月にシフトが1件も登録されていないときは判断できないため時間外とする。
  * パート職員等: 休日勤務の区分を使わない（パート規則 第8条）。
  */
 export function overtimeKindOf(staff: Staff, date: string, ctx?: WorkdayContext): OvertimeKind {
   if (staff.employmentType !== 'fulltime') return 'overtime';
+  if (isClosedDay(date)) return 'holiday';
   if (ctx?.shiftKnown) return ctx.hasShift ? 'overtime' : 'holiday';
-  return isClosedDay(date) ? 'holiday' : 'overtime';
+  return 'overtime';
 }
 
 export function rateOf(kind: OvertimeKind): number {
