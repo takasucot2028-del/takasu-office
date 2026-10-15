@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
-import { PageContainer, Card, Field, Input, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
-import { getMyProfile, getMyOvertime, addMyOvertime, getMyCompUse, addMyCompUse, todayStr } from '../../api/data';
+import { useEffect, useMemo, useState } from 'react';
+import { PageContainer, Card, Field, Input, Select, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
+import { getMyProfile, getMyOvertimePageData, addMyOvertime, addMyCompUse, todayStr } from '../../api/data';
 import { WEEKDAY_LABELS, hoursBetween } from '../../utils/constants';
+import { closedDayName, isClosedDay } from '../../utils/holidays';
 import { overtimeKindOf, allowanceOf, OVERTIME_KIND_LABELS, OVERTIME_STATUS_LABELS, OVERTIME_DISPOSITION_LABELS } from '../../utils/overtime';
-import type { Staff, OvertimeRecord, CompLeaveUse } from '../../types';
+import type { Staff, OvertimeRecord, CompLeaveUse, ConfirmedShift, OvertimeKind } from '../../types';
 
 const h1 = (n: number) => `${Math.round(n * 10) / 10}h`;
 
@@ -22,6 +23,10 @@ export default function StaffOvertimeRequest() {
   const [version, setVersion] = useState(0);
   const hrs = hoursBetween(start, end);
 
+  // 申請する日が所定労働日か休日かの判定に使う、その月の確定シフト
+  const [confirmed, setConfirmed] = useState<ConfirmedShift[]>([]);
+  const [kind, setKind] = useState<OvertimeKind>('overtime');
+
   // 代休の申請
   const [compUse, setCompUse] = useState<CompLeaveUse[]>([]);
   const [cDate, setCDate] = useState(todayStr());
@@ -31,18 +36,52 @@ export default function StaffOvertimeRequest() {
   const [cSaving, setCSaving] = useState(false);
   const cHrs = hoursBetween(cStart, cEnd);
 
+  const month = date.slice(0, 7);
+
   useEffect(() => { getMyProfile().then(setStaff); }, []);
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    Promise.all([getMyOvertime(), getMyCompUse()]).then(([ot, cu]) => {
+    getMyOvertimePageData(month).then(d => {
       if (!alive) return;
-      setRecords(ot);
-      setCompUse(cu);
+      setRecords(d.overtime);
+      setCompUse(d.compUse);
+      setConfirmed(d.confirmed);
       setLoading(false);
     });
     return () => { alive = false; };
-  }, [version]);
+  }, [version, month]);
+
+  /**
+   * 申請する日の種別（就業規則 第19条）。
+   * 土日・祝日・年末年始・法人指定日は休日勤務。平日はシフト表で決まるため、
+   * その月のシフトが確定していればシフトのない日を休日勤務とする。
+   * 常勤職員以外は休日勤務の区分を使わない（パート規則 第8条）。
+   */
+  const shiftDates = useMemo(
+    () => new Set(confirmed.filter(c => c.date.startsWith(month)).map(c => c.date)),
+    [confirmed, month]
+  );
+  const shiftKnown = shiftDates.size > 0;
+  const canChooseHoliday = staff?.employmentType === 'fulltime';
+  const autoKind: OvertimeKind = staff
+    ? overtimeKindOf(staff, date, { hasShift: shiftDates.has(date), shiftKnown })
+    : 'overtime';
+  // 日付を変えたら自動判定に戻す（職員が選び直した分はそのまま残る）
+  useEffect(() => { setKind(autoKind); }, [autoKind]);
+
+  /** 自動判定の理由。職員が選び直すときの手がかりとして表示する */
+  const kindReason = (() => {
+    if (!canChooseHoliday) return '';
+    if (isClosedDay(date)) {
+      const name = closedDayName(date);
+      const wd = WEEKDAY_LABELS[new Date(`${date}T00:00:00`).getDay()];
+      return `この日は休日です（${name || `${wd}曜日`}・第19条）。`;
+    }
+    if (!shiftKnown) return 'この月のシフトがまだ確定していないため、所定労働日として扱っています。休日に出勤した日は「休日勤務」を選んでください。';
+    if (shiftDates.has(date)) return 'この日はシフトのある所定労働日です。';
+    return 'この日はシフトが入っていないため、休日勤務になります。';
+  })();
 
   // 代休残＝「代休にした時間外（承認済）」−「取得ぶん（申請中を含む）」
   const r1 = (n: number) => Math.round(n * 10) / 10;
@@ -78,8 +117,8 @@ export default function StaffOvertimeRequest() {
     if (hrs <= 0) { setError('終了は開始より後の時刻にしてください'); return; }
     setSaving(true); setError(''); setMessage('');
     try {
-      await addMyOvertime({ date, appliedHours: hrs, startTime: start, endTime: end, reason, kind: overtimeKindOf(staff, date) });
-      setMessage('時間外を申請しました。事務局の承認をお待ちください。');
+      await addMyOvertime({ date, appliedHours: hrs, startTime: start, endTime: end, reason, kind });
+      setMessage(`${kind === 'holiday' ? '休日勤務' : '時間外'}を申請しました。事務局の承認をお待ちください。`);
       setReason('');
       setVersion(v => v + 1);
     } catch (err) {
@@ -95,23 +134,46 @@ export default function StaffOvertimeRequest() {
       {error && <Alert type="error">{error}</Alert>}
 
       <Card className="mb-4">
-        <h2 className="font-bold text-gray-800 mb-3">申請する</h2>
-        <form onSubmit={add} className="grid sm:grid-cols-5 gap-3 items-end">
+        <h2 className="font-bold text-gray-800 mb-3">時間外・休日勤務を申請する</h2>
+        <form onSubmit={add} className="grid sm:grid-cols-6 gap-3 items-end">
           <Field label="日付">
             <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
           </Field>
+          {canChooseHoliday && (
+            <Field label="種別">
+              <Select value={kind} onChange={e => setKind(e.target.value as OvertimeKind)}>
+                <option value="overtime">時間外（所定労働日）</option>
+                <option value="holiday">休日勤務</option>
+              </Select>
+            </Field>
+          )}
           <Field label="開始">
             <Input type="time" value={start} onChange={e => setStart(e.target.value)} required />
           </Field>
           <Field label="終了">
             <Input type="time" value={end} onChange={e => setEnd(e.target.value)} required />
           </Field>
-          <Field label="事由">
-            <Input value={reason} onChange={e => setReason(e.target.value)} placeholder="例: イベント準備" />
-          </Field>
+          <div className={canChooseHoliday ? '' : 'sm:col-span-2'}>
+            <Field label="事由">
+              <Input value={reason} onChange={e => setReason(e.target.value)} placeholder="例: イベント準備" />
+            </Field>
+          </div>
           <div className="mb-4"><Button type="submit" className="w-full" disabled={saving || !staff}>{saving ? '申請中…' : '申請する'}</Button></div>
         </form>
-        <p className="text-xs text-gray-400">申請時間 = 終了 − 開始（現在: <span className="font-medium text-gray-600">{hrs > 0 ? `${hrs}h` : '—'}</span>）。実績時間・手当/代休は、勤務後に事務局が勤怠をもとに確定します。</p>
+        {canChooseHoliday && kindReason && (
+          <p className="text-xs text-gray-500 mb-1">
+            <span className={`inline-block mr-1 font-medium ${kind === 'holiday' ? 'text-red-600' : 'text-amber-700'}`}>
+              {kind === 'holiday' ? '休日勤務' : '時間外'}
+            </span>
+            {kindReason}
+            {kind !== autoKind && <span className="text-amber-700">（自動判定の「{autoKind === 'holiday' ? '休日勤務' : '時間外'}」から変更しています）</span>}
+          </p>
+        )}
+        <p className="text-xs text-gray-400">
+          申請時間 = 終了 − 開始（現在: <span className="font-medium text-gray-600">{hrs > 0 ? `${hrs}h` : '—'}</span>）。
+          実績時間・種別・手当/代休は、勤務後に事務局が勤怠とシフト表をもとに確定します。
+          {!canChooseHoliday && 'パート職員は休日勤務の区分を使いません（パート規則 第8条）。8:30より前・21:30より後の勤務も、この画面から申請してください。'}
+        </p>
       </Card>
 
       <Card className="p-0 overflow-x-auto">

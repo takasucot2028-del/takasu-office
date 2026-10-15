@@ -251,6 +251,42 @@ export async function getMyAttendancePageData(month: string): Promise<MyAttendan
   return { attendance, confirmed, patterns, overtime: overtime.filter(x => x.date.startsWith(month)) };
 }
 
+/**
+ * 従業員の時間外・代休申請画面。
+ * 申請する日が所定労働日か休日かを就業規則 第19条のとおり判定するため、
+ * その月の確定シフトも一緒に取得する。
+ */
+export interface MyOvertimePageData {
+  overtime: OvertimeRecord[];
+  compUse: CompLeaveUse[];
+  confirmed: ConfirmedShift[];
+}
+export async function getMyOvertimePageData(month: string): Promise<MyOvertimePageData> {
+  if (!USE_GAS) {
+    return {
+      overtime: local.listOvertimeByStaff(staffId()),
+      compUse: local.listCompUse(staffId()),
+      confirmed: local.listConfirmedByMonth(month).filter(c => c.staffId === staffId()),
+    };
+  }
+  const r = await batchCall([
+    { action: 'getMyOvertime' },
+    { action: 'getMyCompUse' },
+    { action: 'getMyConfirmed', month },
+  ]);
+  if (r) {
+    return {
+      overtime: unwrap(r[0] as SubRes<OvertimeRecord[]>, []),
+      compUse: unwrap(r[1] as SubRes<CompLeaveUse[]>, []),
+      confirmed: unwrap(r[2] as SubRes<ConfirmedShift[]>, []),
+    };
+  }
+  const [overtime, compUse, confirmed] = await Promise.all([
+    getMyOvertime(), getMyCompUse(), getMyConfirmed(month),
+  ]);
+  return { overtime, compUse, confirmed };
+}
+
 /** 打刻専用画面：PINで打刻する（ログイン不要。ここだけはトークンを使わない） */
 export async function punchByPin(pin: string, punchType: 'in' | 'out'): Promise<PunchResult> {
   if (!USE_GAS) return local.punchByPinLocal(pin, punchType);
