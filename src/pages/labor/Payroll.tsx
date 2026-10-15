@@ -13,7 +13,7 @@ import {
   allowanceDetail, compPremiumDetail, priorOvertimeMap,
   shiftExcessIsPremium, usesPartTimeRules, partMonthPremium, nightHoursOf, nightAllowanceOf,
 } from '../../utils/overtime';
-import { workMinutesOf, roundedRecord, dayShiftMapByStaff, monthHoursOf } from '../../utils/worktime';
+import { workMinutesOf, roundedRecord, dayShiftMapByStaff, monthWorkTotals } from '../../utils/worktime';
 import type { Staff } from '../../types';
 
 const h1 = (n: number) => Math.round(n * 10) / 10;
@@ -22,7 +22,10 @@ const h1 = (n: number) => Math.round(n * 10) / 10;
 interface Row {
   staff: Staff;
   workDays: number;        // 出勤日数
-  workHours: number;       // 実働時間
+  workHours: number;       // 実働時間（所定内＋時間外＋休日労働）
+  scheduledHours: number;  // 所定内労働（労基法第108条の労働時間数の内訳）
+  overtimeHours: number;   // 時間外労働（承認済みの実績。代休にした分を含む）
+  holidayWorkHours: number; // 休日労働（承認済みの実績。代休にした分を含む）
   nightHours: number;      // 深夜労働
   nightAllowance: number;  // 深夜手当（常勤職員。通常の賃金に加算する25%分）
   absentDays: number;      // 欠勤日数
@@ -126,11 +129,17 @@ export default function Payroll() {
       // 業務委託は労働者ではないため割増の対象外（パート規則 第2条）
       const band = excessPaid || !usesPartTimeRules(s) ? null : partMonthPremium(att, s.hourlyWage || 0);
 
+      // 労働時間を所定内・時間外・休日労働に分ける（月の合計は15分単位で切り上げ）
+      const hours = monthWorkTotals(att.reduce((t, r) => t + workMinutesOf(r), 0), ot);
+      const asHours = (min: number) => h1(min / 60);
+
       return {
         staff: s,
         workDays: att.filter(r => r.dayType === 'work' && workMinutesOf(r) > 0).length,
-        // 月の合計は15分単位で切り上げる（0.25時間刻み）
-        workHours: monthHoursOf(att.reduce((t, r) => t + workMinutesOf(r), 0)),
+        workHours: hours.totalMinutes / 60,
+        scheduledHours: asHours(hours.scheduledMinutes),
+        overtimeHours: asHours(hours.overtimeMinutes),
+        holidayWorkHours: asHours(hours.holidayMinutes),
         nightHours,
         nightAllowance: excessPaid ? nightAllowanceOf(nightHours, s.hourlyWage || 0) : 0,
         bandHours25: band ? h1(band.hours25 + band.weeklyExcessHours) : 0,
@@ -151,7 +160,8 @@ export default function Payroll() {
   const exportExcel = () => {
     const header = [
       '職員番号', '氏名', '雇用区分', '時給',
-      '出勤日数', '実働時間', '深夜労働時間', '深夜手当(常勤・加算25%)', '欠勤日数',
+      '出勤日数', '所定内労働時間', '時間外労働時間', '休日労働時間', '実働時間(合計)',
+      '深夜労働時間', '深夜手当(常勤・加算25%)', '欠勤日数',
       '時間外(×1.25)', '時間外(×1.50)', '休日労働(×1.35)', '時間外手当',
       'パート割増25%(時間)', 'パート割増50%(時間)', 'パート割増の加算額',
       '代休付与', '代休消化', '代休分の割増',
@@ -160,7 +170,8 @@ export default function Payroll() {
     const body = rows.map(r => [
       r.staff.employeeNumber, `${r.staff.lastName} ${r.staff.firstName}`,
       EMPLOYMENT_TYPE_LABELS[r.staff.employmentType], r.staff.hourlyWage || '',
-      r.workDays, r.workHours, r.nightHours, r.nightAllowance, r.absentDays,
+      r.workDays, r.scheduledHours, r.overtimeHours, r.holidayWorkHours, r.workHours,
+      r.nightHours, r.nightAllowance, r.absentDays,
       r.otNormalHours, r.otOver60Hours, r.holidayHours, r.allowance,
       r.bandHours25, r.bandHours50, r.bandAllowance,
       r.compGranted, r.compUsed, r.compPremium,
@@ -168,7 +179,8 @@ export default function Payroll() {
     ]);
     const ws = XLSX.utils.aoa_to_sheet([[`給与計算用データ　${month}`], [], header, ...body]);
     ws['!cols'] = [{ wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 8 },
-      { wch: 9 }, { wch: 9 }, { wch: 11 }, { wch: 15 }, { wch: 9 },
+      { wch: 9 }, { wch: 15 }, { wch: 15 }, { wch: 14 }, { wch: 13 },
+      { wch: 11 }, { wch: 15 }, { wch: 9 },
       { wch: 12 }, { wch: 12 }, { wch: 13 }, { wch: 11 },
       { wch: 17 }, { wch: 17 }, { wch: 17 },
       { wch: 9 }, { wch: 9 }, { wch: 12 },
@@ -206,6 +218,8 @@ export default function Payroll() {
           8:30前・21:30後、法定労働時間（1日8時間・週40時間）超、深夜（22:00〜5:00）は＋25%（同2項・3項）、
           法定時間外かつ深夜は＋50%として「割増の加算額」に計上します。
 実働時間は日ごとの実働を合計し、15分（0.25時間）単位で切り上げています。
+          <b>所定内労働・時間外労働・休日労働</b>は労働時間の内訳で、合計が「実働 合計」に一致します（労基法第108条）。
+          時間外労働・休日労働は承認済みの実績で、代休にした分も労働した時間として数えます（割増賃金の対象時間である「時間外×1.25」などとは別の数字です）。
           <b>常勤職員</b>の深夜手当も加算25%分です。いずれも実働時間分の通常の賃金には含まれていないため、給与計算で上乗せしてください。
           代休にした時間外は、賃金の本体を代休に振り替え、割増部分だけを「代休分の割増」に計上します（就業規則 第21条2項）。基本給・社会保険料などは給与計算側で扱ってください。
           健康診断（第35条）は休業ではなく労働時間とみなすため、特別休暇とは分けて「健康診断等」に計上しています。
@@ -223,7 +237,8 @@ export default function Payroll() {
           <thead>
             <tr>
               <Th>氏名</Th><Th>雇用区分</Th>
-              <Th>出勤日数</Th><Th>実働</Th><Th>深夜</Th><Th>深夜手当</Th><Th>欠勤</Th>
+              <Th>出勤日数</Th><Th>所定内労働</Th><Th>時間外労働</Th><Th>休日労働</Th><Th>実働 合計</Th>
+              <Th>深夜</Th><Th>深夜手当</Th><Th>欠勤</Th>
               <Th>時間外×1.25</Th><Th>時間外×1.50</Th><Th>休日×1.35</Th><Th>時間外手当</Th>
               <Th>割増25%</Th><Th>割増50%</Th><Th>割増の加算額</Th>
               <Th>代休付与</Th><Th>代休消化</Th><Th>代休分の割増</Th>
@@ -231,14 +246,17 @@ export default function Payroll() {
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><Td className="text-center text-gray-400 py-8" colSpan={21}>読み込み中…</Td></tr>}
-            {!loading && rows.length === 0 && <tr><Td className="text-center text-gray-400 py-8" colSpan={21}>在職職員がいません</Td></tr>}
+            {loading && <tr><Td className="text-center text-gray-400 py-8" colSpan={24}>読み込み中…</Td></tr>}
+            {!loading && rows.length === 0 && <tr><Td className="text-center text-gray-400 py-8" colSpan={24}>在職職員がいません</Td></tr>}
             {!loading && rows.map(r => (
               <tr key={r.staff.id}>
                 <Td className="whitespace-nowrap font-medium">{r.staff.lastName} {r.staff.firstName}</Td>
                 <Td className="whitespace-nowrap text-xs">{EMPLOYMENT_TYPE_LABELS[r.staff.employmentType]}</Td>
                 <Td className="text-right">{r.workDays || ''}</Td>
-                <Td className="text-right">{r.workHours || ''}</Td>
+                <Td className="text-right">{r.scheduledHours || ''}</Td>
+                <Td className="text-right">{r.overtimeHours || ''}</Td>
+                <Td className="text-right">{r.holidayWorkHours || ''}</Td>
+                <Td className="text-right font-medium">{r.workHours || ''}</Td>
                 <Td className="text-right">{r.nightHours || ''}</Td>
                 <Td className="text-right">{r.nightAllowance ? `¥${r.nightAllowance.toLocaleString()}` : ''}</Td>
                 <Td className="text-right">{r.absentDays || ''}</Td>

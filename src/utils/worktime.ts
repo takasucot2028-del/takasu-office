@@ -33,6 +33,42 @@ export function monthHoursOf(min: number): number {
   return roundMonthMinutes(min) / 60;
 }
 
+/**
+ * 月の労働時間を「所定内・時間外・休日労働」の3つに分けた集計（分単位）。
+ *
+ * 労基法第108条の賃金台帳・第109条の記録では、労働時間数のほかに
+ * 時間外労働時間数と休日労働時間数を分けて記載する必要があるため、
+ * 出勤簿・月次集計・給与用データで同じ数字を使えるようにここにまとめる。
+ *
+ * 時間外・休日労働は「時間外」画面で承認された実績を正とする。
+ * 代休にした分も労働した事実は変わらないため、手当・代休の別は問わない。
+ * 所定内はその残り（総実働 − 時間外 − 休日労働）なので、
+ * 3つの合計は必ず総実働時間に一致する。
+ */
+export interface MonthWorkTotals {
+  totalMinutes: number;     // 総実働（15分単位で切り上げ済み）
+  scheduledMinutes: number; // 所定内労働
+  overtimeMinutes: number;  // 時間外労働
+  holidayMinutes: number;   // 休日労働
+  /** 時間外＋休日が総実働を超えている（勤怠の入力漏れなど）。画面で注意を出す */
+  mismatch: boolean;
+}
+
+export function monthWorkTotals(workedMinutes: number, overtime: OvertimeRecord[]): MonthWorkTotals {
+  const totalMinutes = roundMonthMinutes(workedMinutes);
+  const sum = (kind: OvertimeRecord['kind']) => Math.round(overtime
+    .filter(r => r.status === 'approved' && (r.kind || 'overtime') === kind)
+    .reduce((t, r) => t + (Number(r.resultHours) || 0), 0) * 60);
+  const overtimeMinutes = sum('overtime');
+  const holidayMinutes = sum('holiday');
+  const rest = totalMinutes - overtimeMinutes - holidayMinutes;
+  return {
+    totalMinutes, overtimeMinutes, holidayMinutes,
+    scheduledMinutes: Math.max(0, rest),
+    mismatch: rest < 0,
+  };
+}
+
 /** その日のシフトと申請の有無 */
 export interface DayShift {
   start: string;          // シフト開始（最も早い区分の開始）

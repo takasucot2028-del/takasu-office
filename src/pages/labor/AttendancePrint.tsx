@@ -9,7 +9,7 @@ import {
 import { DAY_TYPE_LABELS, WEEKDAY_LABELS } from '../../utils/constants';
 import { isSpecialHoliday } from '../../utils/holidays';
 import { shiftPlanByDate, isMissingPunch } from '../../utils/shiftPlan';
-import { workMinutesOf, roundedTimesOf, dayShiftMap, roundMonthMinutes } from '../../utils/worktime';
+import { workMinutesOf, roundedTimesOf, dayShiftMap, monthWorkTotals } from '../../utils/worktime';
 import type { DayShift } from '../../utils/worktime';
 import { overtimeByDate } from '../../utils/overtime';
 import type { Staff, AttendanceRecord, ConfirmedShift, ShiftPattern, OvertimeRecord } from '../../types';
@@ -166,17 +166,17 @@ export default function AttendancePrint() {
         // 打刻をシフトに合わせて丸めるための材料
         const shiftMap = dayShiftMap(sh.confirmed, patterns, sh.overtime, staff.id);
         const otMap = overtimeByDate(sh.overtime);
-        const otTotal = Math.round(sh.overtime.filter(r => r.kind === 'overtime')
-          .reduce((t, r) => t + (Number(r.resultHours) || 0), 0) * 10) / 10;
-        const holidayTotal = Math.round(sh.overtime.filter(r => r.kind === 'holiday')
-          .reduce((t, r) => t + (Number(r.resultHours) || 0), 0) * 10) / 10;
         const list = days.map(d => records[d]).filter((r): r is AttendanceRecord => !!r);
+        // 労働時間を所定内・時間外・休日労働に分ける（労基法第108条・第109条）
+        const hours = monthWorkTotals(
+          list.reduce((s, r) => s + workMinutes(r, shiftMap.get(r.date)), 0),
+          sh.overtime
+        );
         const totals = {
           work: list.filter(r => r.dayType === 'work').length,
           paid: list.filter(r => r.dayType === 'paid').length,
           absent: list.filter(r => r.dayType === 'absent').length,
-          // 月の合計は15分単位で切り上げる（給与計算で端数を切り捨てないため）
-          minutes: roundMonthMinutes(list.reduce((s, r) => s + workMinutes(r, shiftMap.get(r.date)), 0)),
+          minutes: hours.totalMinutes,
         };
         return (
           <div key={staff.id} className="att-page"
@@ -256,7 +256,8 @@ export default function AttendancePrint() {
                         {(() => {
                           const ot = otMap.get(date);
                           if (!ot || !ot.hours) return '';
-                          return `${ot.hours}${ot.kind === 'holiday' ? '（休日）' : ''}`;
+                          // 未承認の申請は集計に入らないため、その旨を記載する
+                          return `${ot.hours}${ot.kind === 'holiday' ? '（休日）' : ''}${ot.status === 'applied' ? '（未承認）' : ''}`;
                         })()}
                       </td>
                       <td className="att-note border border-gray-500 px-2 py-0.5" title={rec?.note || ''}>{rec?.note || ''}</td>
@@ -267,8 +268,8 @@ export default function AttendancePrint() {
             </table>
 
             <p className="text-xs text-gray-500 mt-2">
-              ※ 時間外・休日勤務は「時間外」で登録された実績です。休日勤務の日は「（休日）」と記載しています。<br />
-              ※ 実働は1分単位で計算し、総実働時間はその合計を15分単位で切り上げています。
+              ※ 時間外・休日労働は「時間外」で承認された実績です。休日勤務の日は「（休日）」と記載しています。<br />
+              ※ 実働は1分単位で計算し、総実働時間はその合計を15分単位で切り上げています。所定内労働＝総実働時間 − 時間外労働 − 休日労働。
             </p>
 
             {missing.length > 0 && (
@@ -281,22 +282,24 @@ export default function AttendancePrint() {
             <table className="w-full text-sm mt-3 border border-gray-500 border-collapse">
               <tbody>
                 <tr>
-                  <th className="border border-gray-500 bg-gray-100 px-2 py-1 text-left w-28">出勤日数</th>
-                  <td className="border border-gray-500 px-2 py-1 text-right w-20">{totals.work}日</td>
-                  <th className="border border-gray-500 bg-gray-100 px-2 py-1 text-left w-28">有給日数</th>
-                  <td className="border border-gray-500 px-2 py-1 text-right w-20">{totals.paid}日</td>
+                  <th className="border border-gray-500 bg-gray-100 px-2 py-1 text-left w-24">出勤日数</th>
+                  <td className="border border-gray-500 px-2 py-1 text-right w-16">{totals.work}日</td>
+                  <th className="border border-gray-500 bg-gray-100 px-2 py-1 text-left w-24">有給日数</th>
+                  <td className="border border-gray-500 px-2 py-1 text-right w-16">{totals.paid}日</td>
+                  <th className="border border-gray-500 bg-gray-100 px-2 py-1 text-left w-24">欠勤日数</th>
+                  <td className="border border-gray-500 px-2 py-1 text-right w-16">{totals.absent}日</td>
                 </tr>
                 <tr>
-                  <th className="border border-gray-500 bg-gray-100 px-2 py-1 text-left">欠勤日数</th>
-                  <td className="border border-gray-500 px-2 py-1 text-right">{totals.absent}日</td>
-                  <th className="border border-gray-500 bg-gray-100 px-2 py-1 text-left">総実働時間</th>
+                  <th className="border border-gray-500 bg-gray-100 px-2 py-1 text-left">所定内労働</th>
+                  <td className="border border-gray-500 px-2 py-1 text-right">{hhmm(hours.scheduledMinutes)}</td>
+                  <th className="border border-gray-500 bg-gray-100 px-2 py-1 text-left">時間外労働</th>
+                  <td className="border border-gray-500 px-2 py-1 text-right font-bold">{hhmm(hours.overtimeMinutes)}</td>
+                  <th className="border border-gray-500 bg-gray-100 px-2 py-1 text-left">休日労働</th>
+                  <td className="border border-gray-500 px-2 py-1 text-right font-bold">{hhmm(hours.holidayMinutes)}</td>
+                </tr>
+                <tr>
+                  <th className="border border-gray-500 bg-gray-100 px-2 py-1 text-left" colSpan={5}>総実働時間（所定内＋時間外＋休日）</th>
                   <td className="border border-gray-500 px-2 py-1 text-right font-bold">{hhmm(totals.minutes)}</td>
-                </tr>
-                <tr>
-                  <th className="border border-gray-500 bg-gray-100 px-2 py-1 text-left">時間外</th>
-                  <td className="border border-gray-500 px-2 py-1 text-right font-bold">{otTotal}時間</td>
-                  <th className="border border-gray-500 bg-gray-100 px-2 py-1 text-left">休日勤務</th>
-                  <td className="border border-gray-500 px-2 py-1 text-right font-bold">{holidayTotal}時間</td>
                 </tr>
               </tbody>
             </table>

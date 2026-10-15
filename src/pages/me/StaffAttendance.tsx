@@ -4,9 +4,9 @@ import { PageContainer, Card, Button, Table, Th, Td } from '../../components/UI'
 import { getMyAttendancePageData, todayStr } from '../../api/data';
 import { DAY_TYPE_LABELS, WEEKDAY_LABELS } from '../../utils/constants';
 import { isSpecialHoliday } from '../../utils/holidays';
-import { workMinutesOf, roundedTimesOf, dayShiftMap, roundMonthMinutes } from '../../utils/worktime';
+import { workMinutesOf, roundedTimesOf, dayShiftMap, monthWorkTotals } from '../../utils/worktime';
 import type { DayShift } from '../../utils/worktime';
-import type { AttendanceRecord } from '../../types';
+import type { AttendanceRecord, OvertimeRecord } from '../../types';
 
 function currentMonth(): string { return todayStr().slice(0, 7); }
 function shiftMonth(month: string, delta: number): string {
@@ -30,6 +30,7 @@ export default function StaffAttendance() {
   const [month, setMonth] = useState(currentMonth());
   const [records, setRecords] = useState<Record<string, AttendanceRecord>>({});
   const [shiftMap, setShiftMap] = useState<Map<string, DayShift>>(new Map());
+  const [overtime, setOvertime] = useState<OvertimeRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -43,6 +44,7 @@ export default function StaffAttendance() {
       setRecords(map);
       // 打刻を丸めるための材料（シフトの開始・終了と早出申請の有無）
       setShiftMap(dayShiftMap(d.confirmed, d.patterns, d.overtime)); // 本人ぶんのみのデータ
+      setOvertime(d.overtime);
       setLoading(false);
     })();
     return () => { alive = false; };
@@ -55,10 +57,10 @@ export default function StaffAttendance() {
       work: list.filter(r => r.dayType === 'work').length,
       paid: list.filter(r => r.dayType === 'paid').length,
       absent: list.filter(r => r.dayType === 'absent').length,
-      // 月の合計は15分単位で切り上げる（給与計算で端数を切り捨てないため）
-      minutes: roundMonthMinutes(list.reduce((s, r) => s + workMinutes(r, shiftMap.get(r.date)), 0)),
+      // 労働時間を所定内・時間外・休日労働に分ける（月の合計は15分単位で切り上げ）
+      hours: monthWorkTotals(list.reduce((s, r) => s + workMinutes(r, shiftMap.get(r.date)), 0), overtime),
     };
-  }, [days, records, shiftMap]);
+  }, [days, records, shiftMap, overtime]);
 
   return (
     <PageContainer title="出勤簿">
@@ -76,17 +78,26 @@ export default function StaffAttendance() {
       </Card>
 
       {/* 月次集計 */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-3 gap-3 mb-3">
         <Tile label="出勤日数" value={`${totals.work}日`} />
         <Tile label="有給日数" value={`${totals.paid}日`} />
         <Tile label="欠勤日数" value={`${totals.absent}日`} />
-        <Tile label="総実働時間" value={hhmm(totals.minutes)} />
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <Tile label="所定内労働" value={hhmm(totals.hours.scheduledMinutes)} />
+        <Tile label="時間外労働" value={hhmm(totals.hours.overtimeMinutes)} />
+        <Tile label="休日労働" value={hhmm(totals.hours.holidayMinutes)} />
+        <Tile label="総実働時間" value={hhmm(totals.hours.totalMinutes)} />
       </div>
 
       <p className="text-xs text-gray-500 mb-3">
         実働は打刻どおり<b>1分単位</b>で計算します。ただしシフト開始より早く打刻した日は、時間外の申請がなければ
         <b>シフト開始から</b>になります（<span className="text-blue-600">青字</span>が計算に使った時刻）。
         総実働時間は日ごとの実働を合計し、<b>15分単位で切り上げ</b>ます。
+        <span className="block mt-0.5">
+          時間外労働・休日労働は「時間外・代休」で<b>承認された</b>実績です（代休にした分も労働時間として数えます）。
+          所定内労働＝総実働時間 − 時間外労働 − 休日労働。
+        </span>
       </p>
 
       <Card className="p-0 overflow-x-auto">

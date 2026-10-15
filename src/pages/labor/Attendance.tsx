@@ -6,7 +6,7 @@ import { listStaff, saveMonthAttendance, getAttendancePageData, listShiftPattern
 import { DAY_TYPE_LABELS, WEEKDAY_LABELS, breakMinutesBetween } from '../../utils/constants';
 import { shiftPlanByDate, isMissingPunch } from '../../utils/shiftPlan';
 import { overtimeByDate, requiredBreakMinutes, OVERTIME_KIND_LABELS } from '../../utils/overtime';
-import { workMinutesOf, roundedTimesOf, dayShiftMap, roundMonthMinutes } from '../../utils/worktime';
+import { workMinutesOf, roundedTimesOf, dayShiftMap, monthWorkTotals } from '../../utils/worktime';
 import type { DayShift } from '../../utils/worktime';
 import type { AttendanceRecord, AttendanceDayType, Staff, ShiftPattern, ConfirmedShift, OvertimeRecord } from '../../types';
 
@@ -82,14 +82,6 @@ export default function Attendance() {
 
   // 日付ごとの時間外実績（時間外管理で保存された実績時間）
   const otByDate = useMemo(() => overtimeByDate(overtime), [overtime]);
-  const monthOtHours = useMemo(
-    () => Math.round(overtime.filter(r => r.kind === 'overtime').reduce((t, r) => t + (Number(r.resultHours) || 0), 0) * 10) / 10,
-    [overtime]
-  );
-  const monthHolidayHours = useMemo(
-    () => Math.round(overtime.filter(r => r.kind === 'holiday').reduce((t, r) => t + (Number(r.resultHours) || 0), 0) * 10) / 10,
-    [overtime]
-  );
 
   // 日付ごとの勤務予定と、シフトがあるのに打刻がない日
   const plans = useMemo(() => shiftPlanByDate(confirmed, patterns), [confirmed, patterns]);
@@ -157,8 +149,12 @@ export default function Attendance() {
   const workDays = recList.filter(r => r.dayType === 'work').length;
   const paidDays = recList.filter(r => r.dayType === 'paid').length;
   const absentDays = recList.filter(r => r.dayType === 'absent').length;
-  // 月の合計は15分単位で切り上げる（給与計算で端数を切り捨てないため）
-  const totalMinutes = roundMonthMinutes(recList.reduce((s, r) => s + workMinutes(r, shiftMap.get(r.date)), 0));
+  // 労働時間を所定内・時間外・休日労働に分ける（月の合計は15分単位で切り上げ）
+  const totals = monthWorkTotals(
+    recList.reduce((s, r) => s + workMinutes(r, shiftMap.get(r.date)), 0),
+    overtime
+  );
+  const totalMinutes = totals.totalMinutes;
 
   const exportExcel = () => {
     if (!selectedStaff) return;
@@ -173,7 +169,9 @@ export default function Attendance() {
         const wd = WEEKDAY_LABELS[new Date(`${date}T00:00:00`).getDay()];
         const planCells = [plan ? plan.timeLabel : '', plan ? plan.hours : ''];
         const ot = otByDate.get(date);
-        const otCells = [ot ? ot.hours : '', ot ? OVERTIME_KIND_LABELS[ot.kind] : ''];
+        // 未承認の申請は月の集計に入らないため、種別に添えて示す
+        const otCells = [ot ? ot.hours : '',
+          ot ? `${OVERTIME_KIND_LABELS[ot.kind]}${ot.status === 'applied' ? '（未承認）' : ''}` : ''];
         if (!rec) return [date, wd, ...planCells, '', '', '', '', '', '', '', ...otCells, ''];
         const sh = shiftMap.get(date);
         const t = roundedTimesOf(rec, sh);
@@ -193,7 +191,9 @@ export default function Attendance() {
         ];
       }),
       [],
-      ['出勤日数', workDays, '有給日数', paidDays, '欠勤日数', absentDays, '総実働', formatMinutes(totalMinutes), '時間外', monthOtHours, '休日勤務', monthHolidayHours],
+      ['出勤日数', workDays, '有給日数', paidDays, '欠勤日数', absentDays],
+      ['所定内労働', formatMinutes(totals.scheduledMinutes), '時間外労働', formatMinutes(totals.overtimeMinutes),
+        '休日労働', formatMinutes(totals.holidayMinutes), '総実働', formatMinutes(totals.totalMinutes)],
     ];
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws['!cols'] = [{ wch: 12 }, { wch: 5 }, { wch: 14 }, { wch: 10 }, { wch: 6 }, { wch: 7 }, { wch: 7 }, { wch: 15 }, { wch: 13 }, { wch: 9 }, { wch: 7 }, { wch: 8 }, { wch: 8 }, { wch: 20 }];
@@ -238,16 +238,26 @@ export default function Attendance() {
           )}
 
           {/* 月次集計 */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+          <div className="grid grid-cols-3 gap-3 mb-3">
             <SummaryTile label="出勤日数" value={`${workDays}日`} />
             <SummaryTile label="有給日数" value={`${paidDays}日`} />
             <SummaryTile label="欠勤日数" value={`${absentDays}日`} />
-            <SummaryTile label="総実働時間" value={formatMinutes(totalMinutes)} />
-            <SummaryTile label="時間外" value={`${monthOtHours}h`} />
-            <SummaryTile label="休日勤務" value={`${monthHolidayHours}h`} />
           </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+            <SummaryTile label="所定内労働" value={formatMinutes(totals.scheduledMinutes)} />
+            <SummaryTile label="時間外労働" value={formatMinutes(totals.overtimeMinutes)} />
+            <SummaryTile label="休日労働" value={formatMinutes(totals.holidayMinutes)} />
+            <SummaryTile label="総実働時間" value={formatMinutes(totalMinutes)} />
+          </div>
+          {totals.mismatch && (
+            <Alert type="error">
+              承認済みの時間外・休日勤務（{formatMinutes(totals.overtimeMinutes + totals.holidayMinutes)}）が
+              総実働時間（{formatMinutes(totalMinutes)}）を超えています。出退勤の入力漏れがないか確認してください。
+            </Alert>
+          )}
           <p className="text-xs text-gray-400 -mt-2 mb-4">
-            時間外・休日勤務は「時間外」画面で登録された実績です。この画面では変更できません。<br />
+            所定内労働＝総実働時間 − 時間外労働 − 休日労働。
+            時間外労働・休日労働は「時間外」画面で<b>承認済み</b>の実績です（代休にした分も労働時間として数えます）。この画面では変更できません。<br />
             実働は打刻をシフトに合わせて丸めて計算します（<span className="text-blue-600">青字</span>が計算に使った時刻）。
             シフト開始前の打刻は、早出の申請がなければシフト開始から。それ以外の打刻（退勤・遅刻・早退）は実時刻のままです。
             日ごとの実働は1分単位で数え、総実働時間はその合計を15分単位で切り上げます。
