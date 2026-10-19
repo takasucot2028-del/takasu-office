@@ -32,7 +32,43 @@ export const OVERTIME_DISPOSITION_LABELS: Record<OvertimeDisposition, string> = 
   '': '未定',
   allowance: '手当',
   comp: '代休',
+  split: '一部代休',
 };
+
+/**
+ * 実績時間を「代休にする分」と「手当で支給する分」に分ける。
+ *
+ * 就業規則 第20条・第21条により、時間外・休日労働を手当で支払うか代休にするかは
+ * 法人が決める。1件の実績を分けることもできる（例: 7.5時間のうち5.5時間を代休、
+ * 2時間を手当）。その場合は disposition を 'split' にし、compHours に代休ぶんを入れる。
+ *
+ * 処理が未定のうちは、どちらにも計上しない。
+ * compHours を持たない古い記録は disposition だけで判断する。
+ */
+export interface DispositionSplit {
+  compHours: number;      // 代休にする時間
+  allowanceHours: number; // 手当で支給する時間
+}
+export function dispositionSplitOf(
+  r: { disposition: OvertimeDisposition; compHours?: number; resultHours?: number }
+): DispositionSplit {
+  const result = Math.max(0, Number(r.resultHours) || 0);
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  switch (r.disposition) {
+    case 'allowance': return { compHours: 0, allowanceHours: result };
+    case 'comp': return { compHours: result, allowanceHours: 0 };
+    case 'split': {
+      const comp = Math.min(Math.max(Number(r.compHours) || 0, 0), result);
+      return { compHours: r2(comp), allowanceHours: r2(result - comp) };
+    }
+    default: return { compHours: 0, allowanceHours: 0 }; // 未定
+  }
+}
+
+/** 実績を手当と代休に分けられる雇用区分か。パート職員はシフト超過に割増がつかないため分けない */
+export function canSplitDisposition(staff: Staff): boolean {
+  return staff.employmentType === 'fulltime';
+}
 export const OVERTIME_KIND_LABELS: Record<OvertimeKind, string> = {
   overtime: '時間外',
   holiday: '休日',

@@ -11,6 +11,7 @@ import { EMPLOYMENT_TYPE_LABELS, GENDER_LABELS, fiscalYearLabel, currentFiscalYe
 import {
   allowanceDetail, compPremiumDetail, priorOvertimeMap,
   shiftExcessIsPremium, usesPartTimeRules, partMonthPremium, nightHoursOf, nightAllowanceOf,
+  dispositionSplitOf,
 } from '../../utils/overtime';
 import { workMinutesOf, roundedRecord, dayShiftMap, monthHoursOf } from '../../utils/worktime';
 import type { Staff } from '../../types';
@@ -78,12 +79,13 @@ export default function WageLedgerPrint() {
         // パート職員はシフト超過そのものに割増がつかない（パート規則 第8条1項）
         const excessPaid = s ? shiftExcessIsPremium(s) : true;
         const allowance = !excessPaid ? 0 : o.reduce((sum, r) => {
-          const hrs = Number(r.resultHours) || 0;
-          // 代休にしたものは割増部分のみ支給する（就業規則 第21条2項）
-          const d = r.disposition === 'comp'
-            ? compPremiumDetail(hrs, wage, r.kind, prior.get(r.id) ?? 0)
-            : allowanceDetail(hrs, wage, r.kind, prior.get(r.id) ?? 0);
-          return sum + d.amount;
+          // 代休にしたぶんは割増部分のみ支給する（就業規則 第21条2項）。
+          // 1件を手当と代休に分けている場合は、それぞれで計算する。
+          const { compHours, allowanceHours } = dispositionSplitOf(r);
+          const base = prior.get(r.id) ?? 0;
+          return sum
+            + (allowanceHours > 0 ? allowanceDetail(allowanceHours, wage, r.kind, base).amount : 0)
+            + (compHours > 0 ? compPremiumDetail(compHours, wage, r.kind, base + allowanceHours).amount : 0);
         }, 0);
         const nightHours = r1(a.reduce((x, r) => x + nightHoursOf(r), 0));
         // パート職員は勤務した時間帯から割増を求める（第8条2項・3項）

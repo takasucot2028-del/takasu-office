@@ -3,7 +3,10 @@ import { PageContainer, Card, Field, Input, Select, Button, Table, Th, Td, Badge
 import { getMyProfile, getMyOvertimePageData, addMyOvertime, addMyCompUse, todayStr } from '../../api/data';
 import { WEEKDAY_LABELS, hoursBetween } from '../../utils/constants';
 import { closedDayName, isClosedDay } from '../../utils/holidays';
-import { overtimeKindOf, allowanceOf, OVERTIME_KIND_LABELS, OVERTIME_STATUS_LABELS, OVERTIME_DISPOSITION_LABELS } from '../../utils/overtime';
+import {
+  overtimeKindOf, allowanceOf, canSplitDisposition, dispositionSplitOf,
+  OVERTIME_KIND_LABELS, OVERTIME_STATUS_LABELS, OVERTIME_DISPOSITION_LABELS,
+} from '../../utils/overtime';
 import type { Staff, OvertimeRecord, CompLeaveUse, ConfirmedShift, OvertimeKind } from '../../types';
 
 const h1 = (n: number) => `${Math.round(n * 10) / 10}h`;
@@ -20,6 +23,7 @@ export default function StaffOvertimeRequest() {
   const [start, setStart] = useState('17:00');
   const [end, setEnd] = useState('19:00');
   const [reason, setReason] = useState('');
+  const [wantComp, setWantComp] = useState('');   // 代休を希望する時間（空欄＝希望なし）
   const [version, setVersion] = useState(0);
   const hrs = hoursBetween(start, end);
 
@@ -64,6 +68,8 @@ export default function StaffOvertimeRequest() {
   );
   const shiftKnown = shiftDates.size > 0;
   const canChooseHoliday = staff?.employmentType === 'fulltime';
+  // 実績の一部を代休にする希望を出せるか（常勤職員のみ）
+  const canSplit = staff ? canSplitDisposition(staff) : false;
   const autoKind: OvertimeKind = staff
     ? overtimeKindOf(staff, date, { hasShift: shiftDates.has(date), shiftKnown })
     : 'overtime';
@@ -86,8 +92,8 @@ export default function StaffOvertimeRequest() {
   // 代休残＝「代休にした時間外（承認済）」−「取得ぶん（申請中を含む）」
   const r1 = (n: number) => Math.round(n * 10) / 10;
   const compGranted = r1(records
-    .filter(r => r.status === 'approved' && r.disposition === 'comp')
-    .reduce((s, r) => s + (r.resultHours || 0), 0));
+    .filter(r => r.status === 'approved')
+    .reduce((s, r) => s + dispositionSplitOf(r).compHours, 0));
   const compTaken = r1(compUse
     .filter(r => (r.status || 'approved') !== 'rejected')
     .reduce((s, r) => s + (r.hours || 0), 0));
@@ -117,9 +123,14 @@ export default function StaffOvertimeRequest() {
     if (hrs <= 0) { setError('終了は開始より後の時刻にしてください'); return; }
     setSaving(true); setError(''); setMessage('');
     try {
-      await addMyOvertime({ date, appliedHours: hrs, startTime: start, endTime: end, reason, kind });
+      const want = Math.min(Math.max(Number(wantComp) || 0, 0), hrs);
+      await addMyOvertime({
+        date, appliedHours: hrs, startTime: start, endTime: end, reason, kind,
+        requestedCompHours: canSplit ? want : 0,
+      });
       setMessage(`${kind === 'holiday' ? '休日勤務' : '時間外'}を申請しました。事務局の承認をお待ちください。`);
       setReason('');
+      setWantComp('');
       setVersion(v => v + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : '申請に失敗しました');
@@ -135,7 +146,7 @@ export default function StaffOvertimeRequest() {
 
       <Card className="mb-4">
         <h2 className="font-bold text-gray-800 mb-3">時間外・休日勤務を申請する</h2>
-        <form onSubmit={add} className="grid sm:grid-cols-6 gap-3 items-end">
+        <form onSubmit={add} className="grid sm:grid-cols-6 lg:grid-cols-7 gap-3 items-end">
           <Field label="日付">
             <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
           </Field>
@@ -153,7 +164,16 @@ export default function StaffOvertimeRequest() {
           <Field label="終了">
             <Input type="time" value={end} onChange={e => setEnd(e.target.value)} required />
           </Field>
-          <div className={canChooseHoliday ? '' : 'sm:col-span-2'}>
+          {canSplit && (
+            <Field label="代休希望（任意）">
+              <Input
+                type="number" min={0} max={hrs > 0 ? hrs : undefined} step={0.25}
+                value={wantComp} onChange={e => setWantComp(e.target.value)}
+                placeholder="例: 5.5"
+              />
+            </Field>
+          )}
+          <div className={canChooseHoliday || canSplit ? '' : 'sm:col-span-2'}>
             <Field label="事由">
               <Input value={reason} onChange={e => setReason(e.target.value)} placeholder="例: イベント準備" />
             </Field>
@@ -172,6 +192,7 @@ export default function StaffOvertimeRequest() {
         <p className="text-xs text-gray-400">
           申請時間 = 終了 − 開始（現在: <span className="font-medium text-gray-600">{hrs > 0 ? `${hrs}h` : '—'}</span>）。
           実績時間・種別・手当/代休は、勤務後に事務局が勤怠とシフト表をもとに確定します。
+          {canSplit && '「代休希望」は、申請した時間のうち代休にしてほしい時間です（例: 7.5時間のうち5.5時間）。残りは手当になります。希望どおりになるとは限りません。'}
           {!canChooseHoliday && 'パート職員は休日勤務の区分を使いません（パート規則 第8条）。8:30より前・21:30より後の勤務も、この画面から申請してください。'}
         </p>
       </Card>
@@ -197,8 +218,25 @@ export default function StaffOvertimeRequest() {
                   </Td>
                   <Td><Badge color={statusColor(r.status)}>{OVERTIME_STATUS_LABELS[r.status === 'approved' ? 'approved' : 'applied']}</Badge></Td>
                   <Td className="whitespace-nowrap">{approved ? h1(r.resultHours || 0) : '—'}</Td>
-                  <Td>{approved && r.disposition ? OVERTIME_DISPOSITION_LABELS[r.disposition] : '—'}</Td>
-                  <Td className="whitespace-nowrap">{approved && r.disposition === 'allowance' && staff ? `¥${allowanceOf(r.resultHours || 0, staff.hourlyWage || 0, k).toLocaleString()}` : '—'}</Td>
+                  <Td className="whitespace-nowrap">
+                    {approved && r.disposition ? (
+                      <>
+                        {OVERTIME_DISPOSITION_LABELS[r.disposition]}
+                        {r.disposition === 'split' && (
+                          <span className="block text-xs text-gray-500">
+                            代休 {h1(dispositionSplitOf(r).compHours)}／手当 {h1(dispositionSplitOf(r).allowanceHours)}
+                          </span>
+                        )}
+                      </>
+                    ) : (r.requestedCompHours || 0) > 0
+                      ? <span className="text-xs text-blue-600">代休{h1(r.requestedCompHours || 0)}を希望</span>
+                      : '—'}
+                  </Td>
+                  <Td className="whitespace-nowrap">{(() => {
+                    if (!approved || !staff) return '—';
+                    const h = dispositionSplitOf(r).allowanceHours;
+                    return h > 0 ? `¥${allowanceOf(h, staff.hourlyWage || 0, k).toLocaleString()}` : '—';
+                  })()}</Td>
                 </tr>
               );
             })}

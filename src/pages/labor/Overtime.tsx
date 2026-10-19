@@ -14,6 +14,7 @@ import {
 } from '../../utils/limit36';
 import {
   isOvertimeTarget, overtimeKindOf, standardHoursOf, resultHoursFor, usesAppliedHours,
+  dispositionSplitOf, canSplitDisposition,
   allowanceDetail, compPremiumDetail, compDeadlineOf, priorOvertimeMap, patternHours,
   shiftExcessIsPremium, partMonthPremium, nightAllowanceOf, nightHoursOf,
   OVERTIME_MONTHLY_THRESHOLD, WEEKLY_LEGAL_HOURS,
@@ -85,6 +86,8 @@ export default function Overtime() {
   // パート職員はシフト超過そのものには割増がつかない（パート規則 第8条1項＝1.0倍）。
   // 割増は勤務した時間帯・法定超・深夜から別に計算する（同2項・3項）。
   const isPart = staff ? !shiftExcessIsPremium(staff) : false;
+  // 実績を手当と代休に分けられるか（常勤職員のみ）
+  const canSplit = staff ? canSplitDisposition(staff) : false;
   const patternMap = useMemo(() => new Map(patterns.map(p => [p.id, p])), [patterns]);
 
   // 初回：職員・区分
@@ -191,7 +194,7 @@ export default function Overtime() {
    * 割増部分だけを支給する（就業規則 第21条2項）。
    */
   const calc = (r: OvertimeRecord) => {
-    if (!staff) return { kind: r.kind, worked: 0, standard: 0, result: 0, amount: 0, over60Hours: 0, premium: 0 };
+    if (!staff) return { kind: r.kind, worked: 0, standard: 0, result: 0, compHours: 0, allowanceHours: 0, amount: 0, over60Hours: 0, premium: 0 };
     const kind = overtimeKindOf(staff, r.date, workdayCtx(r.date));
     const worked = attMap[r.date] || 0;
     const standard = standardHoursOf(staff, r.date, shiftMap[r.date] || 0, workdayCtx(r.date));
@@ -199,10 +202,21 @@ export default function Overtime() {
     const wage = staff.hourlyWage || 0;
     const prior = priorMap.get(r.id) ?? 0;
     // パート職員はシフト超過分が1.0倍のため、この記録からは手当が出ない（第8条1項）
-    if (isPart) return { kind, worked, standard, result, amount: 0, over60Hours: 0, premium: 0 };
-    const d = allowanceDetail(result, wage, kind, prior);
-    const p = compPremiumDetail(result, wage, kind, prior);
-    return { kind, worked, standard, result, amount: d.amount, over60Hours: d.over60Hours, premium: p.amount };
+    if (isPart) {
+      const sp = dispositionSplitOf({ ...r, resultHours: result });
+      return { kind, worked, standard, result, compHours: sp.compHours, allowanceHours: sp.allowanceHours, amount: 0, over60Hours: 0, premium: 0 };
+    }
+    // 実績を「手当で支給する分」と「代休にする分」に分ける（第20条・第21条）。
+    // 保存前の記録は resultHours が未確定なので、いま計算した実績で分ける。
+    // 月60時間超の割増は、同じ記録の中では手当ぶんを先に数える。
+    const sp = dispositionSplitOf({ ...r, resultHours: result });
+    const d = allowanceDetail(sp.allowanceHours, wage, kind, prior);
+    const p = compPremiumDetail(sp.compHours, wage, kind, prior + sp.allowanceHours);
+    return {
+      kind, worked, standard, result,
+      compHours: sp.compHours, allowanceHours: sp.allowanceHours,
+      amount: d.amount, over60Hours: d.over60Hours + p.over60Hours, premium: p.amount,
+    };
   };
 
   // パート職員の割増（丸めた打刻の時間帯から自動計算。第8条2項・3項）
@@ -251,7 +265,8 @@ export default function Overtime() {
       // 実績・種別を確定値として書き込んで保存
       const toSave = records.map(r => {
         const c = calc(r);
-        return { ...r, kind: c.kind, resultHours: c.result };
+        // 分割以外は代休時間を持たせない（あとで処理区分を変えたときに古い値が残らないように）
+        return { ...r, kind: c.kind, resultHours: c.result, compHours: r.disposition === 'split' ? c.compHours : 0 };
       });
       await saveMonthOvertime(staff.id, month, toSave);
       setMessage('保存しました');
@@ -273,8 +288,8 @@ export default function Overtime() {
 
   // 代休残 = 承認済・代休指定の実績合計（保存済） - 代休取得合計
   const compGranted = allOt
-    .filter(r => r.status === 'approved' && r.disposition === 'comp')
-    .reduce((s, r) => s + (r.resultHours || 0), 0);
+    .filter(r => r.status === 'approved')
+    .reduce((s, r) => s + dispositionSplitOf(r).compHours, 0);
   // 承認済だけを消化とみなす。従業員から申請中のものは別に示す
   const compStatus = (r: CompLeaveUse) => r.status || 'approved';
   const compUsed = compUse.filter(r => compStatus(r) === 'approved').reduce((s, r) => s + (r.hours || 0), 0);
@@ -283,21 +298,21 @@ export default function Overtime() {
 
   // 当月集計
   const monthAllowance = records
-    .filter(r => r.status === 'approved' && r.disposition === 'allowance')
+    .filter(r => r.status === 'approved')
     .reduce((s, r) => s + calc(r).amount, 0);
   // 代休にした分の割増部分（第21条2項）
   const monthCompPremium = records
-    .filter(r => r.status === 'approved' && r.disposition === 'comp')
+    .filter(r => r.status === 'approved')
     .reduce((s, r) => s + calc(r).premium, 0);
   const monthComp = records
-    .filter(r => r.status === 'approved' && r.disposition === 'comp')
-    .reduce((s, r) => s + calc(r).result, 0);
+    .filter(r => r.status === 'approved')
+    .reduce((s, r) => s + calc(r).compHours, 0);
   // 月末の自動集計（承認済ベース）
   const r1 = (n: number) => Math.round(n * 10) / 10;
   const approvedRecs = records.filter(r => r.status === 'approved');
   const monthWeekdayOt = r1(approvedRecs.filter(r => calc(r).kind === 'overtime').reduce((s, r) => s + calc(r).result, 0));
   const monthHoliday = r1(approvedRecs.filter(r => calc(r).kind === 'holiday').reduce((s, r) => s + calc(r).result, 0));
-  const monthAllowanceHours = r1(approvedRecs.filter(r => r.disposition === 'allowance').reduce((s, r) => s + calc(r).result, 0));
+  const monthAllowanceHours = r1(approvedRecs.reduce((s, r) => s + calc(r).allowanceHours, 0));
   const monthCompUsed = r1(compUse.filter(u => u.date.startsWith(month)).reduce((s, u) => s + (u.hours || 0), 0));
   // 60時間を超えた分（×1.50 対象）の合計
   const monthOver60 = r1(approvedRecs.reduce((s, r) => s + calc(r).over60Hours, 0));
@@ -631,25 +646,54 @@ export default function Overtime() {
                       </Td>
                       <Td className="whitespace-nowrap text-gray-500">{h1(c.standard)}</Td>
                       <Td className="whitespace-nowrap font-medium">{h1(c.result)}</Td>
-                      <Td>
-                        <Select value={r.disposition} onChange={e => setRec(r.id, { disposition: e.target.value as OvertimeDisposition })}>
+                      <Td className="min-w-32">
+                        <Select
+                          value={r.disposition}
+                          onChange={e => {
+                            const v = e.target.value as OvertimeDisposition;
+                            // 「一部を代休」にしたときは、職員の希望があればそれを初期値にする
+                            // まだ代休時間を決めていなければ、職員の希望を初期値にする
+                            setRec(r.id, v === 'split'
+                              ? { disposition: v, compHours: r.compHours || Math.min(r.requestedCompHours || 0, c.result) }
+                              : { disposition: v });
+                          }}
+                        >
                           <option value="">未定</option>
                           <option value="allowance">手当</option>
                           <option value="comp">代休</option>
+                          {canSplit && <option value="split">一部を代休</option>}
                         </Select>
+                        {r.disposition === 'split' && (
+                          <div className="mt-1 flex items-center gap-1">
+                            <Input
+                              type="number" min={0} max={c.result} step={0.25} className="w-20"
+                              value={r.compHours ?? 0}
+                              onChange={e => setRec(r.id, { compHours: Math.min(Math.max(Number(e.target.value) || 0, 0), c.result) })}
+                            />
+                            <span className="text-xs text-gray-500 whitespace-nowrap">h を代休</span>
+                          </div>
+                        )}
+                        {canSplit && (r.requestedCompHours || 0) > 0 && (
+                          <div className="text-[10px] text-blue-600 leading-tight mt-0.5">
+                            本人希望 代休{h1(r.requestedCompHours || 0)}
+                          </div>
+                        )}
                       </Td>
                       <Td className="whitespace-nowrap">
-                        {isPart && r.disposition === 'allowance'
-                          ? <span className="text-gray-500 text-xs">割増なし<span className="block text-gray-400">（1.0倍・第8条1項）</span></span>
-                          : r.disposition === 'allowance' ? <span className="font-medium">{yen(c.amount)}</span>
-                          : r.disposition === 'comp' ? (
-                            <span className="text-gray-600">
-                              代休 {h1(c.result)}
-                              <span className="block text-xs text-emerald-700">割増 {yen(c.premium)}</span>
-                              <span className="block text-xs text-gray-400">期限 {compDeadlineOf(r.date)}</span>
-                            </span>
-                          )
-                          : <span className="text-gray-300">—</span>}
+                        {!r.disposition ? <span className="text-gray-300">—</span> : (
+                          <span className="text-gray-600">
+                            {c.allowanceHours > 0 && (isPart
+                              ? <span className="text-gray-500 text-xs">手当 {h1(c.allowanceHours)}：割増なし<span className="block text-gray-400">（1.0倍・第8条1項）</span></span>
+                              : <span className="block font-medium text-gray-800">手当 {h1(c.allowanceHours)}　{yen(c.amount)}</span>)}
+                            {c.compHours > 0 && (
+                              <>
+                                <span className="block">代休 {h1(c.compHours)}</span>
+                                {!isPart && <span className="block text-xs text-emerald-700">割増 {yen(c.premium)}</span>}
+                                <span className="block text-xs text-gray-400">期限 {compDeadlineOf(r.date)}</span>
+                              </>
+                            )}
+                          </span>
+                        )}
                       </Td>
                       <Td><Button variant="ghost" size="sm" onClick={() => removeRec(r.id)}>削除</Button></Td>
                     </tr>

@@ -12,6 +12,7 @@ import {
 import {
   allowanceDetail, compPremiumDetail, priorOvertimeMap,
   shiftExcessIsPremium, usesPartTimeRules, partMonthPremium, nightHoursOf, nightAllowanceOf,
+  dispositionSplitOf,
 } from '../../utils/overtime';
 import { workMinutesOf, roundedRecord, dayShiftMapByStaff, monthWorkTotals } from '../../utils/worktime';
 import type { Staff } from '../../types';
@@ -84,18 +85,22 @@ export default function Payroll() {
       const excessPaid = shiftExcessIsPremium(s);
       let otNormal = 0, otOver60 = 0, holiday = 0, allowance = 0, compGranted = 0, compPremium = 0;
       for (const r of ot) {
-        const hrs = Number(r.resultHours) || 0;
-        if (r.disposition === 'comp') {
-          // 賃金の本体は代休に振り替え、割増部分だけ支給する（第21条2項）
-          compGranted += hrs;
-          if (excessPaid) compPremium += compPremiumDetail(hrs, s.hourlyWage || 0, r.kind, prior.get(r.id) ?? 0).amount;
-          continue;
-        }
+        // 1件の実績を手当ぶんと代休ぶんに分ける（第20条・第21条）。
+        // 月60時間超の割増は、同じ記録の中では手当ぶんを先に数える。
+        const { compHours, allowanceHours } = dispositionSplitOf(r);
+        // 代休ぶんは賃金の本体を代休に振り替え、割増部分だけ支給する（第21条2項）
+        compGranted += compHours;
         if (!excessPaid) continue;   // シフト超過は通常の賃金（実働時間分）に含まれる
-        const d = allowanceDetail(hrs, s.hourlyWage || 0, r.kind, prior.get(r.id) ?? 0);
-        allowance += d.amount;
-        if (r.kind === 'holiday') holiday += hrs;
-        else { otNormal += d.normalHours; otOver60 += d.over60Hours; }
+        const base = prior.get(r.id) ?? 0;
+        if (compHours > 0) {
+          compPremium += compPremiumDetail(compHours, s.hourlyWage || 0, r.kind, base + allowanceHours).amount;
+        }
+        if (allowanceHours > 0) {
+          const d = allowanceDetail(allowanceHours, s.hourlyWage || 0, r.kind, base);
+          allowance += d.amount;
+          if (r.kind === 'holiday') holiday += allowanceHours;
+          else { otNormal += d.normalHours; otOver60 += d.over60Hours; }
+        }
       }
 
       // 休暇。特別休暇は有給／無給に分ける（病気休暇は年30日までが有給）

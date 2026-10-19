@@ -100,8 +100,8 @@ export interface ConfirmedShift {
 export type OvertimeKind = 'overtime' | 'holiday';
 /** 申請の状態 */
 export type OvertimeStatus = 'applied' | 'approved';
-/** 実績の処理区分（未定 / 時間外手当 / 代休） */
-export type OvertimeDisposition = '' | 'allowance' | 'comp';
+/** 実績の処理区分（未定 / 時間外手当 / 代休 / 一部を代休） */
+export type OvertimeDisposition = '' | 'allowance' | 'comp' | 'split';
 
 /** 時間外・休日勤務（1職員×1日の申請） */
 export interface OvertimeRecord {
@@ -115,6 +115,8 @@ export interface OvertimeRecord {
   reason: string;             // 事由
   status: OvertimeStatus;     // applied→approved
   disposition: OvertimeDisposition;
+  compHours?: number;         // split のとき、実績のうち代休にする時間（残りが手当）
+  requestedCompHours?: number; // 職員が希望する代休時間（事務局が確定するまでの参考値）
   resultHours: number;        // 実績時間（保存時に勤怠から自動計算して記録）
   note: string;
 }

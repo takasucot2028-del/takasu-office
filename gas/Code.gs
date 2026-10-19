@@ -34,6 +34,7 @@ var SHEETS = {
     ['appliedHours', '申請時間'], ['reason', '事由'], ['status', '状態'],
     ['disposition', '処理区分'], ['resultHours', '実績時間'], ['note', '備考'],
     ['startTime', '開始'], ['endTime', '終了'],
+    ['compHours', '代休にする時間'], ['requestedCompHours', '代休希望時間'],
   ] },
   comp_leave_use: { name: '代休取得', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['hours', '時間'], ['note', '備考'],
@@ -2175,6 +2176,9 @@ function handleAddMyOvertime(session, record) {
     appliedHours: Number(record.appliedHours) || 0, reason: record.reason || '',
     status: 'applied', disposition: '', resultHours: 0, note: '',
     startTime: String(record.startTime || ''), endTime: String(record.endTime || ''),
+    // 処理区分（手当／代休／一部を代休）は事務局が決める（第20条・第21条）。
+    // ここでは職員の希望だけを預かる
+    compHours: 0, requestedCompHours: Number(record.requestedCompHours) || 0,
   };
   appendUnique_('overtime', rec);
   return { success: true };

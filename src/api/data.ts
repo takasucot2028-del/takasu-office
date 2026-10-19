@@ -332,6 +332,8 @@ export async function addMyOvertime(record: Partial<OvertimeRecord>): Promise<vo
       appliedHours: rec.appliedHours || 0, reason: rec.reason || '',
       startTime: rec.startTime || '', endTime: rec.endTime || '',
       status: 'applied', disposition: '', resultHours: 0, note: '',
+      // 処理区分は事務局が決める（第20条・第21条）。希望だけを預かる
+      compHours: 0, requestedCompHours: Number(rec.requestedCompHours) || 0,
     });
     return;
   }

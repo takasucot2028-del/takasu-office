@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { listStaff, listOvertimeByMonth, listCompUse, todayStr } from '../../api/data';
 import { WEEKDAY_LABELS } from '../../utils/constants';
-import { overtimeKindOf, allowanceDetail, priorOvertimeMap, shiftExcessIsPremium, OVERTIME_KIND_LABELS } from '../../utils/overtime';
+import { overtimeKindOf, allowanceDetail, priorOvertimeMap, shiftExcessIsPremium, dispositionSplitOf, OVERTIME_KIND_LABELS } from '../../utils/overtime';
 import type { Staff, OvertimeRecord } from '../../types';
 
 interface Sheet {
@@ -55,10 +55,12 @@ export default function OvertimePrint() {
           records, priors,
           wkOt: r1(records.filter(r => kindOf(r) === 'overtime').reduce((x, r) => x + (r.resultHours || 0), 0)),
           hol: r1(records.filter(r => kindOf(r) === 'holiday').reduce((x, r) => x + (r.resultHours || 0), 0)),
-          allowH: r1(records.filter(r => r.disposition === 'allowance').reduce((x, r) => x + (r.resultHours || 0), 0)),
-          allowYen: !excessPaid ? 0 : Math.round(records.filter(r => r.disposition === 'allowance')
-            .reduce((x, r) => x + allowanceDetail(r.resultHours || 0, s.hourlyWage || 0, kindOf(r), priors.get(r.id) ?? 0).amount, 0)),
-          compGrant: r1(records.filter(r => r.disposition === 'comp').reduce((x, r) => x + (r.resultHours || 0), 0)),
+          allowH: r1(records.reduce((x, r) => x + dispositionSplitOf(r).allowanceHours, 0)),
+          allowYen: !excessPaid ? 0 : Math.round(records.reduce((x, r) => {
+            const h = dispositionSplitOf(r).allowanceHours;
+            return x + (h > 0 ? allowanceDetail(h, s.hourlyWage || 0, kindOf(r), priors.get(r.id) ?? 0).amount : 0);
+          }, 0)),
+          compGrant: r1(records.reduce((x, r) => x + dispositionSplitOf(r).compHours, 0)),
           compUsed: r1(uses.reduce((x, u) => x + (u.hours || 0), 0)),
         });
       }
@@ -70,7 +72,7 @@ export default function OvertimePrint() {
   }, [month, onlyStaffId]);
 
   const [y, m] = month.split('-');
-  const dispLabel: Record<string, string> = { allowance: '手当', comp: '代休', '': '未定' };
+  const dispLabel: Record<string, string> = { allowance: '手当', comp: '代休', split: '一部代休', '': '未定' };
 
   return (
     <div className="ot-print max-w-3xl mx-auto px-4 py-5">
@@ -128,10 +130,18 @@ export default function OvertimePrint() {
                         <td className="border border-gray-500 px-1 py-1 text-center">{OVERTIME_KIND_LABELS[k]}</td>
                         <td className="border border-gray-500 px-2 py-1">{r.reason}</td>
                         <td className="border border-gray-500 px-2 py-1 text-right">{r1(r.resultHours || 0)}h</td>
-                        <td className="border border-gray-500 px-1 py-1 text-center">{dispLabel[r.disposition] || '未定'}</td>
-                        <td className="border border-gray-500 px-2 py-1 text-right">{r.disposition === 'allowance' && shiftExcessIsPremium(s)
-                            ? yen(allowanceDetail(r.resultHours || 0, s.hourlyWage || 0, k, sh.priors.get(r.id) ?? 0).amount)
-                            : ''}</td>
+                        <td className="border border-gray-500 px-1 py-1 text-center">
+                          {dispLabel[r.disposition] || '未定'}
+                          {r.disposition === 'split' && (
+                            <span className="block text-[9px]">代休{r1(dispositionSplitOf(r).compHours)}h</span>
+                          )}
+                        </td>
+                        <td className="border border-gray-500 px-2 py-1 text-right">{(() => {
+                          const h = dispositionSplitOf(r).allowanceHours;
+                          return h > 0 && shiftExcessIsPremium(s)
+                            ? yen(allowanceDetail(h, s.hourlyWage || 0, k, sh.priors.get(r.id) ?? 0).amount)
+                            : '';
+                        })()}</td>
                       </tr>
                     );
                   })}
