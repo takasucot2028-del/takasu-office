@@ -67,7 +67,7 @@ export default function StaffList() {
   };
 
   return (
-    <PageContainer title="職員名簿">
+    <PageContainer title="職員名簿" wide>
       <Card className="mb-4">
         <div className="grid sm:grid-cols-5 gap-3">
           <div className="sm:col-span-2">
@@ -98,7 +98,7 @@ export default function StaffList() {
       </Card>
 
       <div className="flex items-center justify-between mb-3">
-        <p className="text-sm text-gray-500">{filtered.length}名</p>
+        <p className="num text-sm text-ink-mute">{filtered.length}名</p>
         <div className="flex gap-2">
           <Button variant="secondary" size="sm" onClick={exportExcel}>Excel出力</Button>
           <Button variant="secondary" size="sm" onClick={() => navigate('/labor/staff/register/print')}>労働者名簿(PDF)</Button>
@@ -121,17 +121,17 @@ export default function StaffList() {
           </thead>
           <tbody>
             {filtered.map(s => (
-              <tr key={s.id} className="hover:bg-gray-50">
+              <tr key={s.id} className="hover:bg-paper">
                 <Td>
-                  <Link to={`/labor/staff/${s.id}`} className="text-blue-600 hover:underline font-medium">
+                  <Link to={`/labor/staff/${s.id}`} className="text-pine hover:underline font-medium">
                     {s.lastName} {s.firstName}
                   </Link>
                 </Td>
                 <Td>{s.lastKana} {s.firstKana}</Td>
                 <Td>{EMPLOYMENT_TYPE_LABELS[s.employmentType]}</Td>
-                <Td>{s.workLocation ? workLocationLabel(s.workLocation) : <span className="text-gray-400">未設定</span>}</Td>
+                <Td>{s.workLocation ? workLocationLabel(s.workLocation) : <span className="text-ink-mute">未設定</span>}</Td>
                 <Td>{s.position}</Td>
-                <Td>{s.hireDate}</Td>
+                <Td className="num whitespace-nowrap">{s.hireDate}</Td>
                 <Td>
                   <Badge color={s.status === 'active' ? 'green' : 'gray'}>
                     {STAFF_STATUS_LABELS[s.status]}
@@ -141,7 +141,7 @@ export default function StaffList() {
             ))}
             {filtered.length === 0 && (
               <tr>
-                <Td className="text-center text-gray-400 py-8" colSpan={7}>
+                <Td className="text-center text-ink-mute py-8" colSpan={7}>
                   {loading ? '読み込み中…' : '該当する職員がいません'}
                 </Td>
               </tr>

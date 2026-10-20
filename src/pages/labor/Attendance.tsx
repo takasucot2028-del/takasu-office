@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
-import { PageContainer, Card, Select, Input, Button, Table, Th, Td, Alert } from '../../components/UI';
+import { PageContainer, Card, Tile, Select, Input, Button, Table, Th, Td, Alert } from '../../components/UI';
 import { listStaff, saveMonthAttendance, getAttendancePageData, listShiftPatterns, todayStr } from '../../api/data';
 import { DAY_TYPE_LABELS, WEEKDAY_LABELS, breakMinutesBetween } from '../../utils/constants';
 import { shiftPlanByDate, isMissingPunch } from '../../utils/shiftPlan';
@@ -203,7 +203,7 @@ export default function Attendance() {
   };
 
   return (
-    <PageContainer title="勤怠管理">
+    <PageContainer title="勤怠管理" wide>
       <Card className="mb-4">
         <div className="grid sm:grid-cols-3 gap-3">
           <div className="sm:col-span-2">
@@ -239,15 +239,15 @@ export default function Attendance() {
 
           {/* 月次集計 */}
           <div className="grid grid-cols-3 gap-3 mb-3">
-            <SummaryTile label="出勤日数" value={`${workDays}日`} />
-            <SummaryTile label="有給日数" value={`${paidDays}日`} />
-            <SummaryTile label="欠勤日数" value={`${absentDays}日`} />
+            <Tile label="出勤日数" value={`${workDays}日`} />
+            <Tile label="有給日数" value={`${paidDays}日`} />
+            <Tile label="欠勤日数" value={`${absentDays}日`} />
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-            <SummaryTile label="所定内労働" value={formatMinutes(totals.scheduledMinutes)} />
-            <SummaryTile label="時間外労働" value={formatMinutes(totals.overtimeMinutes)} />
-            <SummaryTile label="休日労働" value={formatMinutes(totals.holidayMinutes)} />
-            <SummaryTile label="総実働時間" value={formatMinutes(totalMinutes)} />
+            <Tile label="所定内労働" value={formatMinutes(totals.scheduledMinutes)} />
+            <Tile label="時間外労働" value={formatMinutes(totals.overtimeMinutes)} />
+            <Tile label="休日労働" value={formatMinutes(totals.holidayMinutes)} />
+            <Tile label="総実働時間" value={formatMinutes(totalMinutes)} tone="accent" />
           </div>
           {totals.mismatch && (
             <Alert type="error">
@@ -255,10 +255,10 @@ export default function Attendance() {
               総実働時間（{formatMinutes(totalMinutes)}）を超えています。出退勤の入力漏れがないか確認してください。
             </Alert>
           )}
-          <p className="text-xs text-gray-400 -mt-2 mb-4">
+          <p className="text-xs text-ink-mute -mt-2 mb-4">
             所定内労働＝総実働時間 − 時間外労働 − 休日労働。
             時間外労働・休日労働は「時間外」画面で<b>承認済み</b>の実績です（代休にした分も労働時間として数えます）。この画面では変更できません。<br />
-            実働は打刻をシフトに合わせて丸めて計算します（<span className="text-blue-600">青字</span>が計算に使った時刻）。
+            実働は打刻をシフトに合わせて丸めて計算します（<span className="text-info">青字</span>が計算に使った時刻）。
             シフト開始前の打刻は、早出の申請がなければシフト開始から。それ以外の打刻（退勤・遅刻・早退）は実時刻のままです。
             日ごとの実働は1分単位で数え、総実働時間はその合計を15分単位で切り上げます。
           </p>
@@ -280,8 +280,8 @@ export default function Attendance() {
                   <Th>出勤</Th>
                   <Th>退勤</Th>
                   <Th>休憩</Th>
-                  <Th>実働</Th>
-                  <Th>時間外</Th>
+                  <Th numeric>実働</Th>
+                  <Th numeric>時間外</Th>
                   <Th>備考</Th>
                 </tr>
               </thead>
@@ -293,22 +293,22 @@ export default function Attendance() {
                   const plan = plans.get(date);
                   const missing = isMissingPunch(rec, plan, date, today);
                   return (
-                    <tr key={date} className={missing ? 'bg-amber-50' : wd === 0 ? 'bg-red-50/50' : wd === 6 ? 'bg-blue-50/50' : ''}>
-                      <Td className="whitespace-nowrap">
+                    <tr key={date} className={missing ? 'bg-caution-soft' : wd === 0 ? 'bg-alert-soft/60' : wd === 6 ? 'bg-info-soft/60' : ''}>
+                      <Td className="num whitespace-nowrap">
                         {Number(date.slice(8))}日
-                        <span className={`ml-1 text-xs ${wd === 0 ? 'text-red-500' : wd === 6 ? 'text-blue-500' : 'text-gray-400'}`}>
+                        <span className={`ml-1 text-xs ${wd === 0 ? 'text-alert' : wd === 6 ? 'text-info' : 'text-ink-mute'}`}>
                           ({WEEKDAY_LABELS[wd]})
                         </span>
                       </Td>
                       <Td className="whitespace-nowrap">
                         {plan ? (
                           <>
-                            <span className="font-medium text-gray-700">{plan.label}</span>
-                            <span className="ml-1 text-xs text-gray-500">{plan.timeLabel}</span>
-                            <span className="ml-1 text-xs text-gray-400">({plan.hours}h)</span>
-                            {missing && <span className="ml-2 text-xs text-amber-700 font-medium">打刻なし</span>}
+                            <span className="font-medium text-ink">{plan.label}</span>
+                            <span className="num ml-1 text-xs text-ink-mute">{plan.timeLabel}</span>
+                            <span className="num ml-1 text-xs text-ink-mute">({plan.hours}h)</span>
+                            {missing && <span className="ml-2 text-xs text-caution font-medium">打刻なし</span>}
                           </>
-                        ) : <span className="text-xs text-gray-300">—</span>}
+                        ) : <span className="text-xs text-ink-mute">—</span>}
                       </Td>
                       <Td className="min-w-24">
                         <Select
@@ -350,7 +350,7 @@ export default function Attendance() {
                             disabled={!isWork}
                             onChange={e => setBreakTime(date, e.target.value, rec?.breakEnd ?? '')}
                           />
-                          <span className="text-gray-400 text-xs">〜</span>
+                          <span className="text-ink-mute text-xs">〜</span>
                           <Input
                             type="time"
                             value={rec?.breakEnd ?? ''}
@@ -359,31 +359,31 @@ export default function Attendance() {
                           />
                         </div>
                         {isWork && (rec?.breakMinutes || 0) > 0 && (
-                          <div className="text-[10px] text-gray-400 mt-0.5 whitespace-nowrap">{rec?.breakMinutes}分</div>
+                          <div className="num text-xs text-ink-mute mt-0.5 whitespace-nowrap">{rec?.breakMinutes}分</div>
                         )}
                       </Td>
-                      <Td className="whitespace-nowrap text-gray-600">
+                      <Td numeric className="whitespace-nowrap text-ink-soft">
                         {rec && isWork ? formatMinutes(workMinutes(rec, shiftMap.get(date))) : ''}
                         {/* 打刻をシフトに合わせて丸めた日は、計算に使った時刻を添える */}
                         {rec && isWork && (() => {
                           const t = roundedTimesOf(rec, shiftMap.get(date));
                           if (!t.startRounded) return null;
                           return (
-                            <div className="text-[10px] text-blue-600 leading-tight" title="打刻をシフトに合わせて丸めた時刻で計算しています">
+                            <div className="num text-xs text-info leading-tight" title="打刻をシフトに合わせて丸めた時刻で計算しています">
                               {t.startTime}〜{t.endTime}
                             </div>
                           );
                         })()}
                       </Td>
-                      <Td className="whitespace-nowrap">
+                      <Td numeric className="whitespace-nowrap">
                         {(() => {
                           const ot = otByDate.get(date);
-                          if (!ot) return <span className="text-gray-300">—</span>;
+                          if (!ot) return <span className="text-ink-mute">—</span>;
                           return (
-                            <span className={ot.kind === 'holiday' ? 'text-purple-700' : 'text-gray-800'}>
+                            <span className={ot.kind === 'holiday' ? 'text-alert' : 'text-ink'}>
                               <span className="font-medium">{ot.hours}h</span>
                               <span className="ml-1 text-xs">{OVERTIME_KIND_LABELS[ot.kind]}</span>
-                              {ot.status === 'applied' && <span className="ml-1 text-xs text-amber-600">未承認</span>}
+                              {ot.status === 'applied' && <span className="ml-1 text-xs text-caution">未承認</span>}
                             </span>
                           );
                         })()}
@@ -408,14 +408,5 @@ export default function Attendance() {
         </>
       )}
     </PageContainer>
-  );
-}
-
-function SummaryTile({ label, value }: { label: string; value: string }) {
-  return (
-    <Card className="text-center py-3">
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className="text-lg font-bold text-gray-800">{value}</p>
-    </Card>
   );
 }

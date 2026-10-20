@@ -59,17 +59,17 @@ export default function Login() {
   return (
     <PageContainer>
       <div className="max-w-md mx-auto mt-10">
-        <h1 className="text-xl font-bold text-gray-800 text-center mb-1">
+        <h1 className="text-xl font-bold text-ink text-center mb-1">
           たかすスポーツクラブ
         </h1>
-        <p className="text-sm text-gray-500 text-center mb-6">勤怠・事務管理システム</p>
+        <p className="text-sm text-ink-mute text-center mb-6">勤怠・事務管理システム</p>
 
         {/* タブ */}
-        <div className="flex rounded-md overflow-hidden border border-gray-300 mb-4">
+        <div className="flex rounded-md overflow-hidden border border-rule mb-4">
           <button onClick={() => { setTab('staff'); setError(''); }}
-            className={`flex-1 py-2 text-sm ${tab === 'staff' ? 'bg-emerald-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>従業員</button>
+            className={`flex-1 py-2 text-sm ${tab === 'staff' ? 'bg-pine text-white' : 'bg-white text-ink-soft hover:bg-paper'}`}>従業員</button>
           <button onClick={() => { setTab('admin'); setError(''); }}
-            className={`flex-1 py-2 text-sm ${tab === 'admin' ? 'bg-emerald-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>事務局</button>
+            className={`flex-1 py-2 text-sm ${tab === 'admin' ? 'bg-pine text-white' : 'bg-white text-ink-soft hover:bg-paper'}`}>事務局</button>
         </div>
 
         <Card>
@@ -85,11 +85,11 @@ export default function Login() {
               <Field label="パスワード" required>
                 <Input type="password" value={empPw} onChange={e => setEmpPw(e.target.value)} autoComplete="current-password" required />
               </Field>
-              <Button type="submit" className="w-full" disabled={loading}>{loading ? 'ログイン中…' : 'ログイン'}</Button>
-              <p className="text-xs text-gray-400 mt-3">職員番号とパスワードは事務局にお問い合わせください。</p>
-              <p className="text-xs text-gray-500 mt-2">
+              <Button type="submit" size="lg" className="w-full" disabled={loading}>{loading ? 'ログイン中…' : 'ログイン'}</Button>
+              <p className="text-xs text-ink-mute mt-3">職員番号とパスワードは事務局にお問い合わせください。</p>
+              <p className="text-xs text-ink-soft mt-2">
                 出退勤の打刻だけなら、ログインなしで使える
-                <Link to="/punch" className="text-blue-600 underline mx-1">打刻専用画面</Link>
+                <Link to="/punch" className="text-pine underline mx-1">打刻専用画面</Link>
                 が便利です。
               </p>
             </form>
@@ -101,13 +101,13 @@ export default function Login() {
               <Field label="パスワード" required>
                 <Input type="password" value={adminPw} onChange={e => setAdminPw(e.target.value)} autoComplete="current-password" required />
               </Field>
-              <Button type="submit" className="w-full" disabled={loading}>{loading ? 'ログイン中…' : 'ログイン'}</Button>
+              <Button type="submit" size="lg" className="w-full" disabled={loading}>{loading ? 'ログイン中…' : 'ログイン'}</Button>
             </form>
           )}
         </Card>
 
         {!usingGas && (
-          <p className="text-xs text-gray-400 text-center mt-4">
+          <p className="text-xs text-ink-mute text-center mt-4">
             デモ: 従業員=職員番号1001〜1003 / パスワード1234　｜　事務局=admin@takasu-sc.jp / admin123
           </p>
         )}

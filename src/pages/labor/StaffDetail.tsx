@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { PageContainer, Card, Field, Input, Select, Button, Alert, Modal } from '../../components/UI';
+import { PageContainer, Card, SectionTitle, Field, Input, Select, Button, Alert, Modal } from '../../components/UI';
 import { getStaff, listStaff, upsertStaff, setStaffPassword, genId } from '../../api/data';
 import { EMPLOYMENT_TYPE_LABELS, WORK_LOCATION_LABELS, GENDER_LABELS, leaveDayHours } from '../../utils/constants';
 import type { Staff, EmploymentType, WorkLocation, Gender } from '../../types';
@@ -74,7 +74,7 @@ export default function StaffDetail() {
   if (loading) {
     return (
       <PageContainer title="職員詳細">
-        <p className="text-sm text-gray-400">読み込み中…</p>
+        <p className="text-sm text-ink-mute">読み込み中…</p>
       </PageContainer>
     );
   }
@@ -167,7 +167,7 @@ export default function StaffDetail() {
 
       <form onSubmit={handleSave}>
         <Card className="mb-4">
-          <h2 className="font-bold text-gray-800 mb-4">基本情報</h2>
+          <SectionTitle>基本情報</SectionTitle>
           <div className="grid sm:grid-cols-2 gap-x-4">
             <Field label="姓" required>
               <Input value={form.lastName} onChange={e => set('lastName', e.target.value)} />
@@ -195,7 +195,7 @@ export default function StaffDetail() {
         </Card>
 
         <Card className="mb-4">
-          <h2 className="font-bold text-gray-800 mb-4">雇用情報</h2>
+          <SectionTitle>雇用情報</SectionTitle>
           <div className="grid sm:grid-cols-2 gap-x-4">
             <Field label="雇用区分" required>
               <Select
@@ -252,19 +252,19 @@ export default function StaffDetail() {
               <Input inputMode="numeric" maxLength={8} value={form.punchPin || ''}
                 onChange={e => set('punchPin', e.target.value.replace(/[^0-9]/g, ''))}
                 placeholder="数字4〜8桁（空欄=打刻専用画面を使わない）" />
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="text-xs text-ink-mute mt-1">
                 職員ごとに違う番号にしてください。職員番号と同じ番号は避けてください（他の人が打刻できてしまいます）。
-                {pinDuplicated && <span className="block text-red-600 font-medium">このPINは他の職員と重複しています</span>}
+                {pinDuplicated && <span className="block text-alert font-medium">このPINは他の職員と重複しています</span>}
               </p>
             </Field>
             <Field label="週の所定労働時間（時間）">
               <Input type="number" min={0} max={60} step={0.5} value={form.weeklyWorkHours || ''}
                 onChange={e => set('weeklyWorkHours', Number(e.target.value) || 0)}
                 placeholder="雇用契約書の週の所定労働時間（常勤は37.5。空欄=未設定）" />
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="text-xs text-ink-mute mt-1">
                 年次有給の比例付与の判定（週30時間未満かつ週4日以下）と、時間単位年休の
                 <b>1日の時間数</b>（週の所定労働時間÷週の所定労働日数・端数切り上げ）に使います。
-                現在の設定では<b>1日＝{leaveDayHours(form as Staff)}時間</b>です。
+                現在の設定では<b className="num">1日＝{leaveDayHours(form as Staff)}時間</b>です。
               </p>
             </Field>
             <Field label="子の看護等休暇の対象の子（人）">
@@ -280,7 +280,7 @@ export default function StaffDetail() {
         </Card>
 
         <Card className="mb-4">
-          <h2 className="font-bold text-gray-800 mb-4">連絡先</h2>
+          <SectionTitle>連絡先</SectionTitle>
           <div className="grid sm:grid-cols-2 gap-x-4">
             <Field label="電話番号">
               <Input value={form.phone} onChange={e => set('phone', e.target.value)} />
@@ -330,11 +330,10 @@ export default function StaffDetail() {
       {/* 従業員ログイン（保存済みの職員のみ） */}
       {!isNew && (
         <Card className="mt-4">
-          <h2 className="font-bold text-gray-800 mb-1">従業員アプリのログイン</h2>
-          <p className="text-xs text-gray-500 mb-3">
+          <SectionTitle note={<>
             職員番号「{form.employeeNumber || '未設定'}」／ パスワード:{' '}
-            <span className={form.hasPassword ? 'text-emerald-600' : 'text-gray-400'}>{form.hasPassword ? '設定済み' : '未設定'}</span>
-          </p>
+            <span className={form.hasPassword ? 'text-pine' : 'text-ink-mute'}>{form.hasPassword ? '設定済み' : '未設定'}</span>
+          </>}>従業員アプリのログイン</SectionTitle>
           {pwMsg && <Alert type="success">{pwMsg}</Alert>}
           <div className="grid sm:grid-cols-3 gap-3 items-end">
             <div className="sm:col-span-2">
@@ -348,12 +347,12 @@ export default function StaffDetail() {
               </Button>
             </div>
           </div>
-          <p className="text-xs text-gray-400">職員番号を変更したら「保存する」を押してから発行してください。従業員はこの職員番号とパスワードでログインします。</p>
+          <p className="text-xs text-ink-mute">職員番号を変更したら「保存する」を押してから発行してください。従業員はこの職員番号とパスワードでログインします。</p>
         </Card>
       )}
 
       <Modal open={retireOpen} onClose={() => setRetireOpen(false)} title="退職処理">
-        <p className="text-sm text-gray-600 mb-4">
+        <p className="text-sm text-ink-soft mb-4">
           {form.lastName} {form.firstName} さんを退職にします。退職日を指定してください。
         </p>
         <Field label="退職日" required>

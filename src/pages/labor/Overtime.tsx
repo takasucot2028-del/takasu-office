@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
+import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert, Tile, SectionTitle } from '../../components/UI';
 import {
   getReference, getOvertimeMonthData,
   saveMonthOvertime, addCompUse, deleteCompUse, setCompUseStatus,
@@ -360,7 +360,7 @@ export default function Overtime() {
   };
 
   return (
-    <PageContainer title="時間外・休日勤務">
+    <PageContainer title="時間外・休日勤務" wide>
       <Card className="mb-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="sm:w-72">
@@ -373,7 +373,7 @@ export default function Overtime() {
           <div className="flex items-center gap-1">
             <Button variant="secondary" size="sm" onClick={() => setMonth(m => shiftMonth(m, -1))}>←</Button>
             <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-              className="border border-gray-300 rounded-md px-2 py-1.5 text-sm" />
+              className="num border border-rule rounded-md px-2 py-1.5 text-sm text-ink bg-white" />
             <Button variant="secondary" size="sm" onClick={() => setMonth(m => shiftMonth(m, 1))}>→</Button>
           </div>
           <div className="flex-1" />
@@ -381,7 +381,7 @@ export default function Overtime() {
           <Button variant="secondary" size="sm" onClick={openJisekiboAll}>全員分をまとめて印刷</Button>
           <Button size="sm" onClick={handleSave} disabled={saving || !staff}>{saving ? '保存中…' : '保存する'}</Button>
         </div>
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="mt-2 text-xs text-ink-mute leading-relaxed">
           {isPart
             ? <>
                 実績時間は<b>申請した時間</b>（シフトの勤務時間を超えて勤務した分）。
@@ -407,15 +407,15 @@ export default function Overtime() {
         <>
           {/* 当月の自動集計（承認済ベース） */}
           <Card className="mb-4">
-            <h2 className="font-bold text-gray-800 mb-3">当月の集計 <span className="text-xs font-normal text-gray-400">（{month}・承認済）</span></h2>
+            <SectionTitle>当月の集計 <span className="num text-xs font-normal text-ink-mute">（{month}・承認済）</span></SectionTitle>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               <Tile label={isPart ? 'シフト超過（1.0倍）' : '平日時間外'} value={h1(monthWeekdayOt)} />
               {!isPart && <Tile label="休日勤務" value={h1(monthHoliday)} />}
               {!isPart && <Tile label="時間外手当 時間" value={h1(monthAllowanceHours)} />}
-              {!isPart && <Tile label="時間外手当 金額" value={yen(monthAllowance)} highlight />}
+              {!isPart && <Tile label="時間外手当 金額" value={yen(monthAllowance)} tone="accent" />}
               {isPart && <Tile label="割増25%対象" value={h1(partPrem.hours25 + partPrem.weeklyExcessHours)} />}
               {isPart && <Tile label="割増50%対象" value={h1(partPrem.hours50)} />}
-              {isPart && <Tile label="割増の加算額" value={yen(partPrem.amount)} highlight />}
+              {isPart && <Tile label="割増の加算額" value={yen(partPrem.amount)} tone="accent" />}
               <Tile label="代休付与" value={h1(monthComp)} />
               <Tile label="代休分の割増（第21条2項）" value={yen(monthCompPremium)} />
               <Tile label="当月 代休消化" value={h1(monthCompUsed)} />
@@ -424,20 +424,20 @@ export default function Overtime() {
               )}
             </div>
             {monthOver60 > 0 && (
-              <p className="mt-3 text-sm text-amber-700 bg-amber-50 rounded px-3 py-2">
+              <p className="num mt-3 text-sm text-caution bg-caution-soft rounded px-3 py-2">
                 当月の時間外が{OVERTIME_MONTHLY_THRESHOLD}時間を超えています。
                 超過分 <span className="font-bold">{h1(monthOver60)}</span> は割増率 ×1.50 で計算しています。
               </p>
             )}
             {monthNightHours > 0 && (
-              <p className="mt-3 text-sm text-gray-600 bg-gray-50 rounded px-3 py-2">
+              <p className="num mt-3 text-sm text-ink-soft bg-paper rounded px-3 py-2">
                 深夜（22:00〜5:00）の勤務が <b>{h1(monthNightHours)}</b> あります。
                 通常の賃金に25%を加算します（{yen(monthNightAllowance)}）。時間外かつ深夜の時間は
                 時間外×1.25＋深夜0.25＝<b>×1.50</b> になります。
               </p>
             )}
             {isPart && (
-              <p className="mt-3 text-xs text-gray-500">
+              <p className="mt-3 text-xs text-ink-mute">
                 シフト超過の時間は通常の賃金（1.0倍）です。割増の加算額は「通常の賃金への上乗せ分」で、
                 実働時間分の賃金には含まれていません。
               </p>
@@ -447,22 +447,19 @@ export default function Overtime() {
           {/* パート職員の割増の内訳（勤怠の時間帯から自動計算） */}
           {isPart && (
             <Card className="mb-4">
-              <h2 className="font-bold text-gray-800 mb-1">
-                割増の内訳 <span className="text-xs font-normal text-gray-400">（勤怠の出退勤から自動計算）</span>
-              </h2>
-              <p className="text-xs text-gray-500 mb-3">
-                8:30前・21:30後の勤務は＋25%（第8条2項）。1日8時間・週40時間を超えた分と深夜（22:00〜5:00）も＋25%（同3項）。
-                法定時間外かつ深夜の時間は労基法第37条により＋50%（×1.50）で計算します。
-              </p>
+              <SectionTitle note={<>8:30前・21:30後の勤務は＋25%（第8条2項）。1日8時間・週40時間を超えた分と深夜（22:00〜5:00）も＋25%（同3項）。
+                法定時間外かつ深夜の時間は労基法第37条により＋50%（×1.50）で計算します。</>}>
+                割増の内訳 <span className="text-xs font-normal text-ink-mute">（勤怠の出退勤から自動計算）</span>
+              </SectionTitle>
               {partDays.length === 0 && partPrem.weeklyExcessHours === 0 ? (
-                <p className="text-sm text-gray-400 py-4 text-center">この月に割増の対象となる勤務はありません</p>
+                <p className="text-sm text-ink-mute py-4 text-center">この月に割増の対象となる勤務はありません</p>
               ) : (
                 <Table>
                   <thead>
                     <tr>
-                      <Th>日付</Th><Th>勤務</Th><Th>実働</Th>
-                      <Th>時間帯外</Th><Th>うち深夜</Th><Th>法定超(8h)</Th>
-                      <Th>25%</Th><Th>50%</Th><Th>加算額</Th>
+                      <Th>日付</Th><Th>勤務</Th><Th numeric>実働</Th>
+                      <Th numeric>時間帯外</Th><Th numeric>うち深夜</Th><Th numeric>法定超(8h)</Th>
+                      <Th numeric>25%</Th><Th numeric>50%</Th><Th numeric>加算額</Th>
                     </tr>
                   </thead>
                   <tbody>
@@ -471,37 +468,37 @@ export default function Overtime() {
                       const wd = new Date(`${date}T00:00:00`).getDay();
                       return (
                         <tr key={date}>
-                          <Td className="whitespace-nowrap">{Number(date.slice(5, 7))}/{Number(date.slice(8))}
-                            <span className={`ml-1 text-xs ${wd === 0 ? 'text-red-500' : wd === 6 ? 'text-blue-500' : 'text-gray-400'}`}>({WEEKDAY_LABELS[wd]})</span>
+                          <Td className="whitespace-nowrap num">{Number(date.slice(5, 7))}/{Number(date.slice(8))}
+                            <span className={`ml-1 text-xs ${wd === 0 ? 'text-alert' : wd === 6 ? 'text-info' : 'text-ink-mute'}`}>({WEEKDAY_LABELS[wd]})</span>
                           </Td>
-                          <Td className="whitespace-nowrap text-gray-500">{rec ? `${rec.startTime}〜${rec.endTime}` : ''}</Td>
-                          <Td className="text-right text-gray-600">{h1(p.workedHours)}</Td>
-                          <Td className="text-right">{p.outsideHours ? h1(p.outsideHours) : ''}</Td>
-                          <Td className="text-right text-indigo-600">{p.nightHours ? h1(p.nightHours) : ''}</Td>
-                          <Td className="text-right">{p.legalHours ? h1(p.legalHours) : ''}</Td>
-                          <Td className="text-right">{p.hours25 ? h1(p.hours25) : ''}</Td>
-                          <Td className="text-right font-medium">{p.hours50 ? h1(p.hours50) : ''}</Td>
-                          <Td className="text-right font-medium">{yen(p.amount)}</Td>
+                          <Td className="whitespace-nowrap num text-ink-soft">{rec ? `${rec.startTime}〜${rec.endTime}` : ''}</Td>
+                          <Td numeric className="text-ink-soft">{h1(p.workedHours)}</Td>
+                          <Td numeric>{p.outsideHours ? h1(p.outsideHours) : ''}</Td>
+                          <Td numeric className="text-info">{p.nightHours ? h1(p.nightHours) : ''}</Td>
+                          <Td numeric>{p.legalHours ? h1(p.legalHours) : ''}</Td>
+                          <Td numeric>{p.hours25 ? h1(p.hours25) : ''}</Td>
+                          <Td numeric className="font-medium">{p.hours50 ? h1(p.hours50) : ''}</Td>
+                          <Td numeric className="font-medium">{yen(p.amount)}</Td>
                         </tr>
                       );
                     })}
                     {partPrem.weeks.map(w => (
-                      <tr key={w.start} className="bg-amber-50">
-                        <Td className="whitespace-nowrap text-amber-800" colSpan={6}>
+                      <tr key={w.start} className="bg-caution-soft">
+                        <Td className="whitespace-nowrap num text-caution" colSpan={6}>
                           {w.start.replace(/^\d{4}-/, '')}の週　週{WEEKLY_LEGAL_HOURS}時間を超えた分（日8時間超を除く）
                         </Td>
-                        <Td className="text-right">{h1(w.excessHours)}</Td>
+                        <Td numeric>{h1(w.excessHours)}</Td>
                         <Td>{''}</Td>
-                        <Td className="text-right font-medium">
+                        <Td numeric className="font-medium">
                           {yen(nightAllowanceOf(w.excessHours, staff.hourlyWage || 0))}
                         </Td>
                       </tr>
                     ))}
-                    <tr className="font-bold bg-gray-50">
+                    <tr className="font-bold bg-paper">
                       <Td colSpan={6}>合計</Td>
-                      <Td className="text-right">{h1(partPrem.hours25 + partPrem.weeklyExcessHours)}</Td>
-                      <Td className="text-right">{h1(partPrem.hours50)}</Td>
-                      <Td className="text-right text-emerald-700">{yen(partPrem.amount)}</Td>
+                      <Td numeric>{h1(partPrem.hours25 + partPrem.weeklyExcessHours)}</Td>
+                      <Td numeric>{h1(partPrem.hours50)}</Td>
+                      <Td numeric className="text-pine">{yen(partPrem.amount)}</Td>
                     </tr>
                   </tbody>
                 </Table>
@@ -510,36 +507,36 @@ export default function Overtime() {
           )}
 
           {/* 36協定の上限（労基法第36条） */}
-          <Card className={`mb-4 ${status36.warnings.some(w => w.level === 'error') ? 'border-red-300'
-            : status36.warnings.length > 0 ? 'border-yellow-300' : ''}`}>
+          <Card className={`mb-4 ${status36.warnings.some(w => w.level === 'error') ? 'border-alert'
+            : status36.warnings.length > 0 ? 'border-caution' : ''}`}>
             <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-              <h2 className="font-bold text-gray-800">
-                36協定の上限 <span className="text-xs font-normal text-gray-400">（{fiscalYearLabel(fiscalYearOf(`${month}-01`))}・承認済ベース）</span>
+              <h2 className="font-bold text-ink">
+                36協定の上限 <span className="num text-xs font-normal text-ink-mute">（{fiscalYearLabel(fiscalYearOf(`${month}-01`))}・承認済ベース）</span>
               </h2>
               {status36.warnings.length === 0 && <Badge color="green">上限内</Badge>}
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Tile label={`当月 時間外／月${LIMIT_MONTHLY}h`} value={h1(status36.overtimeHours)} />
               <Tile label={`当月 時間外＋休日／月${LIMIT_MONTHLY_ABSOLUTE}h未満`} value={h1(status36.totalHours)} />
-              <Tile label={`年度累計 時間外／年${LIMIT_YEARLY}h（上限${LIMIT_YEARLY_SPECIAL}h）`} value={h1(status36.yearOvertimeHours)} highlight />
+              <Tile label={`年度累計 時間外／年${LIMIT_YEARLY}h（上限${LIMIT_YEARLY_SPECIAL}h）`} value={h1(status36.yearOvertimeHours)} />
               <Tile label={`月${LIMIT_MONTHLY}h超の回数／年${LIMIT_OVER45_COUNT}回`} value={`${status36.over45Count}回`} />
             </div>
 
             {status36.warnings.length > 0 && (
               <div className="mt-3 space-y-2">
                 {status36.warnings.map((w, i) => (
-                  <p key={i} className={`text-sm rounded px-3 py-2 ${w.level === 'error'
-                    ? 'text-red-700 bg-red-50' : 'text-amber-700 bg-amber-50'}`}>
+                  <p key={i} className={`num text-sm rounded px-3 py-2 ${w.level === 'error'
+                    ? 'text-alert bg-alert-soft' : 'text-caution bg-caution-soft'}`}>
                     {w.text}
                   </p>
                 ))}
               </div>
             )}
 
-            <div className="mt-3 text-xs text-gray-500">
-              <span className="font-medium text-gray-700">当月までの平均（時間外＋休日、上限{LIMIT_MULTI_MONTH_AVG}h）：</span>
+            <div className="num mt-3 text-xs text-ink-mute">
+              <span className="font-medium text-ink">当月までの平均（時間外＋休日、上限{LIMIT_MULTI_MONTH_AVG}h）：</span>
               {status36.averages.map(a => (
-                <span key={a.months} className={`ml-2 ${a.avg > LIMIT_MULTI_MONTH_AVG ? 'text-red-600 font-bold' : ''}`}>
+                <span key={a.months} className={`ml-2 ${a.avg > LIMIT_MULTI_MONTH_AVG ? 'text-alert font-bold' : ''}`}>
                   {a.months}か月 {a.avg}h
                 </span>
               ))}
@@ -548,30 +545,27 @@ export default function Overtime() {
             {fyMonths36.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
                 {fyMonths36.map(m => (
-                  <span key={m.month}
-                    className={`text-xs px-2 py-1 rounded border ${m.overtimeHours > LIMIT_MONTHLY
-                      ? 'bg-amber-50 border-amber-300 text-amber-800 font-medium'
-                      : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+                  <Badge key={m.month} color={m.overtimeHours > LIMIT_MONTHLY ? 'yellow' : 'gray'} className="num py-1">
                     {m.month}　時間外{m.overtimeHours}h{m.holidayHours > 0 ? `／休日${m.holidayHours}h` : ''}
-                  </span>
+                  </Badge>
                 ))}
               </div>
             )}
-            <p className="text-xs text-gray-400 mt-2">
+            <p className="text-xs text-ink-mute mt-2">
               集計は会計年度（4月始まり）です。36協定の起算月が異なる場合は読み替えてください。
             </p>
           </Card>
 
           {/* 残数など */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-            <Tile label="代休 残時間" value={h1(compBalance)} highlight />
+            <Tile label="代休 残時間" value={h1(compBalance)} />
             <Tile label="時給" value={yen(staff.hourlyWage || 0)} />
             <Tile label="今月の手当（承認済）" value={yen(monthAllowance)} />
           </div>
 
           {/* 申請追加 */}
           <Card className="mb-4">
-            <h2 className="font-bold text-gray-800 mb-3">時間外の申請を追加</h2>
+            <SectionTitle>時間外の申請を追加</SectionTitle>
             <div className="grid sm:grid-cols-5 gap-3 items-end">
               <Field label="日付">
                 <Input type="date" value={fDate} onChange={e => setFDate(e.target.value)} />
@@ -591,7 +585,7 @@ export default function Overtime() {
 
           {anyMissingAttendance && (
             <Alert type="info">
-              出退勤が未入力の日があります（下表で <span className="text-red-500 font-medium">勤怠未入力</span> と表示）。「勤怠管理」でその日の出退勤を入力すると、
+              出退勤が未入力の日があります（下表で <span className="text-alert font-medium">勤怠未入力</span> と表示）。「勤怠管理」でその日の出退勤を入力すると、
               {isPart ? '勤務した時間帯から割増が計算されます。' : '実績・手当・代休付与に反映されます。'}
             </Alert>
           )}
@@ -618,7 +612,7 @@ export default function Overtime() {
               <thead>
                 <tr>
                   <Th>日付</Th><Th>種別</Th><Th>事由</Th><Th>申請</Th><Th>状態</Th>
-                  <Th>実働</Th><Th>基準</Th><Th>実績</Th><Th>処理</Th><Th>金額/付与</Th><Th></Th>
+                  <Th numeric>実働</Th><Th numeric>基準</Th><Th numeric>実績</Th><Th>処理</Th><Th>金額/付与</Th><Th></Th>
                 </tr>
               </thead>
               <tbody>
@@ -627,25 +621,25 @@ export default function Overtime() {
                   const wd = new Date(`${r.date}T00:00:00`).getDay();
                   return (
                     <tr key={r.id}>
-                      <Td className="whitespace-nowrap">{Number(r.date.slice(5, 7))}/{Number(r.date.slice(8))}
-                        <span className={`ml-1 text-xs ${wd === 0 ? 'text-red-500' : wd === 6 ? 'text-blue-500' : 'text-gray-400'}`}>({WEEKDAY_LABELS[wd]})</span>
+                      <Td className="whitespace-nowrap num">{Number(r.date.slice(5, 7))}/{Number(r.date.slice(8))}
+                        <span className={`ml-1 text-xs ${wd === 0 ? 'text-alert' : wd === 6 ? 'text-info' : 'text-ink-mute'}`}>({WEEKDAY_LABELS[wd]})</span>
                       </Td>
                       <Td><Badge color={c.kind === 'holiday' ? 'red' : 'yellow'}>{OVERTIME_KIND_LABELS[c.kind]}</Badge></Td>
                       <Td className="min-w-28"><Input value={r.reason} onChange={e => setRec(r.id, { reason: e.target.value })} /></Td>
-                      <Td className="whitespace-nowrap text-gray-500">
-                        {r.startTime && r.endTime ? <span>{r.startTime}〜{r.endTime}<span className="text-gray-400 ml-1">({r.appliedHours}h)</span></span> : `${r.appliedHours}h`}
+                      <Td className="whitespace-nowrap num text-ink-soft">
+                        {r.startTime && r.endTime ? <span>{r.startTime}〜{r.endTime}<span className="text-ink-mute ml-1">({r.appliedHours}h)</span></span> : `${r.appliedHours}h`}
                       </Td>
                       <Td>
                         {r.status === 'approved'
                           ? <button onClick={() => setRec(r.id, { status: 'applied' })}><Badge color="green">{OVERTIME_STATUS_LABELS.approved}</Badge></button>
                           : <Button size="sm" variant="secondary" onClick={() => setRec(r.id, { status: 'approved' })}>承認</Button>}
                       </Td>
-                      <Td className="whitespace-nowrap text-gray-600">
+                      <Td numeric className="whitespace-nowrap text-ink-soft">
                         {h1(c.worked)}
-                        {c.worked === 0 && <div className="text-[10px] text-red-500 leading-tight">勤怠未入力</div>}
+                        {c.worked === 0 && <div className="text-xs text-alert leading-tight">勤怠未入力</div>}
                       </Td>
-                      <Td className="whitespace-nowrap text-gray-500">{h1(c.standard)}</Td>
-                      <Td className="whitespace-nowrap font-medium">{h1(c.result)}</Td>
+                      <Td numeric className="whitespace-nowrap text-ink-mute">{h1(c.standard)}</Td>
+                      <Td numeric className="whitespace-nowrap font-medium">{h1(c.result)}</Td>
                       <Td className="min-w-32">
                         <Select
                           value={r.disposition}
@@ -670,26 +664,26 @@ export default function Overtime() {
                               value={r.compHours ?? 0}
                               onChange={e => setRec(r.id, { compHours: Math.min(Math.max(Number(e.target.value) || 0, 0), c.result) })}
                             />
-                            <span className="text-xs text-gray-500 whitespace-nowrap">h を代休</span>
+                            <span className="text-xs text-ink-mute whitespace-nowrap">h を代休</span>
                           </div>
                         )}
                         {canSplit && (r.requestedCompHours || 0) > 0 && (
-                          <div className="text-[10px] text-blue-600 leading-tight mt-0.5">
+                          <div className="num text-xs text-info leading-tight mt-0.5">
                             本人希望 代休{h1(r.requestedCompHours || 0)}
                           </div>
                         )}
                       </Td>
-                      <Td className="whitespace-nowrap">
-                        {!r.disposition ? <span className="text-gray-300">—</span> : (
-                          <span className="text-gray-600">
+                      <Td className="whitespace-nowrap num">
+                        {!r.disposition ? <span className="text-ink-mute">—</span> : (
+                          <span className="text-ink-soft">
                             {c.allowanceHours > 0 && (isPart
-                              ? <span className="text-gray-500 text-xs">手当 {h1(c.allowanceHours)}：割増なし<span className="block text-gray-400">（1.0倍・第8条1項）</span></span>
-                              : <span className="block font-medium text-gray-800">手当 {h1(c.allowanceHours)}　{yen(c.amount)}</span>)}
+                              ? <span className="text-ink-mute text-xs">手当 {h1(c.allowanceHours)}：割増なし<span className="block text-ink-mute">（1.0倍・第8条1項）</span></span>
+                              : <span className="block font-medium text-ink">手当 {h1(c.allowanceHours)}　{yen(c.amount)}</span>)}
                             {c.compHours > 0 && (
                               <>
                                 <span className="block">代休 {h1(c.compHours)}</span>
-                                {!isPart && <span className="block text-xs text-emerald-700">割増 {yen(c.premium)}</span>}
-                                <span className="block text-xs text-gray-400">期限 {compDeadlineOf(r.date)}</span>
+                                {!isPart && <span className="block text-xs text-pine">割増 {yen(c.premium)}</span>}
+                                <span className="block text-xs text-ink-mute">期限 {compDeadlineOf(r.date)}</span>
                               </>
                             )}
                           </span>
@@ -700,7 +694,7 @@ export default function Overtime() {
                   );
                 })}
                 {records.length === 0 && (
-                  <tr><Td className="text-center text-gray-400 py-8" colSpan={11}>この月の時間外はありません</Td></tr>
+                  <tr><Td className="text-center text-ink-mute py-8" colSpan={11}>この月の時間外はありません</Td></tr>
                 )}
               </tbody>
             </Table>
@@ -708,11 +702,12 @@ export default function Overtime() {
 
           {/* 代休取得 */}
           <Card>
-            <h2 className="font-bold text-gray-800 mb-1">代休の取得（消化）</h2>
-            <p className="text-xs text-gray-500 mb-3">
-              代休にした時間外の合計 {h1(compGranted)} − 取得（承認済）{h1(compUsed)} ＝ 残 <span className="font-medium text-emerald-700">{h1(compBalance)}</span>
-              {compRequested > 0 && <span className="text-amber-700">　／ 申請中 {h1(compRequested)}（承認すると残から引かれます）</span>}
-            </p>
+            <SectionTitle note={<span className="num">
+              代休にした時間外の合計 {h1(compGranted)} − 取得（承認済）{h1(compUsed)} ＝ 残 <span className="font-medium text-pine">{h1(compBalance)}</span>
+              {compRequested > 0 && <span className="text-caution">　／ 申請中 {h1(compRequested)}（承認すると残から引かれます）</span>}
+            </span>}>
+              代休の取得（消化）
+            </SectionTitle>
             {compRequested > 0 && (
               <Alert type="info">
                 この職員から<b>代休の取得申請</b>が届いています。下の表の「承認」を押すと確定します。
@@ -725,9 +720,9 @@ export default function Overtime() {
               <Field label="備考"><Input value={cNote} onChange={e => setCNote(e.target.value)} placeholder="例: 午前中のみ" /></Field>
               <div className="mb-4"><Button className="w-full" variant="secondary" onClick={addCompUseRec}>取得を記録</Button></div>
             </div>
-            <p className="text-xs text-gray-400 mb-4">
+            <p className="num text-xs text-ink-mute mb-4">
               取得時間は開始〜終了から計算します（現在:{' '}
-              <span className="font-medium text-gray-600">
+              <span className="font-medium text-ink-soft">
                 {(() => {
                   const h = Math.round((breakMinutesBetween(cStart, cEnd) / 60) * 100) / 100;
                   return h > 0 ? `${h}時間` : '—';
@@ -736,19 +731,19 @@ export default function Overtime() {
               ）。終日の代休は所定の勤務時間帯を入力してください。
             </p>
             <Table>
-              <thead><tr><Th>取得日</Th><Th>時間帯</Th><Th>時間</Th><Th>状態</Th><Th>備考</Th><Th></Th></tr></thead>
+              <thead><tr><Th>取得日</Th><Th>時間帯</Th><Th numeric>時間</Th><Th>状態</Th><Th>備考</Th><Th></Th></tr></thead>
               <tbody>
                 {compUse.map(r => {
                   const st = compStatus(r);
                   return (
-                  <tr key={r.id} className={st === 'requested' ? 'bg-amber-50' : undefined}>
-                    <Td>{r.date}</Td>
-                    <Td className="whitespace-nowrap">
+                  <tr key={r.id} className={st === 'requested' ? 'bg-caution-soft' : undefined}>
+                    <Td className="num">{r.date}</Td>
+                    <Td className="whitespace-nowrap num">
                       {r.startTime && r.endTime
                         ? `${r.startTime}〜${r.endTime}`
-                        : <span className="text-gray-300">—</span>}
+                        : <span className="text-ink-mute">—</span>}
                     </Td>
-                    <Td>{h1(r.hours)}</Td>
+                    <Td numeric>{h1(r.hours)}</Td>
                     <Td className="whitespace-nowrap">
                       {st === 'requested' ? (
                         <span className="flex items-center gap-1">
@@ -766,21 +761,12 @@ export default function Overtime() {
                   </tr>
                   );
                 })}
-                {compUse.length === 0 && <tr><Td className="text-center text-gray-400 py-6" colSpan={6}>取得記録はありません</Td></tr>}
+                {compUse.length === 0 && <tr><Td className="text-center text-ink-mute py-6" colSpan={6}>取得記録はありません</Td></tr>}
               </tbody>
             </Table>
           </Card>
         </>
       )}
     </PageContainer>
-  );
-}
-
-function Tile({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <Card className="text-center py-3">
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className={`text-lg font-bold ${highlight ? 'text-emerald-600' : 'text-gray-800'}`}>{value}</p>
-    </Card>
   );
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
+import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert, Tile, SectionTitle } from '../../components/UI';
 import {
   saveExpenseCategories,
   saveBudgets, addExpense, setExpenseStatus, deleteExpense,
@@ -226,18 +226,18 @@ export default function Accounting() {
   };
 
   return (
-    <PageContainer title="会計管理">
+    <PageContainer title="会計管理" wide>
       <Card className="mb-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1">
             <Button variant="secondary" size="sm" onClick={() => setFy(y => y - 1)}>←</Button>
-            <span className="font-bold text-gray-800 text-sm">{fiscalYearLabel(fy)}</span>
+            <span className="num font-bold text-ink text-sm">{fiscalYearLabel(fy)}</span>
             <Button variant="secondary" size="sm" onClick={() => setFy(y => y + 1)}>→</Button>
           </div>
-          <div className="flex rounded-md overflow-hidden border border-gray-300 ml-auto">
+          <div className="flex rounded-md overflow-hidden border border-rule ml-auto">
             {([['budget', '予算'], ['expense', '経費'], ['summary', '集計'], ['category', '費目マスタ']] as [Tab, string][]).map(([t, label]) => (
               <button key={t} onClick={() => setTab(t)}
-                className={`px-3 py-1.5 text-sm ${tab === t ? 'bg-emerald-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>{label}</button>
+                className={`px-3 py-1.5 text-sm ${tab === t ? 'bg-pine text-white' : 'bg-white text-ink-soft hover:bg-paper'}`}>{label}</button>
             ))}
           </div>
         </div>
@@ -252,7 +252,7 @@ export default function Accounting() {
           <div className="grid grid-cols-3 gap-3 mb-4">
             <Tile label="予算合計" value={yen(budgetTotal)} />
             <Tile label="執行合計" value={yen(usedTotal)} />
-            <Tile label="残額合計" value={yen(budgetTotal - usedTotal)} highlight />
+            <Tile label="残額合計" value={yen(budgetTotal - usedTotal)} tone="accent" />
           </div>
           <div className="flex justify-end gap-2 mb-3">
             <Button variant="secondary" size="sm" onClick={addBudgetRow}>＋ 行を追加</Button>
@@ -260,7 +260,7 @@ export default function Accounting() {
           </div>
           <Card className="p-0 overflow-x-auto">
             <Table>
-              <thead><tr><Th>区分</Th><Th>事業</Th><Th>費目</Th><Th>予算</Th><Th>執行</Th><Th>残額</Th><Th>備考</Th><Th className="w-12"></Th></tr></thead>
+              <thead><tr><Th>区分</Th><Th>事業</Th><Th>費目</Th><Th>予算</Th><Th numeric>執行</Th><Th numeric>残額</Th><Th>備考</Th><Th className="w-12"></Th></tr></thead>
               <tbody>
                 {budgets.map(b => {
                   const used = usedOf(expenses, b.project, b.categoryId);
@@ -279,18 +279,18 @@ export default function Accounting() {
                         </Select>
                       </Td>
                       <Td className="min-w-28"><Input type="number" min={0} step={1000} value={b.amount || ''} onChange={e => setBudgetRow(b.id, { amount: Number(e.target.value) || 0 })} /></Td>
-                      <Td className="whitespace-nowrap text-gray-600">{yen(used)}</Td>
-                      <Td className={`whitespace-nowrap font-medium ${b.amount - used < 0 ? 'text-red-600' : 'text-gray-800'}`}>{yen(b.amount - used)}</Td>
+                      <Td numeric className="whitespace-nowrap text-ink-soft">{yen(used)}</Td>
+                      <Td numeric className={`whitespace-nowrap font-medium ${b.amount - used < 0 ? 'text-alert' : 'text-ink'}`}>{yen(b.amount - used)}</Td>
                       <Td className="min-w-32"><Input value={b.note || ''} onChange={e => setBudgetRow(b.id, { note: e.target.value })} placeholder="例: 指導者謝金" /></Td>
                       <Td><Button variant="ghost" size="sm" onClick={() => removeBudgetRow(b.id)}>削除</Button></Td>
                     </tr>
                   );
                 })}
-                {budgets.length === 0 && <tr><Td className="text-center text-gray-400 py-8" colSpan={8}>{loading ? '読み込み中…' : 'この年度の予算はまだありません。「行を追加」で登録してください。'}</Td></tr>}
+                {budgets.length === 0 && <tr><Td className="text-center text-ink-mute py-8" colSpan={8}>{loading ? '読み込み中…' : 'この年度の予算はまだありません。「行を追加」で登録してください。'}</Td></tr>}
               </tbody>
             </Table>
           </Card>
-          <p className="text-xs text-gray-400 mt-2">執行＝承認済み経費の合計。予算を変更したら「保存する」を押してください。</p>
+          <p className="text-xs text-ink-mute mt-2">執行＝承認済み経費の合計。予算を変更したら「保存する」を押してください。</p>
         </>
       )}
 
@@ -298,16 +298,16 @@ export default function Accounting() {
       {tab === 'expense' && (
         <>
           {pending.length > 0 && (
-            <Card className="mb-4 border-yellow-300">
-              <h2 className="font-bold text-gray-800 mb-3">承認待ちの経費申請（{pending.length}件）</h2>
+            <Card className="mb-4 border-caution">
+              <SectionTitle>承認待ちの経費申請（{pending.length}件）</SectionTitle>
               <div className="space-y-2">
                 {pending.map(e => (
                   <div key={e.id} className="flex items-center gap-3 flex-wrap text-sm">
-                    <span className="font-medium">{e.date}</span>
+                    <span className="num font-medium">{e.date}</span>
                     <span>{staffMap.get(e.staffId) || '(職員)'}</span>
-                    <span className="text-gray-500">{e.project}／{catMap.get(e.categoryId) || e.categoryId}</span>
-                    <span className="font-bold">{yen(e.amount)}</span>
-                    {e.description && <span className="text-xs text-gray-500">{e.description}</span>}
+                    <span className="text-ink-mute">{e.project}／{catMap.get(e.categoryId) || e.categoryId}</span>
+                    <span className="num font-bold">{yen(e.amount)}</span>
+                    {e.description && <span className="text-xs text-ink-mute">{e.description}</span>}
                     <div className="flex-1" />
                     <Button size="sm" onClick={() => changeExpense(e.id, 'approved')}>承認</Button>
                     <Button size="sm" variant="secondary" onClick={() => changeExpense(e.id, 'rejected')}>却下</Button>
@@ -318,7 +318,7 @@ export default function Accounting() {
           )}
 
           <Card className="mb-4">
-            <h2 className="font-bold text-gray-800 mb-3">経費を直接登録（承認済）</h2>
+            <SectionTitle>経費を直接登録（承認済）</SectionTitle>
             <div className="grid sm:grid-cols-5 gap-3 items-end">
               <Field label="日付"><Input type="date" value={exDate} onChange={e => setExDate(e.target.value)} /></Field>
               <Field label="事業">
@@ -341,20 +341,20 @@ export default function Accounting() {
 
           <Card className="p-0 overflow-x-auto">
             <Table>
-              <thead><tr><Th>日付</Th><Th>申請者</Th><Th>事業／費目</Th><Th>金額</Th><Th>状態</Th><Th>内容</Th><Th className="w-12"></Th></tr></thead>
+              <thead><tr><Th>日付</Th><Th>申請者</Th><Th>事業／費目</Th><Th numeric>金額</Th><Th>状態</Th><Th>内容</Th><Th className="w-12"></Th></tr></thead>
               <tbody>
                 {expenses.map(e => (
                   <tr key={e.id}>
-                    <Td className="whitespace-nowrap">{e.date}</Td>
+                    <Td className="whitespace-nowrap num">{e.date}</Td>
                     <Td className="whitespace-nowrap">{e.staffId ? (staffMap.get(e.staffId) || '(職員)') : '事務局'}</Td>
                     <Td className="whitespace-nowrap">{e.project}／{catMap.get(e.categoryId) || e.categoryId}</Td>
-                    <Td className="whitespace-nowrap font-medium">{yen(e.amount)}</Td>
+                    <Td numeric className="whitespace-nowrap font-medium">{yen(e.amount)}</Td>
                     <Td><Badge color={e.status === 'approved' ? 'green' : e.status === 'requested' ? 'yellow' : 'red'}>{e.status === 'approved' ? '承認済' : e.status === 'requested' ? '申請中' : '却下'}</Badge></Td>
                     <Td>{e.description}</Td>
                     <Td><Button variant="ghost" size="sm" onClick={() => removeExpense(e.id)}>削除</Button></Td>
                   </tr>
                 ))}
-                {expenses.length === 0 && <tr><Td className="text-center text-gray-400 py-8" colSpan={7}>{loading ? '読み込み中…' : '経費はまだありません'}</Td></tr>}
+                {expenses.length === 0 && <tr><Td className="text-center text-ink-mute py-8" colSpan={7}>{loading ? '読み込み中…' : '経費はまだありません'}</Td></tr>}
               </tbody>
             </Table>
           </Card>
@@ -366,7 +366,7 @@ export default function Accounting() {
         <>
           <div className="flex flex-wrap justify-end items-center gap-2 mb-3">
             <div className="mr-auto flex items-center gap-2">
-              <span className="text-sm text-gray-600 whitespace-nowrap">事業区分</span>
+              <span className="text-sm text-ink-soft whitespace-nowrap">事業区分</span>
               <div className="w-48">
                 <Select value={sumDivision} onChange={e => setSumDivision(e.target.value)}>
                   <option value="all">すべての区分</option>
@@ -379,36 +379,36 @@ export default function Accounting() {
             <Button variant="secondary" size="sm" onClick={() => navigate(`/labor/accounting/print?fy=${fy}&division=${sumDivision}`)}>PDF出力</Button>
           </div>
 
-          <h2 className="font-bold text-gray-800 mb-2">区分・事業ごとの費目別 予算・執行</h2>
-          {shownDivisions.length === 0 && <Card className="mb-6"><p className="text-sm text-gray-400">{loading ? '読み込み中…' : '該当する事業予算がありません。'}</p></Card>}
+          <h2 className="font-bold text-ink mb-2">区分・事業ごとの費目別 予算・執行</h2>
+          {shownDivisions.length === 0 && <Card className="mb-6"><p className="text-sm text-ink-mute">{loading ? '読み込み中…' : '該当する事業予算がありません。'}</p></Card>}
           {shownDivisions.map(d => (
             <div key={d.id || 'none'} className="mb-6">
               <div className="flex items-baseline justify-between mb-2">
-                <h3 className="font-bold text-emerald-700">{d.name}</h3>
-                <span className="text-xs text-gray-500">
-                  予算 {yen(d.budgetSum)}／執行 {yen(d.usedSum)}／残 <span className={d.budgetSum - d.usedSum < 0 ? 'text-red-600 font-medium' : ''}>{yen(d.budgetSum - d.usedSum)}</span>
+                <h3 className="font-bold text-pine">{d.name}</h3>
+                <span className="num text-xs text-ink-soft">
+                  予算 {yen(d.budgetSum)}／執行 {yen(d.usedSum)}／残 <span className={d.budgetSum - d.usedSum < 0 ? 'text-alert font-medium' : ''}>{yen(d.budgetSum - d.usedSum)}</span>
                 </span>
               </div>
               {d.projects.map(g => (
             <Card key={g.project} className="p-0 overflow-hidden mb-4">
-              <div className="px-3 py-2 bg-gray-50 border-b font-bold text-gray-800">{g.project}</div>
+              <div className="px-3 py-2 bg-paper border-b border-rule-soft font-bold text-ink">{g.project}</div>
               <Table>
-                <thead><tr><Th>費目</Th><Th>予算額</Th><Th>執行額</Th><Th>残額</Th><Th>備考</Th></tr></thead>
+                <thead><tr><Th>費目</Th><Th numeric>予算額</Th><Th numeric>執行額</Th><Th numeric>残額</Th><Th>備考</Th></tr></thead>
                 <tbody>
                   {g.lines.map(l => (
                     <tr key={l.categoryId}>
                       <Td>{l.name}</Td>
-                      <Td className="whitespace-nowrap text-right">{yen(l.budget)}</Td>
-                      <Td className="whitespace-nowrap text-right">{yen(l.used)}</Td>
-                      <Td className={`whitespace-nowrap text-right ${l.budget - l.used < 0 ? 'text-red-600' : ''}`}>{yen(l.budget - l.used)}</Td>
+                      <Td numeric className="whitespace-nowrap">{yen(l.budget)}</Td>
+                      <Td numeric className="whitespace-nowrap">{yen(l.used)}</Td>
+                      <Td numeric className={`whitespace-nowrap ${l.budget - l.used < 0 ? 'text-alert' : ''}`}>{yen(l.budget - l.used)}</Td>
                       <Td>{l.note}</Td>
                     </tr>
                   ))}
-                  <tr className="bg-gray-50 font-medium">
+                  <tr className="bg-paper font-medium">
                     <Td>合計</Td>
-                    <Td className="whitespace-nowrap text-right">{yen(g.budgetSum)}</Td>
-                    <Td className="whitespace-nowrap text-right">{yen(g.usedSum)}</Td>
-                    <Td className="whitespace-nowrap text-right">{yen(g.budgetSum - g.usedSum)}</Td>
+                    <Td numeric className="whitespace-nowrap">{yen(g.budgetSum)}</Td>
+                    <Td numeric className="whitespace-nowrap">{yen(g.usedSum)}</Td>
+                    <Td numeric className="whitespace-nowrap">{yen(g.budgetSum - g.usedSum)}</Td>
                     <Td>{''}</Td>
                   </tr>
                 </tbody>
@@ -418,49 +418,49 @@ export default function Accounting() {
             </div>
           ))}
 
-          <h2 className="font-bold text-gray-800 mb-2 mt-6">月次集計（事業別・承認済み）</h2>
+          <h2 className="font-bold text-ink mb-2 mt-6">月次集計（事業別・承認済み）</h2>
           <Card className="p-0 overflow-x-auto mb-6">
-            <table className="border-collapse text-sm w-full">
+            <Table>
               <thead>
                 <tr>
-                  <th className="sticky left-0 bg-gray-50 text-left px-3 py-2 text-gray-600 font-medium border-b border-r whitespace-nowrap">事業</th>
-                  {FY_MONTHS.map(m => <th key={m} className="px-2 py-2 text-xs text-gray-500 font-medium border-b border-r bg-gray-50 whitespace-nowrap text-right">{m}月</th>)}
-                  <th className="px-3 py-2 text-xs text-gray-600 font-medium border-b bg-gray-50 text-right">合計</th>
+                  <Th className="sticky left-0">事業</Th>
+                  {FY_MONTHS.map(m => <Th key={m} numeric className="whitespace-nowrap">{m}月</Th>)}
+                  <Th numeric>合計</Th>
                 </tr>
               </thead>
               <tbody>
                 {projectMonthly.map(r => (
                   <tr key={r.project}>
-                    <td className="sticky left-0 bg-white px-3 py-1.5 border-b border-r whitespace-nowrap font-medium">{r.project}</td>
-                    {r.months.map((n, i) => <td key={i} className="px-2 py-1.5 border-b border-r text-right text-gray-700">{n ? n.toLocaleString() : ''}</td>)}
-                    <td className="px-3 py-1.5 border-b text-right font-medium">{r.total.toLocaleString()}</td>
+                    <Td className="sticky left-0 bg-white whitespace-nowrap font-medium">{r.project}</Td>
+                    {r.months.map((n, i) => <Td key={i} numeric className="text-ink-soft">{n ? n.toLocaleString() : ''}</Td>)}
+                    <Td numeric className="font-medium">{r.total.toLocaleString()}</Td>
                   </tr>
                 ))}
-                {projectMonthly.length === 0 && <tr><td className="text-center text-gray-400 py-8" colSpan={14}>承認済みの経費がありません</td></tr>}
+                {projectMonthly.length === 0 && <tr><Td className="text-center text-ink-mute py-8" colSpan={14}>承認済みの経費がありません</Td></tr>}
               </tbody>
               {projectMonthly.length > 0 && (
                 <tfoot>
-                  <tr className="bg-gray-50">
-                    <td className="sticky left-0 bg-gray-50 px-3 py-1.5 border-t border-r font-medium">月計</td>
-                    {monthTotals.map((n, i) => <td key={i} className="px-2 py-1.5 border-t border-r text-right text-gray-700">{n ? n.toLocaleString() : ''}</td>)}
-                    <td className="px-3 py-1.5 border-t text-right font-bold text-emerald-700">{grandTotal.toLocaleString()}</td>
+                  <tr className="bg-paper">
+                    <Td className="sticky left-0 bg-paper font-medium">月計</Td>
+                    {monthTotals.map((n, i) => <Td key={i} numeric className="text-ink-soft">{n ? n.toLocaleString() : ''}</Td>)}
+                    <Td numeric className="font-bold text-pine">{grandTotal.toLocaleString()}</Td>
                   </tr>
                 </tfoot>
               )}
-            </table>
+            </Table>
           </Card>
 
-          <h2 className="font-bold text-gray-800 mb-2">費目別 年間合計（承認済み）</h2>
+          <h2 className="font-bold text-ink mb-2">費目別 年間合計（承認済み）</h2>
           <Card className="p-0 overflow-hidden">
             <Table>
-              <thead><tr><Th>費目</Th><Th>金額</Th></tr></thead>
+              <thead><tr><Th>費目</Th><Th numeric>金額</Th></tr></thead>
               <tbody>
                 {categoryTotals.map(c => (
-                  <tr key={c.name}><Td>{c.name}</Td><Td className="whitespace-nowrap">{yen(c.total)}</Td></tr>
+                  <tr key={c.name}><Td>{c.name}</Td><Td numeric className="whitespace-nowrap">{yen(c.total)}</Td></tr>
                 ))}
-                {categoryTotals.length === 0 && <tr><Td className="text-center text-gray-400 py-6" colSpan={2}>承認済みの経費がありません</Td></tr>}
+                {categoryTotals.length === 0 && <tr><Td className="text-center text-ink-mute py-6" colSpan={2}>承認済みの経費がありません</Td></tr>}
                 {categoryTotals.length > 0 && (
-                  <tr className="bg-gray-50"><Td className="font-medium">合計</Td><Td className="whitespace-nowrap font-bold text-emerald-700">{yen(grandTotal)}</Td></tr>
+                  <tr className="bg-paper"><Td className="font-medium">合計</Td><Td numeric className="whitespace-nowrap font-bold text-pine">{yen(grandTotal)}</Td></tr>
                 )}
               </tbody>
             </Table>
@@ -488,18 +488,9 @@ export default function Accounting() {
               </tbody>
             </Table>
           </Card>
-          <p className="text-xs text-gray-400 mt-2">費目は予算・経費で共通に使います。使用中の費目を削除しても過去データは残ります。</p>
+          <p className="text-xs text-ink-mute mt-2">費目は予算・経費で共通に使います。使用中の費目を削除しても過去データは残ります。</p>
         </>
       )}
     </PageContainer>
-  );
-}
-
-function Tile({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <Card className="text-center py-3">
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className={`text-lg font-bold ${highlight ? 'text-emerald-600' : 'text-gray-800'}`}>{value}</p>
-    </Card>
   );
 }

@@ -54,7 +54,7 @@ export default function AuditLog() {
             </Field>
           </div>
         </div>
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-ink-mute">
           直近500件を新しい順に表示しています。勤怠・時間外・休暇の承認や修正が、いつ誰の操作で行われたかを確認できます。
         </p>
       </Card>
@@ -65,15 +65,15 @@ export default function AuditLog() {
             <tr><Th>日時</Th><Th>操作者</Th><Th>対象</Th><Th>操作</Th><Th>内容</Th></tr>
           </thead>
           <tbody>
-            {loading && <tr><Td className="text-center text-gray-400 py-8" colSpan={5}>読み込み中…</Td></tr>}
+            {loading && <tr><Td className="text-center text-ink-mute py-8" colSpan={5}>読み込み中…</Td></tr>}
             {!loading && filtered.length === 0 && (
-              <tr><Td className="text-center text-gray-400 py-8" colSpan={5}>
+              <tr><Td className="text-center text-ink-mute py-8" colSpan={5}>
                 {entries.length === 0 ? '変更履歴はまだありません' : '条件に合う履歴がありません'}
               </Td></tr>
             )}
             {!loading && filtered.map(e => (
               <tr key={e.id}>
-                <Td className="whitespace-nowrap text-xs">{e.at}</Td>
+                <Td className="whitespace-nowrap text-xs num">{e.at}</Td>
                 <Td className="whitespace-nowrap">
                   <span className="inline-flex items-center gap-2">
                     {e.actor}
@@ -82,14 +82,14 @@ export default function AuditLog() {
                 </Td>
                 <Td className="whitespace-nowrap text-xs">{e.target}</Td>
                 <Td className="whitespace-nowrap text-sm">{e.action}</Td>
-                <Td className="text-xs text-gray-600">{e.summary}</Td>
+                <Td className="text-xs text-ink-soft">{e.summary}</Td>
               </tr>
             ))}
           </tbody>
         </Table>
       </Card>
       {!loading && filtered.length > 0 && (
-        <p className="text-xs text-gray-400 mt-2">{filtered.length}件を表示中</p>
+        <p className="num text-xs text-ink-mute mt-2">{filtered.length}件を表示中</p>
       )}
     </PageContainer>
   );

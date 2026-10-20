@@ -1,7 +1,7 @@
 // 年度切替（前年度予算のコピー・年度末アーカイブ）
 import { useEffect, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { PageContainer, Card, Select, Field, Button, Alert, Table, Th, Td } from '../../components/UI';
+import { PageContainer, Card, Select, Field, Button, Alert, Table, Th, Td, SectionTitle } from '../../components/UI';
 import { listBudgets, saveBudgets, getYearArchive, genId } from '../../api/data';
 import type { YearArchive } from '../../api/data';
 import {
@@ -148,10 +148,9 @@ export default function YearEnd() {
     <PageContainer title="年度切替・年度末処理">
       {/* 予算のコピー */}
       <Card className="mb-4">
-        <h2 className="font-bold text-gray-800 mb-1">前年度予算のコピー</h2>
-        <p className="text-xs text-gray-500 mb-3">
-          区分・事業・費目の構成をそのまま新年度に引き継ぎます。金額は据え置きか0のどちらかを選べます。
-        </p>
+        <SectionTitle note="区分・事業・費目の構成をそのまま新年度に引き継ぎます。金額は据え置きか0のどちらかを選べます。">
+          前年度予算のコピー
+        </SectionTitle>
         {copyMsg && <Alert type="success">{copyMsg}</Alert>}
         {copyErr && <Alert type="error">{copyErr}</Alert>}
 
@@ -181,13 +180,13 @@ export default function YearEnd() {
         {fromFy === toFy ? (
           <Alert type="info">コピー元とコピー先に同じ年度は指定できません。</Alert>
         ) : source === null ? (
-          <p className="text-sm text-gray-400">読み込み中…</p>
+          <p className="text-sm text-ink-mute">読み込み中…</p>
         ) : (
           <>
-            <p className="text-sm text-gray-600 mb-2">
+            <p className="num text-sm text-ink-soft mb-2">
               {fiscalYearLabel(fromFy)}: <span className="font-bold">{source.length}件</span>
               （合計 {yen(source.reduce((s, b) => s + (Number(b.amount) || 0), 0))}）
-              <span className="mx-2 text-gray-300">→</span>
+              <span className="mx-2 text-ink-mute">→</span>
               {fiscalYearLabel(toFy)}: <span className="font-bold">{target?.length ?? 0}件</span>
             </p>
             {(target?.length ?? 0) > 0 && (
@@ -198,19 +197,19 @@ export default function YearEnd() {
             {source.length > 0 && (
               <div className="overflow-x-auto">
                 <Table>
-                  <thead><tr><Th>区分</Th><Th>事業</Th><Th>費目ID</Th><Th>予算額</Th></tr></thead>
+                  <thead><tr><Th>区分</Th><Th>事業</Th><Th>費目ID</Th><Th numeric>予算額</Th></tr></thead>
                   <tbody>
                     {source.slice(0, 10).map(b => (
                       <tr key={b.id}>
                         <Td className="text-xs">{divisionLabel(b.division)}</Td>
                         <Td>{b.project}</Td>
-                        <Td className="text-xs text-gray-500">{b.categoryId}</Td>
-                        <Td className="text-right">{yen(Number(b.amount) || 0)}</Td>
+                        <Td className="text-xs text-ink-mute">{b.categoryId}</Td>
+                        <Td numeric>{yen(Number(b.amount) || 0)}</Td>
                       </tr>
                     ))}
                   </tbody>
                 </Table>
-                {source.length > 10 && <p className="text-xs text-gray-400 p-2">ほか {source.length - 10}件</p>}
+                {source.length > 10 && <p className="num text-xs text-ink-mute p-2">ほか {source.length - 10}件</p>}
               </div>
             )}
           </>
@@ -219,11 +218,10 @@ export default function YearEnd() {
 
       {/* 年度末アーカイブ */}
       <Card>
-        <h2 className="font-bold text-gray-800 mb-1">年度末アーカイブ</h2>
-        <p className="text-xs text-gray-500 mb-3">
-          指定年度の職員・勤怠・シフト・時間外・休暇・予算・経費・変更履歴を1つのExcelにまとめて保存します。
-          データは削除しません。保存義務のある記録の控えとしてお使いください。
-        </p>
+        <SectionTitle note={<>指定年度の職員・勤怠・シフト・時間外・休暇・予算・経費・変更履歴を1つのExcelにまとめて保存します。
+          データは削除しません。保存義務のある記録の控えとしてお使いください。</>}>
+          年度末アーカイブ
+        </SectionTitle>
         {archiveMsg && <Alert type="success">{archiveMsg}</Alert>}
         {archiveErr && <Alert type="error">{archiveErr}</Alert>}
         <div className="flex items-end gap-3 flex-wrap">
@@ -238,7 +236,7 @@ export default function YearEnd() {
             </Button>
           </div>
         </div>
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-ink-mute">
           労働者名簿・賃金台帳・出勤簿は労基法で5年間（当分の間3年間）の保存が必要です。
           年度ごとにこのファイルを保管しておくと、記録の控えになります。
         </p>

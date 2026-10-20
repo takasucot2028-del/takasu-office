@@ -55,7 +55,7 @@ function AppRoutes() {
   const { pathname } = useLocation();
   const kiosk = pathname === "/punch";   // 打刻専用画面はヘッダーを出さない
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-paper">
       {!kiosk && <Header />}
       <Routes>
         <Route path="/" element={<Login />} />

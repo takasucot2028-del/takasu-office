@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { PageContainer, Card, Button, Alert, Badge } from '../../components/UI';
+import { PageContainer, Card, Button, Alert, Badge, SectionTitle } from '../../components/UI';
 import {
   punch, setMyBreak, getStaffHomeData, getStaffHomeCached,
   markShiftChangesRead, markAttendanceChangesRead, todayStr,
@@ -163,124 +163,124 @@ export default function StaffHome() {
 
       {/* シフト変更の通知 */}
       {shiftChanges.length > 0 && (
-        <Card className="mb-4 border-blue-300 bg-blue-50">
+        <Card className="mb-4 border-info/30 bg-info-soft">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="font-bold text-blue-800">シフトが変更されました</h2>
+            <h2 className="font-bold text-info">シフトが変更されました</h2>
             <Badge color="blue">{shiftChanges.length}件</Badge>
           </div>
-          <ul className="divide-y divide-blue-200 border border-blue-200 rounded-md bg-white mb-3">
+          <ul className="divide-y divide-info/20 border border-info/25 rounded-md bg-white mb-3">
             {shiftChanges.map(c => (
               <li key={c.id} className="px-3 py-2 text-sm">
                 <div className="flex flex-wrap items-center gap-x-2">
-                  <span className="font-medium text-gray-800">
+                  <span className="num font-medium text-ink">
                     {Number(c.date.slice(5, 7))}/{Number(c.date.slice(8))}
                     （{WEEKDAY_LABELS[new Date(`${c.date}T00:00:00`).getDay()]}）
                   </span>
-                  <span className="text-xs text-gray-500">{WORK_LOCATION_LABELS[c.location]}</span>
-                  <span className="text-gray-400 line-through">{c.before}</span>
-                  <span className="text-gray-400">→</span>
-                  <span className="font-bold text-blue-700">{c.after}</span>
+                  <span className="text-xs text-ink-mute">{WORK_LOCATION_LABELS[c.location]}</span>
+                  <span className="num text-ink-mute line-through">{c.before}</span>
+                  <span className="text-ink-mute">→</span>
+                  <span className="num font-bold text-info">{c.after}</span>
                 </div>
-                <div className="text-xs text-gray-400 mt-0.5">{c.changedAt} に変更</div>
+                <div className="num text-xs text-ink-mute mt-0.5">{c.changedAt} に変更</div>
               </li>
             ))}
           </ul>
           <div className="flex justify-end">
-            <Button size="sm" variant="secondary" onClick={confirmShiftChanges}>確認しました</Button>
+            <Button variant="secondary" onClick={confirmShiftChanges}>確認しました</Button>
           </div>
         </Card>
       )}
 
       {/* 出退勤の修正の通知（事務局が打刻を直したとき） */}
       {attChanges.length > 0 && (
-        <Card className="mb-4 border-amber-300 bg-amber-50">
+        <Card className="mb-4 border-caution/30 bg-caution-soft">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="font-bold text-amber-800">出退勤の記録が修正されました</h2>
+            <h2 className="font-bold text-caution">出退勤の記録が修正されました</h2>
             <Badge color="yellow">{attChanges.length}件</Badge>
           </div>
-          <ul className="divide-y divide-amber-200 border border-amber-200 rounded-md bg-white mb-3">
+          <ul className="divide-y divide-caution/20 border border-caution/25 rounded-md bg-white mb-3">
             {attChanges.map(c => (
               <li key={c.id} className="px-3 py-2 text-sm">
                 <div className="flex flex-wrap items-center gap-x-2">
-                  <span className="font-medium text-gray-800">
+                  <span className="num font-medium text-ink">
                     {Number(c.date.slice(5, 7))}/{Number(c.date.slice(8))}
                     （{WEEKDAY_LABELS[new Date(`${c.date}T00:00:00`).getDay()]}）
                   </span>
-                  <span className="text-gray-400 line-through">{c.before}</span>
-                  <span className="text-gray-400">→</span>
-                  <span className="font-bold text-amber-800">{c.after}</span>
+                  <span className="num text-ink-mute line-through">{c.before}</span>
+                  <span className="text-ink-mute">→</span>
+                  <span className="num font-bold text-caution">{c.after}</span>
                 </div>
-                <div className="text-xs text-gray-400 mt-0.5">{c.changedAt} に修正</div>
+                <div className="num text-xs text-ink-mute mt-0.5">{c.changedAt} に修正</div>
               </li>
             ))}
           </ul>
-          <p className="text-xs text-gray-600 mb-3">
+          <p className="text-xs text-ink-soft mb-3">
             内容に心当たりがないときは事務局にご確認ください。
-            <Link to="/me/attendance" className="text-blue-600 underline ml-1">出勤簿を見る</Link>
+            <Link to="/me/attendance" className="text-pine underline ml-1">出勤簿を見る</Link>
           </p>
           <div className="flex justify-end">
-            <Button size="sm" variant="secondary" onClick={confirmAttChanges}>確認しました</Button>
+            <Button variant="secondary" onClick={confirmAttChanges}>確認しました</Button>
           </div>
         </Card>
       )}
 
       {/* 打刻 */}
       <Card className="mb-4 text-center">
-        <p className="text-sm text-gray-500">{date}（{wd}）</p>
-        <div className="my-3 text-sm text-gray-700">
+        <p className="num text-sm text-ink-mute">{date}（{wd}）</p>
+        <div className="my-3 text-sm text-ink">
           {loading ? '読み込み中…' : (
             <div className="flex justify-center gap-6">
-              <div><span className="text-gray-400 text-xs">出勤</span><div className="text-lg font-bold">{today?.startTime || '—'}</div></div>
-              <div><span className="text-gray-400 text-xs">退勤</span><div className="text-lg font-bold">{today?.endTime || '—'}</div></div>
-              <div><span className="text-gray-400 text-xs">実働</span><div className="text-lg font-bold">{workedText(today, breakNum) || '—'}</div></div>
+              <div><span className="text-ink-mute text-xs">出勤</span><div className="num text-lg font-bold">{today?.startTime || '—'}</div></div>
+              <div><span className="text-ink-mute text-xs">退勤</span><div className="num text-lg font-bold">{today?.endTime || '—'}</div></div>
+              <div><span className="text-ink-mute text-xs">実働</span><div className="num text-lg font-bold">{workedText(today, breakNum) || '—'}</div></div>
             </div>
           )}
         </div>
         <div className="flex gap-3 justify-center">
-          <Button onClick={() => doPunch('in')} disabled={busy || punching} className="px-8 py-3 text-base">
+          <Button onClick={() => doPunch('in')} disabled={busy || punching} size="lg" className="px-8">
             {punching ? '記録中…' : '出勤'}
           </Button>
-          <Button onClick={() => doPunch('out')} disabled={busy || punching} variant="secondary" className="px-8 py-3 text-base">
+          <Button onClick={() => doPunch('out')} disabled={busy || punching} variant="secondary" size="lg" className="px-8">
             {punching ? '記録中…' : '退勤'}
           </Button>
         </div>
 
         {/* 休憩時間の入力（本日分・時刻で入力） */}
-        <div className="mt-4 pt-3 border-t border-gray-100">
+        <div className="mt-4 pt-3 border-t border-rule-soft">
           <div className="flex items-center justify-center flex-wrap gap-2 text-sm">
-            <span className="text-gray-500">本日の休憩</span>
+            <span className="text-ink-soft">本日の休憩</span>
             <input
               type="time" value={breakStartInput} disabled={busy}
               onChange={e => setBreakStartInput(e.target.value)}
-              className="border border-gray-300 rounded-md px-2 py-1.5"
+              className="num border border-rule rounded-md px-2 py-1.5 text-ink bg-white disabled:bg-paper disabled:text-ink-mute focus:outline-none focus:ring-2 focus:ring-pine/40 focus:border-pine"
             />
-            <span className="text-gray-500">〜</span>
+            <span className="text-ink-soft">〜</span>
             <input
               type="time" value={breakEndInput} disabled={busy}
               onChange={e => setBreakEndInput(e.target.value)}
-              className="border border-gray-300 rounded-md px-2 py-1.5"
+              className="num border border-rule rounded-md px-2 py-1.5 text-ink bg-white disabled:bg-paper disabled:text-ink-mute focus:outline-none focus:ring-2 focus:ring-pine/40 focus:border-pine"
             />
-            <span className="text-gray-500 tabular-nums">{breakNum > 0 ? `（${breakNum}分）` : ''}</span>
-            <Button size="sm" variant="secondary" onClick={saveBreak} disabled={busy}>休憩を保存</Button>
+            <span className="num text-ink-mute">{breakNum > 0 ? `（${breakNum}分）` : ''}</span>
+            <Button variant="secondary" onClick={saveBreak} disabled={busy}>休憩を保存</Button>
           </div>
-          <p className="text-xs text-gray-400 mt-2">
+          <p className="text-xs text-ink-mute mt-2">
             昼休みや中抜けの時間帯（例: 13:00〜14:00）を入力してください。実働＝退勤−出勤−休憩 で計算されます。
           </p>
         </div>
 
-        <p className="text-xs text-gray-400 mt-3">
+        <p className="text-xs text-ink-mute mt-3">
           打刻の時刻はサーバー基準で記録されます。修正が必要な場合は事務局へご連絡ください。
           ここの実働は打刻どおりの目安です。賃金計算に使う実働は
-          <Link to="/me/attendance" className="text-blue-600 underline mx-0.5">出勤簿</Link>
+          <Link to="/me/attendance" className="text-pine underline mx-0.5">出勤簿</Link>
           をご確認ください（シフトに合わせて丸めます）。
         </p>
       </Card>
 
       {/* 本日の勤務・休暇（全員分） */}
       <Card className="mb-4">
-        <h2 className="font-bold text-gray-800 mb-3">本日の勤務・休暇 <span className="text-sm font-normal text-gray-500">{date}（{wd}）</span></h2>
+        <SectionTitle note={<span className="num">{date}（{wd}）</span>}>本日の勤務・休暇</SectionTitle>
         {loading ? (
-          <p className="text-sm text-gray-400">読み込み中…</p>
+          <p className="text-sm text-ink-mute">読み込み中…</p>
         ) : (
           <>
             <div className="grid sm:grid-cols-2 gap-4">
@@ -291,13 +291,13 @@ export default function StaffHome() {
                   <div key={loc}>
                     <div className="mb-2"><Badge color={loc === 'sotai' ? 'blue' : 'green'}>{WORK_LOCATION_LABELS[loc]}</Badge></div>
                     {list.length === 0 ? (
-                      <p className="text-xs text-gray-400">勤務者なし</p>
+                      <p className="text-xs text-ink-mute">勤務者なし</p>
                     ) : (
                       <ul className="space-y-1">
                         {list.map((s, i) => (
-                          <li key={i} className="text-sm text-gray-700 flex flex-wrap items-baseline gap-x-2">
+                          <li key={i} className="text-sm text-ink flex flex-wrap items-baseline gap-x-2">
                             <span className="font-medium">{s.staffName}</span>
-                            <span className="text-gray-500 text-xs">{s.patternName} {s.startTime}〜{s.endTime}</span>
+                            <span className="num text-ink-mute text-xs">{s.patternName} {s.startTime}〜{s.endTime}</span>
                           </li>
                         ))}
                       </ul>
@@ -306,22 +306,22 @@ export default function StaffHome() {
                 );
               })}
             </div>
-            <div className="mt-4 pt-3 border-t border-gray-100">
+            <div className="mt-4 pt-3 border-t border-rule-soft">
               <div className="mb-2"><Badge color="yellow">休暇</Badge></div>
               {todayWork.leave.length === 0 && todayWork.comp.length === 0 ? (
-                <p className="text-xs text-gray-400">本日の休暇取得者はいません</p>
+                <p className="text-xs text-ink-mute">本日の休暇取得者はいません</p>
               ) : (
                 <ul className="space-y-1">
                   {todayWork.leave.map((r, i) => (
-                    <li key={`l${i}`} className="text-sm text-gray-700 flex flex-wrap items-baseline gap-x-2">
+                    <li key={`l${i}`} className="text-sm text-ink flex flex-wrap items-baseline gap-x-2">
                       <span className="font-medium">{r.staffName}</span>
-                      <span className="text-yellow-700 text-xs">有給 {r.hours > 0 ? `${r.hours}時間` : `${r.days}日`}</span>
+                      <span className="num text-caution text-xs">有給 {r.hours > 0 ? `${r.hours}時間` : `${r.days}日`}</span>
                     </li>
                   ))}
                   {todayWork.comp.map((r, i) => (
-                    <li key={`c${i}`} className="text-sm text-gray-700 flex flex-wrap items-baseline gap-x-2">
+                    <li key={`c${i}`} className="text-sm text-ink flex flex-wrap items-baseline gap-x-2">
                       <span className="font-medium">{r.staffName}</span>
-                      <span className="text-blue-700 text-xs">代休 {r.hours}時間</span>
+                      <span className="num text-info text-xs">代休 {r.hours}時間</span>
                     </li>
                   ))}
                 </ul>
@@ -346,21 +346,21 @@ export default function StaffHome() {
       {/* 新着文書 */}
       <Card>
         <div className="flex items-center justify-between mb-2">
-          <h2 className="font-bold text-gray-800">最近の文書</h2>
-          <Link to="/me/documents" className="text-xs text-emerald-700 hover:underline">すべて見る →</Link>
+          <h2 className="font-bold text-ink">最近の文書</h2>
+          <Link to="/me/documents" className="text-xs text-pine hover:underline">すべて見る →</Link>
         </div>
         {loading ? (
-          <p className="text-xs text-gray-400">読み込み中…</p>
+          <p className="text-xs text-ink-mute">読み込み中…</p>
         ) : recentDocs.length === 0 ? (
-          <p className="text-xs text-gray-400">文書はまだ登録されていません</p>
+          <p className="text-xs text-ink-mute">文書はまだ登録されていません</p>
         ) : (
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-rule-soft">
             {recentDocs.map(d => (
               <li key={d.id}>
                 <a href={d.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 py-2">
-                  <span className="text-xs text-gray-400 w-10 shrink-0">{DOC_TYPE_LABELS[d.type]}</span>
-                  <span className="flex-1 text-blue-600 text-sm">{d.title}</span>
-                  <span className="text-gray-300 text-xs">開く ↗</span>
+                  <span className="text-xs text-ink-mute w-10 shrink-0">{DOC_TYPE_LABELS[d.type]}</span>
+                  <span className="flex-1 text-pine text-sm">{d.title}</span>
+                  <span className="text-ink-mute text-xs">開く ↗</span>
                 </a>
               </li>
             ))}
@@ -374,9 +374,9 @@ export default function StaffHome() {
 function MenuLink({ to, label, desc }: { to: string; label: string; desc: string }) {
   return (
     <Link to={to} className="block">
-      <Card className="hover:bg-gray-50 transition-colors h-full">
-        <p className="font-bold text-gray-800">{label}</p>
-        <p className="text-xs text-gray-400 mt-1">{desc}</p>
+      <Card className="hover:bg-paper transition-colors h-full">
+        <p className="font-bold text-ink">{label}</p>
+        <p className="text-xs text-ink-mute mt-1">{desc}</p>
       </Card>
     </Link>
   );

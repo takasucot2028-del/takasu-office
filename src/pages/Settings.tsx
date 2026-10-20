@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { PageContainer, Card, Field, Input, Button, Alert } from '../components/UI';
+import { PageContainer, Card, SectionTitle, Field, Input, Button, Alert } from '../components/UI';
 import { getPrefs, setPref } from '../utils/prefs';
 import {
   changeAdminPassword, usingGas, clearDataCache,
@@ -90,8 +90,7 @@ export default function Settings() {
     <PageContainer title="設定">
       <div className="max-w-md">
         <Card>
-          <h2 className="font-bold text-gray-800 mb-1">パスワードの変更</h2>
-          <p className="text-xs text-gray-500 mb-4">事務局ログイン用のパスワードを変更します。</p>
+          <SectionTitle note="事務局ログイン用のパスワードを変更します。">パスワードの変更</SectionTitle>
           {message && <Alert type="success">{message}</Alert>}
           {error && <Alert type="error">{error}</Alert>}
           {!usingGas && (
@@ -132,17 +131,14 @@ export default function Settings() {
         </Card>
 
         <Card className="mt-4">
-          <h2 className="font-bold text-gray-800 mb-1">ダッシュボードの表示</h2>
-          <p className="text-xs text-gray-500 mb-3">
-            この端末での表示の設定です。ほかのパソコンやスマホには反映されません。
-          </p>
-          <label className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
-            <input type="checkbox" className="w-4 h-4 mt-1"
+          <SectionTitle note="この端末での表示の設定です。ほかのパソコンやスマホには反映されません。">ダッシュボードの表示</SectionTitle>
+          <label className="flex items-start gap-2 text-sm text-ink cursor-pointer">
+            <input type="checkbox" className="w-4 h-4 mt-1 accent-pine"
               checked={showLeaveObligation}
               onChange={e => { setShowLeaveObligation(e.target.checked); setPref('showLeaveObligation', e.target.checked); }} />
             <span>
               「年5日の年休取得が未達の職員」を表示する
-              <span className="block text-xs text-gray-500">
+              <span className="block text-xs text-ink-mute">
                 法令上は年5日の取得が必要ですが、ダッシュボードに出す必要がなければ外してください。
                 有給休暇の画面では職員ごとの達成状況を引き続き確認できます。
               </span>
@@ -151,16 +147,15 @@ export default function Settings() {
         </Card>
 
         <Card className="mt-4">
-          <h2 className="font-bold text-gray-800 mb-1">打刻PINの一括設定</h2>
-          <p className="text-xs text-gray-500 mb-3">
+          <SectionTitle note={<>
             打刻専用画面で使うPINを、<b>職員番号と同じ番号</b>でまとめて設定します。
             PINが未設定の在職者だけが対象で、すでに設定済みの職員は変更しません。
             職員番号は他の人にも分かるため、運用が落ち着いたら職員名簿で別の番号に変えることをおすすめします。
-          </p>
+          </>}>打刻PINの一括設定</SectionTitle>
           {pinMsg && <Alert type="success">{pinMsg}</Alert>}
           {pinErr && <Alert type="error">{pinErr}</Alert>}
           {pinSkipped.length > 0 && (
-            <div className="text-xs text-amber-700 bg-amber-50 rounded px-3 py-2 mb-3">
+            <div className="text-xs text-caution bg-caution-soft rounded px-3 py-2 mb-3">
               次の職員は設定できませんでした。職員名簿で個別に設定してください。
               <ul className="list-disc ml-4 mt-1">{pinSkipped.map(s => <li key={s}>{s}</li>)}</ul>
             </div>
@@ -181,12 +176,11 @@ export default function Settings() {
         </Card>
 
         <Card className="mt-4">
-          <h2 className="font-bold text-gray-800 mb-1">法人が指定する休日</h2>
-          <p className="text-xs text-gray-500 mb-3">
+          <SectionTitle note={<>
             就業規則 第19条④の「その他法人が指定する日」を登録します。
             <b>土日・祝日・年末年始（12/29〜1/4）は自動判定</b>のため、登録は不要です。
             登録した日はシフト表や出勤簿で休日として扱われます。
-          </p>
+          </>}>法人が指定する休日</SectionTitle>
           {holidayMsg && <Alert type="success">{holidayMsg}</Alert>}
           {holidayErr && <Alert type="error">{holidayErr}</Alert>}
           <div className="flex items-end gap-2 mb-3">
@@ -199,14 +193,14 @@ export default function Settings() {
             <div className="mb-4"><Button size="sm" onClick={addHoliday} disabled={hSaving}>追加</Button></div>
           </div>
           {holidays.length === 0 ? (
-            <p className="text-xs text-gray-400">登録された休日はありません。</p>
+            <p className="text-xs text-ink-mute">登録された休日はありません。</p>
           ) : (
-            <ul className="divide-y border border-gray-200 rounded-md">
+            <ul className="divide-y divide-rule-soft border border-rule-soft rounded-md">
               {holidays.map(h => (
                 <li key={h.id} className="flex items-center justify-between px-3 py-1.5 text-sm">
                   <span>
-                    <span className="font-medium text-gray-800">{h.date}</span>
-                    <span className="ml-2 text-gray-500">{h.name || '休業日'}</span>
+                    <span className="num font-medium text-ink">{h.date}</span>
+                    <span className="ml-2 text-ink-mute">{h.name || '休業日'}</span>
                   </span>
                   <Button variant="ghost" size="sm" disabled={hSaving}
                     onClick={() => removeHoliday(h.id)}>削除</Button>
@@ -217,11 +211,10 @@ export default function Settings() {
         </Card>
 
         <Card className="mt-4">
-          <h2 className="font-bold text-gray-800 mb-1">表示がおかしいとき</h2>
-          <p className="text-xs text-gray-500 mb-3">
+          <SectionTitle note={<>
             職員名簿やシフトが空のまま表示される場合は、この端末に保存された表示用データを消して読み込み直します。
             スプレッドシートのデータは消えません。
-          </p>
+          </>}>表示がおかしいとき</SectionTitle>
           <Button variant="secondary" onClick={() => {
             clearDataCache();
             window.location.reload();
@@ -231,19 +224,13 @@ export default function Settings() {
         </Card>
 
         <Card className="mt-4">
-          <h2 className="font-bold text-gray-800 mb-1">年度切替・年度末処理</h2>
-          <p className="text-xs text-gray-500 mb-3">
-            前年度予算の新年度へのコピーと、年度データのExcelアーカイブを行います。
-          </p>
-          <Link to="/labor/yearend" className="text-sm text-emerald-700 hover:underline">年度切替を開く →</Link>
+          <SectionTitle note="前年度予算の新年度へのコピーと、年度データのExcelアーカイブを行います。">年度切替・年度末処理</SectionTitle>
+          <Link to="/labor/yearend" className="text-sm text-pine hover:underline">年度切替を開く →</Link>
         </Card>
 
         <Card className="mt-4">
-          <h2 className="font-bold text-gray-800 mb-1">変更履歴</h2>
-          <p className="text-xs text-gray-500 mb-3">
-            勤怠・時間外・休暇・会計などの登録や承認が、いつ誰の操作で行われたかを確認できます。
-          </p>
-          <Link to="/labor/audit" className="text-sm text-emerald-700 hover:underline">変更履歴を開く →</Link>
+          <SectionTitle note="勤怠・時間外・休暇・会計などの登録や承認が、いつ誰の操作で行われたかを確認できます。">変更履歴</SectionTitle>
+          <Link to="/labor/audit" className="text-sm text-pine hover:underline">変更履歴を開く →</Link>
         </Card>
       </div>
     </PageContainer>

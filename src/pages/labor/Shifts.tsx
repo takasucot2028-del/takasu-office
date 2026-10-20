@@ -362,7 +362,7 @@ export default function Shifts() {
     XLSX.writeFile(wb, `シフト表_${WORK_LOCATION_LABELS[location]}_${mode === 'confirm' ? '確定' : '希望'}_${month}.xlsx`);
   };
 
-  const cellBase = 'min-w-9 text-center text-xs border-b border-r border-gray-100 cursor-pointer select-none p-0 h-9';
+  const cellBase = 'min-w-9 text-center text-xs border-b border-r border-rule-soft cursor-pointer select-none p-0 h-9';
   const menuStaff = menu ? allStaff.find(s => s.id === menu.staffId) : null;
   const menuReqNames = menu ? names(reqIds(menu.staffId, menu.date)) : '';
   // ポップアップを常に画面内に収める（下端は overflow-y-auto で内部スクロール）
@@ -372,32 +372,32 @@ export default function Shifts() {
   } : null;
 
   return (
-    <PageContainer title="シフト表">
+    <PageContainer title="シフト表" wide>
       {/* 操作バー */}
       <Card className="mb-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1">
             <Button variant="secondary" size="sm" onClick={() => setMonth(m => shiftMonth(m, -1))}>←</Button>
             <input type="month" value={month} onChange={e => setMonth(e.target.value)}
-              className="border border-gray-300 rounded-md px-2 py-1.5 text-sm" />
+              className="num border border-rule rounded-md px-2 py-1.5 text-sm" />
             <Button variant="secondary" size="sm" onClick={() => setMonth(m => shiftMonth(m, 1))}>→</Button>
           </div>
-          <div className="flex rounded-md overflow-hidden border border-gray-300">
+          <div className="flex rounded-md overflow-hidden border border-rule">
             {(Object.keys(WORK_LOCATION_LABELS) as WorkLocation[]).map(loc => (
               <button key={loc} onClick={() => { setLocation(loc); setMenu(null); }}
-                className={`px-3 py-1.5 text-sm ${location === loc ? 'bg-emerald-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                className={`px-3 py-1.5 text-sm ${location === loc ? 'bg-pine text-white' : 'bg-white text-ink-soft hover:bg-paper'}`}>
                 {WORK_LOCATION_LABELS[loc]}
               </button>
             ))}
           </div>
-          <div className="flex rounded-md overflow-hidden border border-gray-300">
+          <div className="flex rounded-md overflow-hidden border border-rule">
             <button onClick={() => { setMode('request'); setMenu(null); }}
-              className={`px-3 py-1.5 text-sm ${mode === 'request' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>希望</button>
+              className={`px-3 py-1.5 text-sm ${mode === 'request' ? 'bg-pine text-white' : 'bg-white text-ink-soft hover:bg-paper'}`}>希望</button>
             <button onClick={() => { setMode('confirm'); setMenu(null); }}
-              className={`px-3 py-1.5 text-sm ${mode === 'confirm' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>確定</button>
+              className={`px-3 py-1.5 text-sm ${mode === 'confirm' ? 'bg-pine text-white' : 'bg-white text-ink-soft hover:bg-paper'}`}>確定</button>
           </div>
           <div className="flex-1" />
-          <Link to="/labor/shift-patterns" className="text-xs text-emerald-700 hover:underline">区分マスタ →</Link>
+          <Link to="/labor/shift-patterns" className="text-xs text-pine hover:underline">区分マスタ →</Link>
           <Button variant="secondary" size="sm" onClick={runCheck}>入力チェック</Button>
           <Button variant="secondary" size="sm" onClick={handlePrint}>印刷</Button>
           <Button variant="secondary" size="sm" onClick={exportExcel}>Excel出力</Button>
@@ -405,13 +405,13 @@ export default function Shifts() {
         </div>
 
         {/* 凡例 */}
-        <div className="mt-3 text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
+        <div className="mt-3 text-xs text-ink-mute flex flex-wrap gap-x-4 gap-y-1">
           {mode === 'request'
-            ? <span>セルをクリックで<span className="text-red-600 font-medium">勤務できない区分</span>を選択（複数可・空欄＝すべて勤務可）。終日不可は<span className="text-red-600">勤務不可</span></span>
-            : <span>セルをクリックで区分を割り当て（複数可）。本人が<span className="text-red-600">勤務できない</span>とした区分は確認のうえ割り当てできます</span>}
-          <span>終日の勤務不可は<span className="text-red-600"> 赤（×） </span>で表示</span>
+            ? <span>セルをクリックで<span className="text-alert font-medium">勤務できない区分</span>を選択（複数可・空欄＝すべて勤務可）。終日不可は<span className="text-alert">勤務不可</span></span>
+            : <span>セルをクリックで区分を割り当て（複数可）。本人が<span className="text-alert">勤務できない</span>とした区分は確認のうえ割り当てできます</span>}
+          <span>終日の勤務不可は<span className="text-alert"> 赤（×） </span>で表示</span>
           {validPatterns.map(p => (
-            <span key={p.id} className="text-gray-600">{p.name}: {p.startTime}〜{p.endTime}</span>
+            <span key={p.id} className="text-ink-soft">{p.name}: <span className="num">{p.startTime}〜{p.endTime}</span></span>
           ))}
         </div>
       </Card>
@@ -427,8 +427,8 @@ export default function Shifts() {
             {overLimitStaff.map(x => (
               <li key={x.staff.id} className="text-sm">
                 {x.staff.lastName} {x.staff.firstName}：
-                <span className="font-bold text-red-700">{x.hours}h</span> ／ 上限 {x.limit}h
-                <span className="text-xs ml-1">（{Math.round((x.hours - x.limit) * 10) / 10}h 超過）</span>
+                <span className="num font-bold text-alert">{x.hours}h</span> ／ <span className="num">上限 {x.limit}h</span>
+                <span className="num text-xs ml-1">（{Math.round((x.hours - x.limit) * 10) / 10}h 超過）</span>
               </li>
             ))}
           </ul>
@@ -439,8 +439,8 @@ export default function Shifts() {
       {checkResult && (
         <Card className="mb-4">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="font-bold text-gray-800">入力チェック（{month}）</h2>
-            <button onClick={() => setCheckResult(null)} className="text-gray-400 hover:text-gray-600 text-sm">閉じる ✕</button>
+            <h2 className="font-bold text-ink">入力チェック（<span className="num">{month}</span>）</h2>
+            <button onClick={() => setCheckResult(null)} className="text-ink-mute hover:text-ink text-sm">閉じる ✕</button>
           </div>
           {checkResult.warn ? (
             <Alert type="warning">{checkResult.warn}</Alert>
@@ -453,45 +453,45 @@ export default function Shifts() {
             <>
               {checkResult.ngAssigned && checkResult.ngAssigned.length > 0 && (
                 <div className="mb-3">
-                  <p className="text-sm text-gray-700 mb-1">
-                    <span className="font-medium text-red-700">本人が勤務できないとした区分に割り当てています</span>
-                    <span className="ml-2 text-xs text-gray-400">{checkResult.ngAssigned.length}件</span>
+                  <p className="text-sm text-ink mb-1">
+                    <span className="font-medium text-alert">本人が勤務できないとした区分に割り当てています</span>
+                    <span className="num ml-2 text-xs text-ink-mute">{checkResult.ngAssigned.length}件</span>
                   </p>
                   <ul className="space-y-0.5">
                     {checkResult.ngAssigned.map((x, i) => (
                       <li key={i} className="text-sm">
                         <span className="font-medium">{x.name}</span>
-                        <span className="mx-2 text-gray-500">
+                        <span className="num mx-2 text-ink-mute">
                           {Number(x.date.slice(5, 7))}/{Number(x.date.slice(8))}
                         </span>
-                        <span className="text-red-700 font-medium">{x.patterns.map(p => p.name).join(' ')}</span>
-                        <span className="ml-2 text-xs text-gray-500">
+                        <span className="text-alert font-medium">{x.patterns.map(p => p.name).join(' ')}</span>
+                        <span className="ml-2 text-xs text-ink-mute">
                           （{x.allDay ? '終日 勤務不可' : '勤務できない区分'}の申請あり）
                         </span>
                       </li>
                     ))}
                   </ul>
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-ink-mute mt-1">
                     ※ 意図して割り当てている場合はそのままで問題ありません。本人への連絡をお忘れなく。
                   </p>
                 </div>
               )}
               {checkResult.conflicts.length > 0 && (
                 <div className="mb-4">
-                  <div className="text-sm font-medium text-red-700 mb-1">
+                  <div className="text-sm font-medium text-alert mb-1">
                     時間帯の重複（同一日に総体とB&Gの両方へ割り当て）
-                    <span className="ml-2 text-xs text-gray-400">{checkResult.conflicts.length}件</span>
+                    <span className="num ml-2 text-xs text-ink-mute">{checkResult.conflicts.length}件</span>
                   </div>
-                  <ul className="text-sm divide-y divide-gray-100 border border-red-100 rounded-md bg-red-50/40">
+                  <ul className="text-sm divide-y divide-rule-soft border border-alert/20 rounded-md bg-alert-soft/60">
                     {checkResult.conflicts.map(c => {
                       const wd = new Date(`${c.date}T00:00:00`).getDay();
                       return (
                         <li key={`${c.staffId}_${c.date}`} className="flex items-center justify-between px-3 py-1.5">
-                          <span className="text-gray-700">
+                          <span className="text-ink">
                             {c.name}
-                            <span className="ml-2 text-gray-500">{Number(c.date.slice(5, 7))}/{Number(c.date.slice(8))}（{WEEKDAY_LABELS[wd]}）</span>
+                            <span className="num ml-2 text-ink-mute">{Number(c.date.slice(5, 7))}/{Number(c.date.slice(8))}（{WEEKDAY_LABELS[wd]}）</span>
                           </span>
-                          <span className="text-red-600 font-medium">{c.patterns.map(p => p.name).join('')} が重複</span>
+                          <span className="text-alert font-medium">{c.patterns.map(p => p.name).join('')} が重複</span>
                         </li>
                       );
                     })}
@@ -499,8 +499,8 @@ export default function Shifts() {
                 </div>
               )}
               {checkResult.problems.length > 0 && (<>
-              <p className="text-sm text-gray-600 mb-3">
-                未入力の箇所が <span className="font-bold text-red-600">{checkResult.problems.length}</span> 件あります。
+              <p className="text-sm text-ink-soft mb-3">
+                未入力の箇所が <span className="num font-bold text-alert">{checkResult.problems.length}</span> 件あります。
                 （総体の平日は③のみ、総体の休日・祝日とB&Gの全日は①②③が必要です）
               </p>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -508,25 +508,25 @@ export default function Shifts() {
                   const list = checkResult.problems.filter(p => p.loc === loc);
                   return (
                     <div key={loc}>
-                      <div className="text-sm font-medium text-gray-700 mb-1">
+                      <div className="text-sm font-medium text-ink mb-1">
                         {WORK_LOCATION_LABELS[loc]}
-                        <span className="ml-2 text-xs text-gray-400">{list.length}件</span>
+                        <span className="num ml-2 text-xs text-ink-mute">{list.length}件</span>
                       </div>
                       {list.length === 0 ? (
-                        <p className="text-xs text-emerald-600">すべて入力済み ✓</p>
+                        <p className="text-xs text-pine">すべて入力済み ✓</p>
                       ) : (
-                        <ul className="text-sm divide-y divide-gray-100 border border-gray-100 rounded-md">
+                        <ul className="text-sm divide-y divide-rule-soft border border-rule-soft rounded-md">
                           {list.map(pr => {
                             const wd = new Date(`${pr.date}T00:00:00`).getDay();
                             const holiday = isSpecialHoliday(pr.date);
                             const tag = holiday ? '休' : wd === 0 ? '日' : wd === 6 ? '土' : '平';
                             return (
                               <li key={pr.date} className="flex items-center justify-between px-3 py-1.5">
-                                <span className={holiday || wd === 0 ? 'text-red-600' : wd === 6 ? 'text-blue-600' : 'text-gray-700'}>
+                                <span className={`num ${holiday || wd === 0 ? 'text-alert' : wd === 6 ? 'text-info' : 'text-ink'}`}>
                                   {Number(pr.date.slice(5, 7))}/{Number(pr.date.slice(8))}（{WEEKDAY_LABELS[wd]}{holiday ? '・休' : ''}）
-                                  <span className="ml-1 text-xs text-gray-400">{tag}</span>
+                                  <span className="ml-1 text-xs text-ink-mute">{tag}</span>
                                 </span>
-                                <span className="text-red-600 font-medium">{pr.missing.map(p => p.name).join('') } 未入力</span>
+                                <span className="text-alert font-medium">{pr.missing.map(p => p.name).join('') } 未入力</span>
                               </li>
                             );
                           })}
@@ -552,40 +552,40 @@ export default function Shifts() {
           <table className="border-collapse text-sm">
             <thead>
               <tr>
-                <th className="sticky left-0 z-10 bg-gray-50 text-left px-3 py-2 text-gray-600 font-medium border-b border-r min-w-28">職員</th>
+                <th className="sticky left-0 z-10 bg-paper text-left px-3 py-2 text-ink-soft font-medium border-b-2 border-b-rule border-r border-r-rule min-w-28">職員</th>
                 {days.map(d => {
                   const wd = new Date(`${d}T00:00:00`).getDay();
                   return (
                     <th key={d} title={closedDayName(d) || undefined}
-                      className={`min-w-9 px-0 py-1 text-xs font-medium border-b border-r border-gray-100 ${
-                        isSpecialHoliday(d) || wd === 0 ? 'bg-red-50 text-red-500'
-                          : wd === 6 ? 'bg-blue-50 text-blue-500' : 'bg-gray-50 text-gray-500'}`}>
+                      className={`num min-w-9 px-0 py-1 text-xs font-medium border-b-2 border-b-rule border-r border-r-rule-soft ${
+                        isSpecialHoliday(d) || wd === 0 ? 'bg-alert-soft text-alert'
+                          : wd === 6 ? 'bg-info-soft text-info' : 'bg-paper text-ink-mute'}`}>
                       <div>{Number(d.slice(8))}</div>
                       <div>{WEEKDAY_LABELS[wd]}</div>
                     </th>
                   );
                 })}
-                {mode === 'confirm' && <th className="bg-gray-50 text-gray-600 font-medium border-b px-2 text-xs whitespace-nowrap">日数</th>}
-                {mode === 'confirm' && <th className="bg-gray-50 text-gray-600 font-medium border-b px-2 text-xs whitespace-nowrap">実働</th>}
+                {mode === 'confirm' && <th className="bg-paper text-ink-soft font-medium border-b-2 border-b-rule px-2 text-xs whitespace-nowrap">日数</th>}
+                {mode === 'confirm' && <th className="bg-paper text-ink-soft font-medium border-b-2 border-b-rule px-2 text-xs whitespace-nowrap">実働</th>}
               </tr>
             </thead>
             <tbody>
               {staffOfLoc.map((s, rowIdx) => {
                 const t = mode === 'confirm' ? staffTotals(s.id) : null;
-                const stripe = rowIdx % 2 === 1 ? 'bg-gray-50' : 'bg-white'; // 1行おきにうすい背景
+                const stripe = rowIdx % 2 === 1 ? 'bg-paper' : 'bg-white'; // 1行おきにうすい背景
                 return (
                   <tr key={s.id} className={stripe}>
-                    <td className={`sticky left-0 z-10 ${stripe} px-3 py-1 border-b border-r whitespace-nowrap font-medium`}>
+                    <td className={`sticky left-0 z-10 ${stripe} px-3 py-1 border-b border-rule-soft border-r border-r-rule whitespace-nowrap font-medium`}>
                       {s.lastName} {s.firstName}
                     </td>
                     {days.map(date => {
                       const wd = new Date(`${date}T00:00:00`).getDay();
                       const ids = mode === 'request' ? reqIds(s.id, date) : confIds(s.id, date);
-                      const weekend = isSpecialHoliday(date) || wd === 0 ? 'bg-red-50/40'
-                        : wd === 6 ? 'bg-blue-50/40' : '';
+                      const weekend = isSpecialHoliday(date) || wd === 0 ? 'bg-alert-soft/60'
+                        : wd === 6 ? 'bg-info-soft/60' : '';
                       const hasNg = reqIds(s.id, date).length > 0; // 勤務できない区分の申請がある
                       const ng = isUnavailable(s.id, date);          // 終日の勤務不可
-                      const bg = ng ? 'bg-red-100' : weekend;
+                      const bg = ng ? 'bg-alert/15' : weekend;
                       return (
                         <td key={date}
                           onClick={e => setMenu({ staffId: s.id, date, x: e.clientX, y: e.clientY })}
@@ -593,36 +593,36 @@ export default function Shifts() {
                           title={ng ? '終日「勤務不可」の日です'
                             : mode === 'confirm' && hasNg ? `勤務できない区分: ${names(reqIds(s.id, date))}` : undefined}>
                           {ng && ids.length === 0
-                            ? <span className="text-red-600 font-bold leading-tight">×</span>
-                            : <span className={`font-medium leading-tight px-0.5 ${mode === 'request' ? 'text-red-600' : 'text-gray-800'}`}>{names(ids)}</span>}
+                            ? <span className="text-alert font-bold leading-tight">×</span>
+                            : <span className={`font-medium leading-tight px-0.5 ${mode === 'request' ? 'text-alert' : 'text-ink'}`}>{names(ids)}</span>}
                         </td>
                       );
                     })}
-                    {mode === 'confirm' && t && <td className="border-b px-2 text-center text-gray-600">{t.daysCount}</td>}
+                    {mode === 'confirm' && t && <td className="num border-b border-rule-soft px-2 text-center text-ink-soft">{t.daysCount}</td>}
                     {mode === 'confirm' && t && (() => {
                       const limit = s.monthlyHourLimit || 0;
                       const total = limit > 0 ? monthHoursAll(s.id) : 0;
                       const over = limit > 0 && total > limit;
                       if (over) return (
-                        <td className="border-b px-2 text-center text-red-600 font-bold bg-red-50"
+                        <td className="num border-b border-rule-soft px-2 text-center text-alert font-bold bg-alert-soft"
                           title={`月の上限 ${limit}h を超えています（両勤務場所の合計 ${total}h）`}>{t.hours}h</td>
                       );
                       return s.employmentType === 'fulltime'
-                        ? <td className="border-b px-2 text-center text-gray-300" title="常勤は月給制のため、シフト予定の実働時間は給与・時間外には反映されません（予定値）">{t.hours}h</td>
-                        : <td className="border-b px-2 text-center text-gray-600" title={limit > 0 ? `月の上限 ${limit}h（両勤務場所の合計 ${total}h）` : undefined}>{t.hours}h</td>;
+                        ? <td className="num border-b border-rule-soft px-2 text-center text-ink-mute" title="常勤は月給制のため、シフト予定の実働時間は給与・時間外には反映されません（予定値）">{t.hours}h</td>
+                        : <td className="num border-b border-rule-soft px-2 text-center text-ink-soft" title={limit > 0 ? `月の上限 ${limit}h（両勤務場所の合計 ${total}h）` : undefined}>{t.hours}h</td>;
                     })()}
                   </tr>
                 );
               })}
               {mode === 'confirm' && (
                 <tr>
-                  <td className="sticky left-0 z-10 bg-gray-50 px-3 py-1 border-b border-r whitespace-nowrap text-gray-500 text-xs">人数</td>
+                  <td className="sticky left-0 z-10 bg-paper px-3 py-1 border-b border-rule-soft border-r border-r-rule whitespace-nowrap text-ink-mute text-xs">人数</td>
                   {days.map(date => (
-                    <td key={date} className="min-w-9 text-center text-xs border-b border-r border-gray-100 text-gray-500">
+                    <td key={date} className="num min-w-9 text-center text-xs border-b border-r border-rule-soft text-ink-mute">
                       {dayCount(date) || ''}
                     </td>
                   ))}
-                  <td className="border-b" colSpan={2} />
+                  <td className="border-b border-rule-soft" colSpan={2} />
                 </tr>
               )}
             </tbody>
@@ -630,27 +630,27 @@ export default function Shifts() {
         </Card>
       )}
 
-      {loading && staffOfLoc.length > 0 && <p className="text-xs text-gray-400 mt-2">読み込み中…</p>}
+      {loading && staffOfLoc.length > 0 && <p className="text-xs text-ink-mute mt-2">読み込み中…</p>}
 
       {/* 区分選択ポップアップ */}
       {menu && menuStaff && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-          <div className="fixed z-50 bg-white border border-gray-200 rounded-md shadow-xl p-2 w-44 overflow-y-auto"
+          <div className="fixed z-50 bg-white border border-rule-soft rounded-md shadow-xl p-2 w-44 overflow-y-auto"
             style={{ left: menuPos!.left, top: menuPos!.top, maxHeight: `${window.innerHeight - menuPos!.top - 8}px` }}>
-            <div className="text-xs text-gray-500 mb-1 px-1">
-              {menuStaff.lastName} {menuStaff.firstName}・{Number(menu.date.slice(5, 7))}/{Number(menu.date.slice(8))}
+            <div className="text-xs text-ink-mute mb-1 px-1">
+              {menuStaff.lastName} {menuStaff.firstName}・<span className="num">{Number(menu.date.slice(5, 7))}/{Number(menu.date.slice(8))}</span>
             </div>
             {mode === 'confirm' && isUnavailable(menu.staffId, menu.date) && (
-              <div className="text-xs text-red-700 bg-red-50 rounded px-1.5 py-1 mb-1 font-medium">終日「勤務不可」で申請されています</div>
+              <div className="text-xs text-alert bg-alert-soft rounded px-1.5 py-1 mb-1 font-medium">終日「勤務不可」で申請されています</div>
             )}
             {mode === 'confirm' && !isUnavailable(menu.staffId, menu.date) && (
-              <div className="text-xs text-amber-700 bg-amber-50 rounded px-1.5 py-1 mb-1">
+              <div className="text-xs text-caution bg-caution-soft rounded px-1.5 py-1 mb-1">
                 勤務できない区分: {menuReqNames || 'なし'}
               </div>
             )}
             {mode === 'request' && (
-              <div className="text-xs text-gray-500 bg-gray-50 rounded px-1.5 py-1 mb-1">
+              <div className="text-xs text-ink-mute bg-paper rounded px-1.5 py-1 mb-1">
                 選んだ区分が<b>勤務できない区分</b>になります
               </div>
             )}
@@ -659,9 +659,9 @@ export default function Shifts() {
               return (
                 <button onClick={() => toggleUnavailable(menu.staffId, menu.date)}
                   className={`w-full flex items-center justify-between px-2 py-1.5 rounded text-sm mb-1 ${ng
-                    ? 'bg-red-600 text-white' : 'bg-red-50 text-red-700 hover:bg-red-100'}`}>
+                    ? 'bg-alert text-white' : 'bg-alert-soft text-alert hover:bg-alert/15'}`}>
                   <span>{ng ? '✓ ' : ''}勤務不可</span>
-                  <span className={`text-xs ${ng ? 'text-red-100' : 'text-red-400'}`}>×</span>
+                  <span className={`text-xs ${ng ? 'text-white/80' : 'text-alert/70'}`}>×</span>
                 </button>
               );
             })()}
@@ -671,26 +671,26 @@ export default function Shifts() {
                 // 確定モードでは、本人が勤務できないとした区分を選べないようにする
                 const ng = mode === 'confirm' && isPatternNg(menu.staffId, menu.date, p.id);
                 const cls = on
-                  ? (mode === 'request' ? 'bg-red-600 text-white' : ng ? 'bg-amber-600 text-white' : 'bg-emerald-600 text-white')
+                  ? (mode === 'request' ? 'bg-alert text-white' : ng ? 'bg-caution text-white' : 'bg-pine text-white')
                   : ng
-                    ? 'bg-red-50 text-red-700 border border-red-200 hover:bg-red-100'
-                    : 'bg-gray-50 text-gray-700 hover:bg-gray-100';
+                    ? 'bg-alert-soft text-alert border border-alert/25 hover:bg-alert/15'
+                    : 'bg-paper text-ink hover:bg-rule-soft';
                 return (
                   <button key={p.id}
                     onClick={() => togglePattern(menu.staffId, menu.date, p.id)}
                     className={`flex items-center justify-between px-2 py-1.5 rounded text-sm ${cls}`}>
                     <span>{on ? (mode === 'request' ? '✕ ' : '✓ ') : ''}{p.name}</span>
-                    <span className={`text-xs ${on ? 'text-white/80' : ng ? 'text-red-500' : 'text-gray-400'}`}>
+                    <span className={`text-xs ${ng ? '' : 'num'} ${on ? 'text-white/80' : ng ? 'text-alert' : 'text-ink-mute'}`}>
                       {ng ? '勤務不可' : `${p.startTime}〜${p.endTime}`}
                     </span>
                   </button>
                 );
               })}
-              {validPatterns.length === 0 && <span className="text-xs text-gray-400 px-1 py-2">この場所で使える区分がありません（区分マスタで登録）</span>}
+              {validPatterns.length === 0 && <span className="text-xs text-ink-mute px-1 py-2">この場所で使える区分がありません（区分マスタで登録）</span>}
             </div>
-            <div className="flex justify-between mt-2 pt-2 border-t text-xs">
-              <button onClick={() => clearCell(menu.staffId, menu.date)} className="text-red-500 hover:underline px-1">クリア</button>
-              <button onClick={() => setMenu(null)} className="text-gray-500 hover:underline px-1">閉じる</button>
+            <div className="flex justify-between mt-2 pt-2 border-t border-rule-soft text-xs">
+              <button onClick={() => clearCell(menu.staffId, menu.date)} className="text-alert hover:underline px-1">クリア</button>
+              <button onClick={() => setMenu(null)} className="text-ink-mute hover:underline px-1">閉じる</button>
             </div>
           </div>
         </>

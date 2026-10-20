@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
+import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert, Tile, SectionTitle } from '../../components/UI';
 import { listStaff, listLeave, addLeave, deleteLeave, setLeaveStatus, computeLeaveBalance, genId, todayStr } from '../../api/data';
 import { EMPLOYMENT_TYPE_LABELS, canUseSpecialLeave, SPECIAL_LEAVE_TYPES, specialLeaveDef, specialLeaveOptionLabel, specialLeaveAnnualDays, specialLeaveUsedDays, specialLeavePaidRemain, paymentLabel, subReasonsFor, subReasonLabel, leaveTypeLabel, currentFiscalYear, hourlyPaidLeaveRemainHours, HOURLY_LEAVE_LIMIT_DAYS, hourlyLeaveLimitHours, leaveDayHours } from '../../utils/constants';
 import {
@@ -214,10 +214,10 @@ export default function Leave() {
         <>
           {/* 残数サマリー（1日=7.5時間で換算） */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-            <SummaryTile label="付与合計" value={`${summary.grantedDays}日`} sub={`${summary.grantedHours}h`} />
-            <SummaryTile label="取得合計" value={`${summary.usedDays}日`} sub={`${summary.usedHours}h`} />
-            <SummaryTile label={`時効消滅（${LEAVE_EXPIRY_MONTHS / 12}年）`} value={`${d1(ledger.expiredHours)}日`} sub={`${ledger.expiredHours}h`} />
-            <SummaryTile label="有効な残（1日=7.5h）" value={`${d1(ledger.balanceHours)}日`} sub={`${ledger.balanceHours}h`} highlight />
+            <Tile label="付与合計" value={`${summary.grantedDays}日`} sub={`${summary.grantedHours}h`} />
+            <Tile label="取得合計" value={`${summary.usedDays}日`} sub={`${summary.usedHours}h`} />
+            <Tile label={`時効消滅（${LEAVE_EXPIRY_MONTHS / 12}年）`} value={`${d1(ledger.expiredHours)}日`} sub={`${ledger.expiredHours}h`} />
+            <Tile label="有効な残（1日=7.5h）" value={`${d1(ledger.balanceHours)}日`} sub={`${ledger.balanceHours}h`} tone="accent" />
           </div>
           {ledger.overusedHours > 0 && (
             <Alert type="error">
@@ -227,16 +227,15 @@ export default function Leave() {
 
           {/* 年5日取得義務（労基法第39条第7項） */}
           {obligation && (
-            <Card className={`mb-4 ${obligation.overdue ? 'border-red-300' : obligation.achieved ? '' : 'border-yellow-300'}`}>
+            <Card className={`mb-4 ${obligation.overdue ? 'border-alert' : obligation.achieved ? '' : 'border-caution'}`}>
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
-                  <h2 className="font-bold text-gray-800">年5日取得義務</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    年10日以上付与された職員は、基準日から1年以内に5日取得させる必要があります（労基法第39条第7項）
-                  </p>
-                  <p className="text-sm mt-1">
+                  <SectionTitle note="年10日以上付与された職員は、基準日から1年以内に5日取得させる必要があります（労基法第39条第7項）">
+                    年5日取得義務
+                  </SectionTitle>
+                  <p className="num text-sm mt-1">
                     基準日 {obligation.baseDate} 〜 期限 <span className="font-medium">{obligation.deadline}</span>
-                    <span className="mx-2 text-gray-300">|</span>
+                    <span className="mx-2 text-ink-mute">|</span>
                     取得 <span className="font-bold">{obligation.taken}日</span> / {OBLIGATION_REQUIRED_DAYS}日
                   </p>
                 </div>
@@ -248,22 +247,22 @@ export default function Leave() {
                   <Badge color="yellow">あと{obligation.remaining}日</Badge>
                 )}
               </div>
-              <p className="text-xs text-gray-400 mt-2">時間単位で取得した年休は、この5日には算入できません。</p>
+              <p className="text-xs text-ink-mute mt-2">時間単位で取得した年休は、この5日には算入できません。</p>
             </Card>
           )}
 
           {/* 承認待ちの休暇申請 */}
           {pending.length > 0 && (
-            <Card className="mb-4 border-yellow-300">
-              <h2 className="font-bold text-gray-800 mb-3">承認待ちの休暇申請（{pending.length}件）</h2>
+            <Card className="mb-4 border-caution">
+              <SectionTitle>承認待ちの休暇申請（{pending.length}件）</SectionTitle>
               <div className="space-y-2">
                 {pending.map(r => (
                   <div key={r.id} className="flex items-center gap-3 flex-wrap text-sm">
-                    <span className="font-medium">{r.date}</span>
+                    <span className="num font-medium">{r.date}</span>
                     <Badge color={(r.leaveType || 'paid') === 'paid' ? 'gray' : 'blue'}>{leaveTypeLabel(r.leaveType)}</Badge>
-                    <span>{r.hours > 0 ? (r.startTime && r.endTime ? `${r.startTime}〜${r.endTime}（${r.hours}時間）` : `${r.hours}時間`) : `${r.days}日`}</span>
-                    {r.subReason && <span className="text-xs text-gray-500">{subReasonLabel(r.subReason)}</span>}
-                    {r.note && <span className="text-xs text-gray-500">{r.note}</span>}
+                    <span className="num">{r.hours > 0 ? (r.startTime && r.endTime ? `${r.startTime}〜${r.endTime}（${r.hours}時間）` : `${r.hours}時間`) : `${r.days}日`}</span>
+                    {r.subReason && <span className="text-xs text-ink-mute">{subReasonLabel(r.subReason)}</span>}
+                    {r.note && <span className="text-xs text-ink-mute">{r.note}</span>}
                     <div className="flex-1" />
                     <Button size="sm" onClick={() => changeStatus(r.id, 'approved')}>承認</Button>
                     <Button size="sm" variant="secondary" onClick={() => changeStatus(r.id, 'rejected')}>却下</Button>
@@ -275,28 +274,27 @@ export default function Leave() {
 
           {/* 法定付与（労基法第39条） */}
           {selectedStaff && (
-            <Card className={`mb-4 ${missingGrants.length > 0 ? 'border-yellow-300' : ''}`}>
+            <Card className={`mb-4 ${missingGrants.length > 0 ? 'border-caution' : ''}`}>
               <div className="flex items-start justify-between flex-wrap gap-3">
                 <div>
-                  <h2 className="font-bold text-gray-800">法定付与</h2>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    勤続6か月で最初の付与、以降1年ごと。
+                  <SectionTitle note={<>勤続6か月で最初の付与、以降1年ごと。
                     {isProportional(selectedStaff)
                       ? `週${selectedStaff.weeklyWorkDays}日勤務のため比例付与で計算しています。`
-                      : '通常付与（10日→11日→12日→14日→16日→18日→20日）で計算しています。'}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
+                      : '通常付与（10日→11日→12日→14日→16日→18日→20日）で計算しています。'}</>}>
+                    法定付与
+                  </SectionTitle>
+                  <p className="text-xs text-ink-mute mt-1">
                     {EMPLOYMENT_TYPE_LABELS[selectedStaff.employmentType]}・入職日 {selectedStaff.hireDate || '未設定'}
                     ／1日＝{dayHours}時間
                     {selectedStaff.employmentType !== 'fulltime' && !selectedStaff.weeklyWorkDays && (
-                      <span className="text-amber-700">　※週の所定労働日数が未設定のため通常付与で計算しています（職員名簿で設定してください）</span>
+                      <span className="text-caution">　※週の所定労働日数が未設定のため通常付与で計算しています（職員名簿で設定してください）</span>
                     )}
                   </p>
                   {/* 比例付与は「週30時間未満」かつ「週4日以下」の両方が条件（第22条2項） */}
                   {selectedStaff.employmentType !== 'fulltime'
                     && (selectedStaff.weeklyWorkDays || 0) >= 1 && (selectedStaff.weeklyWorkDays || 0) <= 4
                     && !selectedStaff.weeklyWorkHours && (
-                    <p className="text-xs text-amber-700 mt-1">
+                    <p className="text-xs text-caution mt-1">
                       ※週の所定労働時間が未設定です。<b>週30時間以上の場合は比例付与ではなく通常付与</b>になります（第22条2項）。
                       職員名簿で設定してください。
                     </p>
@@ -307,18 +305,15 @@ export default function Leave() {
                 </Button>
               </div>
               {!selectedStaff.hireDate ? (
-                <p className="text-sm text-gray-400 mt-3">入職日が未設定のため付与日を計算できません。</p>
+                <p className="text-sm text-ink-mute mt-3">入職日が未設定のため付与日を計算できません。</p>
               ) : schedule.length === 0 ? (
-                <p className="text-sm text-gray-400 mt-3">まだ最初の付与日（勤続6か月）に達していません。</p>
+                <p className="text-sm text-ink-mute mt-3">まだ最初の付与日（勤続6か月）に達していません。</p>
               ) : (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {schedule.map(g => (
-                    <span key={g.date}
-                      className={`text-xs px-2 py-1 rounded border ${g.registered
-                        ? 'bg-gray-50 border-gray-200 text-gray-500'
-                        : 'bg-yellow-50 border-yellow-300 text-yellow-800 font-medium'}`}>
+                    <Badge key={g.date} color={g.registered ? 'gray' : 'yellow'} className="num py-1">
                       {g.date}　勤続{g.serviceLabel}　{g.days}日{g.registered ? '' : '（未登録）'}
-                    </span>
+                    </Badge>
                   ))}
                 </div>
               )}
@@ -327,21 +322,21 @@ export default function Leave() {
                 const live = ledger.lots.filter(l => l.expiry > today);
                 const gone = ledger.lots.filter(l => l.expiry <= today && l.expiredHours > 0);
                 return (
-                  <div className="mt-3 border-t border-gray-100 pt-3">
-                    <p className="text-xs font-medium text-gray-700 mb-1">有効な付与の残</p>
+                  <div className="mt-3 border-t border-rule-soft pt-3">
+                    <p className="text-xs font-medium text-ink mb-1">有効な付与の残</p>
                     {live.length === 0 ? (
-                      <p className="text-xs text-gray-400">有効な付与はありません。</p>
+                      <p className="text-xs text-ink-mute">有効な付与はありません。</p>
                     ) : (
                       <div className="flex flex-wrap gap-2">
                         {live.map(l => (
-                          <span key={l.date} className="text-xs px-2 py-1 rounded border bg-emerald-50 border-emerald-200 text-emerald-800">
-                            {l.date}付与　残{d1(l.remainHours)}日　<span className="text-emerald-600">{l.expiry}まで</span>
-                          </span>
+                          <Badge key={l.date} color="green" className="num py-1">
+                            {l.date}付与　残{d1(l.remainHours)}日　<span className="text-pine">{l.expiry}まで</span>
+                          </Badge>
                         ))}
                       </div>
                     )}
                     {gone.length > 0 && (
-                      <p className="text-xs text-gray-400 mt-2">
+                      <p className="num text-xs text-ink-mute mt-2">
                         時効で消滅した付与 {gone.length}件（合計 {d1(gone.reduce((s, l) => s + l.expiredHours, 0))}日）
                       </p>
                     )}
@@ -353,7 +348,7 @@ export default function Leave() {
 
           {/* 記録追加 */}
           <Card className="mb-4">
-            <h2 className="font-bold text-gray-800 mb-4">記録の追加</h2>
+            <SectionTitle>記録の追加</SectionTitle>
             {error && <Alert type="error">{error}</Alert>}
             <form onSubmit={handleAdd} className="grid sm:grid-cols-6 gap-3 items-end">
               {kind === 'use' && (
@@ -371,12 +366,12 @@ export default function Leave() {
                     {specialOk && SPECIAL_LEAVE_TYPES.map(t => <option key={t.id} value={t.id}>{specialLeaveOptionLabel(t)}</option>)}
                   </Select>
                   {!specialOk && selectedStaff && (
-                    <p className="text-xs text-gray-400 -mt-3 mb-4">
+                    <p className="text-xs text-ink-mute -mt-3 mb-4">
                       特別休暇は常勤職員のみです（この職員は{EMPLOYMENT_TYPE_LABELS[selectedStaff.employmentType]}）。
                     </p>
                   )}
                   {specialOk && typeDef && (
-                    <p className="text-xs text-gray-500 -mt-3 mb-4">
+                    <p className="text-xs text-ink-mute -mt-3 mb-4">
                       {paymentLabel(typeDef)}
                       {typeDef.paidDays ? `（今年度の有給分の残 ${paidRemain}日。超えた分は無給）` : ''}
                     </p>
@@ -423,7 +418,7 @@ export default function Leave() {
               </div>
             </form>
             {kind === 'use' && (
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="num text-xs text-ink-mute mt-1">
                 1日＝{dayHours}時間で残から差し引きます（週の所定労働時間÷週の所定労働日数・端数切り上げ）。
                 時間単位は1時間から、年に{HOURLY_LEAVE_LIMIT_DAYS}日ぶん（{hourlyLeaveLimitHours(selectedStaff)}時間）まで。
               </p>
@@ -438,7 +433,7 @@ export default function Leave() {
                   <Th>日付</Th>
                   <Th>種別</Th>
                   <Th>休暇の種類</Th>
-                  <Th>日数/時間</Th>
+                  <Th numeric>日数/時間</Th>
                   <Th>状態</Th>
                   <Th>備考</Th>
                   <Th className="w-16"></Th>
@@ -449,7 +444,7 @@ export default function Leave() {
                   const st = r.status || 'approved';
                   return (
                   <tr key={r.id}>
-                    <Td>{r.date}</Td>
+                    <Td className="num">{r.date}</Td>
                     <Td>
                       <Badge color={r.kind === 'grant' ? 'blue' : 'green'}>
                         {r.kind === 'grant' ? '付与' : '取得'}
@@ -457,9 +452,9 @@ export default function Leave() {
                     </Td>
                     <Td className="whitespace-nowrap text-xs">
                       {r.kind === 'grant' ? '—' : leaveTypeLabel(r.leaveType)}
-                      {r.subReason && <span className="block text-gray-400">{subReasonLabel(r.subReason)}</span>}
+                      {r.subReason && <span className="block text-ink-mute">{subReasonLabel(r.subReason)}</span>}
                     </Td>
-                    <Td className="whitespace-nowrap">{r.hours > 0 ? (r.startTime && r.endTime ? `${r.startTime}〜${r.endTime}（${r.hours}時間）` : `${r.hours}時間`) : `${r.days}日`}</Td>
+                    <Td numeric className="whitespace-nowrap">{r.hours > 0 ? (r.startTime && r.endTime ? `${r.startTime}〜${r.endTime}（${r.hours}時間）` : `${r.hours}時間`) : `${r.days}日`}</Td>
                     <Td>
                       <Badge color={st === 'approved' ? 'green' : st === 'requested' ? 'yellow' : 'red'}>
                         {st === 'approved' ? '承認済' : st === 'requested' ? '申請中' : '却下'}
@@ -474,7 +469,7 @@ export default function Leave() {
                 })}
                 {records.length === 0 && (
                   <tr>
-                    <Td className="text-center text-gray-400 py-8" colSpan={6}>
+                    <Td className="text-center text-ink-mute py-8" colSpan={6}>
                       記録がありません
                     </Td>
                   </tr>
@@ -488,12 +483,3 @@ export default function Leave() {
   );
 }
 
-function SummaryTile({ label, value, sub, highlight }: { label: string; value: string; sub?: string; highlight?: boolean }) {
-  return (
-    <Card className="text-center py-3">
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className={`text-lg font-bold ${highlight ? 'text-emerald-600' : 'text-gray-800'}`}>{value}</p>
-      {sub && <p className="text-xs text-gray-400">{sub}</p>}
-    </Card>
-  );
-}

@@ -1,7 +1,7 @@
 // 従業員向けの確定シフト表（閲覧のみ）
 // 掲示するシフト表と同じ内容を、スマホでも見やすい形で表示する。
 import { useEffect, useMemo, useState } from 'react';
-import { PageContainer, Card, Button, Badge } from '../../components/UI';
+import { PageContainer, Card, Button, Badge, SectionTitle } from '../../components/UI';
 import { getShiftBoard, getMyProfile, listShiftPatterns, onDataRefresh, todayStr } from '../../api/data';
 import type { ShiftBoard } from '../../api/data';
 import { WORK_LOCATION_LABELS, WEEKDAY_LABELS, staffInLocation } from '../../utils/constants';
@@ -116,8 +116,8 @@ export default function StaffSchedule() {
 
   const dayColor = (date: string) => {
     const wd = new Date(`${date}T00:00:00`).getDay();
-    if (isSpecialHoliday(date) || wd === 0) return 'text-red-600';
-    return wd === 6 ? 'text-blue-600' : 'text-gray-500';
+    if (isSpecialHoliday(date) || wd === 0) return 'text-alert';
+    return wd === 6 ? 'text-info' : 'text-ink-mute';
   };
 
   return (
@@ -125,26 +125,26 @@ export default function StaffSchedule() {
       {/* 月と勤務場所 */}
       <Card className="mb-4">
         <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="secondary" size="sm" onClick={() => setMonth(m => addMonth(m, -1))}>←</Button>
-          <span className="font-bold text-gray-800">{month.replace('-', '年')}月</span>
-          <Button variant="secondary" size="sm" onClick={() => setMonth(m => addMonth(m, 1))}>→</Button>
+          <Button variant="secondary" onClick={() => setMonth(m => addMonth(m, -1))}>←</Button>
+          <span className="num font-bold text-ink">{month.replace('-', '年')}月</span>
+          <Button variant="secondary" onClick={() => setMonth(m => addMonth(m, 1))}>→</Button>
           {month !== today.slice(0, 7) && (
-            <Button variant="secondary" size="sm" onClick={() => setMonth(today.slice(0, 7))}>今月</Button>
+            <Button variant="secondary" onClick={() => setMonth(today.slice(0, 7))}>今月</Button>
           )}
           <div className="flex-1" />
-          <div className="flex rounded-md overflow-hidden border border-gray-300">
+          <div className="flex rounded-md overflow-hidden border border-rule">
             {(Object.keys(WORK_LOCATION_LABELS) as WorkLocation[]).map(loc => (
               <button key={loc} onClick={() => setLocation(loc)}
-                className={`px-3 py-1.5 text-sm ${location === loc ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>
+                className={`px-3 py-1.5 text-sm ${location === loc ? 'bg-pine text-white' : 'bg-white text-ink-soft hover:bg-paper'}`}>
                 {WORK_LOCATION_LABELS[loc]}
               </button>
             ))}
           </div>
         </div>
-        <p className="text-xs text-gray-400 mt-2">
+        <p className="text-xs text-ink-mute mt-2">
           事務局が確定したシフトです。変更があるとホーム画面にお知らせが出ます。
           {validPatterns.length > 0 && (
-            <span className="ml-1">
+            <span className="num ml-1">
               {validPatterns.map(p => `${p.name} ${p.startTime}〜${p.endTime}`).join('／')}
             </span>
           )}
@@ -154,29 +154,29 @@ export default function StaffSchedule() {
       {/* 自分のシフト */}
       <Card className="mb-4">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="font-bold text-gray-800">自分のシフト</h2>
+          <h2 className="font-bold text-ink">自分のシフト</h2>
           {mine.length > 0 && <Badge color="green">{mine.length}日・{myHours}h</Badge>}
         </div>
         {loading ? (
-          <p className="text-sm text-gray-400">読み込み中…</p>
+          <p className="text-sm text-ink-mute">読み込み中…</p>
         ) : mine.length === 0 ? (
-          <p className="text-sm text-gray-500">この月のシフトはまだ確定していません。</p>
+          <p className="text-sm text-ink-soft">この月のシフトはまだ確定していません。</p>
         ) : (
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y divide-rule-soft">
             {mine.map(d => {
               const wd = new Date(`${d.date}T00:00:00`).getDay();
               const isToday = d.date === today;
               const past = d.date < today;
               return (
                 <div key={`${d.date}_${d.location}`}
-                  className={`flex items-center gap-3 py-2 text-sm ${past ? 'opacity-50' : ''} ${isToday ? 'bg-emerald-50 -mx-2 px-2 rounded' : ''}`}>
-                  <span className="w-16 shrink-0 font-medium">
+                  className={`flex items-center gap-3 py-2 text-sm ${past ? 'opacity-50' : ''} ${isToday ? 'bg-pine-soft -mx-2 px-2 rounded' : ''}`}>
+                  <span className="num w-16 shrink-0 font-medium">
                     {Number(d.date.slice(5, 7))}/{Number(d.date.slice(8))}
                     <span className={`ml-1 text-xs ${dayColor(d.date)}`}>({WEEKDAY_LABELS[wd]})</span>
                   </span>
-                  <span className="w-24 shrink-0 text-xs text-gray-500">{WORK_LOCATION_LABELS[d.location]}</span>
-                  <span className="font-medium text-gray-800">{names(d.ids)}</span>
-                  <span className="text-xs text-gray-500">
+                  <span className="w-24 shrink-0 text-xs text-ink-mute">{WORK_LOCATION_LABELS[d.location]}</span>
+                  <span className="font-medium text-ink">{names(d.ids)}</span>
+                  <span className="num text-xs text-ink-mute">
                     {d.ids.map(id => {
                       const p = patternMap.get(id);
                       return p ? `${p.startTime}〜${p.endTime}` : '';
@@ -193,24 +193,25 @@ export default function StaffSchedule() {
       {/* 全員のシフト表 */}
       <Card className="p-0 overflow-x-auto">
         <div className="px-4 pt-4 pb-2">
-          <h2 className="font-bold text-gray-800">{WORK_LOCATION_LABELS[location]}のシフト表</h2>
-          <p className="text-xs text-gray-400 mt-0.5">横にスクロールできます。自分の行は色付きです。</p>
+          <SectionTitle note="横にスクロールできます。自分の行は色付きです。">
+            {WORK_LOCATION_LABELS[location]}のシフト表
+          </SectionTitle>
         </div>
         {loading ? (
-          <p className="text-sm text-gray-400 px-4 pb-4">読み込み中…</p>
+          <p className="text-sm text-ink-mute px-4 pb-4">読み込み中…</p>
         ) : staffOfLoc.length === 0 ? (
-          <p className="text-sm text-gray-500 px-4 pb-4">この勤務場所の職員がいません。</p>
+          <p className="text-sm text-ink-soft px-4 pb-4">この勤務場所の職員がいません。</p>
         ) : (
           <table className="text-xs border-collapse">
             <thead>
               <tr>
-                <th className="sticky left-0 z-10 bg-gray-50 border-b border-r px-3 py-1 text-left font-medium text-gray-600 whitespace-nowrap">職員</th>
+                <th className="sticky left-0 z-10 bg-paper border-b border-r border-rule px-3 py-1 text-left font-medium text-ink-soft whitespace-nowrap">職員</th>
                 {days.map(date => {
                   const wd = new Date(`${date}T00:00:00`).getDay();
                   return (
-                    <th key={date} className={`bg-gray-50 border-b px-1 py-1 font-medium w-9 ${dayColor(date)} ${date === today ? 'bg-emerald-100' : ''}`}>
+                    <th key={date} className={`num bg-paper border-b border-rule px-1 py-1 font-medium w-9 ${dayColor(date)} ${date === today ? 'bg-pine-soft' : ''}`}>
                       <div>{Number(date.slice(8))}</div>
-                      <div className="text-[10px]">{WEEKDAY_LABELS[wd]}</div>
+                      <div className="text-xs">{WEEKDAY_LABELS[wd]}</div>
                     </th>
                   );
                 })}
@@ -219,18 +220,18 @@ export default function StaffSchedule() {
             <tbody>
               {staffOfLoc.map((s, i) => {
                 const isMe = me?.id === s.id;
-                const stripe = isMe ? 'bg-emerald-50' : i % 2 === 1 ? 'bg-gray-50' : 'bg-white';
+                const stripe = isMe ? 'bg-pine-soft' : i % 2 === 1 ? 'bg-paper' : 'bg-white';
                 return (
                   <tr key={s.id} className={stripe}>
-                    <td className={`sticky left-0 z-10 ${stripe} border-b border-r px-3 py-1 whitespace-nowrap ${isMe ? 'font-bold text-emerald-800' : 'font-medium'}`}>
+                    <td className={`sticky left-0 z-10 ${stripe} border-b border-r border-rule-soft px-3 py-1 whitespace-nowrap ${isMe ? 'font-bold text-pine' : 'font-medium'}`}>
                       {s.name}
                     </td>
                     {days.map(date => {
                       const ids = cell.get(`${s.id}_${date}`) ?? [];
                       return (
                         <td key={date}
-                          className={`border-b text-center px-0.5 py-1 ${date === today ? 'bg-emerald-100/60' : ''}`}>
-                          <span className="font-medium text-gray-800">{names(ids)}</span>
+                          className={`border-b border-rule-soft text-center px-0.5 py-1 ${date === today ? 'bg-pine-soft/60' : ''}`}>
+                          <span className="font-medium text-ink">{names(ids)}</span>
                         </td>
                       );
                     })}

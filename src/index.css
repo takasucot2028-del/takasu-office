@@ -1,5 +1,55 @@
 @import "tailwindcss";
 
+/*
+ * 配色と文字の基準。
+ *
+ * このシステムの実体は出勤簿・賃金台帳といった「帳簿」なので、
+ * 画面も帳簿の見え方に寄せる。罫線は細く強く、数字は桁をそろえ、
+ * 行はゆったり。色はクラブの緑ひとつに絞り、赤は取り消しと警告だけに使う。
+ */
+@theme {
+  /* 文字 */
+  --color-ink: #15241f;        /* 本文。緑みのある黒 */
+  --color-ink-soft: #4a5a54;   /* 補助的な文字 */
+  --color-ink-mute: #76837e;   /* 注記・プレースホルダ */
+
+  /* クラブの緑。ロゴの emerald を帳簿向けに深くしたもの */
+  --color-pine: #0f5c46;
+  --color-pine-dark: #0b4636;
+  --color-pine-soft: #e7f0ec;  /* 選択中の背景 */
+
+  /* 用紙と罫線 */
+  --color-paper: #f6f5f2;      /* ページ地。青みのない温かい灰 */
+  --color-rule: #cfccc4;       /* 表の上下・見出しの罫 */
+  --color-rule-soft: #e6e3dd;  /* 行間の細い罫 */
+
+  /* 意味を持つ色 */
+  --color-alert: #b3261e;      /* 誤り・削除 */
+  --color-alert-soft: #fdecea;
+  --color-caution: #8a5a00;    /* 未承認・注意 */
+  --color-caution-soft: #fdf4e3;
+  --color-info: #1f5f8b;
+  --color-info-soft: #eaf2f8;
+
+  --font-sans: "Hiragino Kaku Gothic ProN", "Yu Gothic Medium", "Yu Gothic",
+    Meiryo, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html {
+  background: var(--color-paper);
+}
+
+body {
+  color: var(--color-ink);
+  font-feature-settings: "palt" 1; /* 日本語の約物を詰めて読みやすく */
+}
+
+/* 時刻・金額・時間数は桁をそろえる（帳簿として読むため） */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
 /* スマホ(iOS Safari)で入力欄タップ時の自動ズームを防ぐ（フォントを16px以上に） */
 @media (max-width: 640px) {
   input, select, textarea { font-size: 16px; }
@@ -10,7 +60,7 @@
   header { display: none !important; }
   .no-print { display: none !important; }
   /* 画面用の背景を消して用紙を白く */
-  body, .min-h-screen { background: #fff !important; }
+  html, body, .min-h-screen { background: #fff !important; }
   .shift-print { padding: 0 !important; }
 }
 

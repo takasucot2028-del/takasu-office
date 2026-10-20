@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
+import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert, SectionTitle, Tile } from '../../components/UI';
 import { getMyLeave, getMyProfile, addMyLeaveRequest, computeLeaveBalance, todayStr } from '../../api/data';
 import {
   hoursBetween, currentFiscalYear, fiscalYearLabel,
@@ -159,19 +159,19 @@ export default function StaffLeaveRequest() {
         <div className="grid grid-cols-3 gap-3 mb-4">
           <Tile label="付与" value={`${summary.grantedDays}日`} sub={`${summary.grantedHours}h`} />
           <Tile label="取得(承認済)" value={`${summary.usedDays}日`} sub={`${summary.usedHours}h`} />
-          <Tile label="有効な残（1日=7.5h）" value={`${balanceDays}日`} sub={`${balanceHours}h`} highlight />
+          <Tile label="有効な残（1日=7.5h）" value={`${balanceDays}日`} sub={`${balanceHours}h`} tone="accent" />
         </div>
       ) : def && annualDays > 0 ? (
         <div className="grid grid-cols-3 gap-3 mb-4">
           <Tile label="今年度の上限" value={`${annualDays}日`} sub={fiscalYearLabel(fy)} />
           <Tile label="取得(承認済)" value={`${usedDays}日`} />
-          <Tile label="残" value={`${remainDays}日`} highlight />
+          <Tile label="残" value={`${remainDays}日`} tone="accent" />
         </div>
       ) : def && paidLimit > 0 ? (
         <div className="grid grid-cols-3 gap-3 mb-4">
           <Tile label="今年度の有給分" value={`${paidLimit}日`} sub={fiscalYearLabel(fy)} />
           <Tile label="取得(承認済)" value={`${Math.round((paidLimit - paidRemain) * 100) / 100}日`} />
-          <Tile label="有給で取得できる残" value={`${paidRemain}日`} highlight />
+          <Tile label="有給で取得できる残" value={`${paidRemain}日`} tone="accent" />
         </div>
       ) : null}
 
@@ -191,7 +191,7 @@ export default function StaffLeaveRequest() {
       )}
 
       <Card className="mb-4">
-        <h2 className="font-bold text-gray-800 mb-3">申請する</h2>
+        <SectionTitle>申請する</SectionTitle>
         <form onSubmit={add} className="grid sm:grid-cols-6 gap-3 items-end">
           <div className="sm:col-span-2">
             <Field label="休暇の種類">
@@ -236,37 +236,37 @@ export default function StaffLeaveRequest() {
             </Field>
           )}
           <Field label="備考"><Input value={note} onChange={e => setNote(e.target.value)} placeholder="例: 午後半休" /></Field>
-          <div className="mb-4"><Button type="submit" className="w-full" disabled={saving}>{saving ? '申請中…' : '申請する'}</Button></div>
+          <div className="mb-4"><Button type="submit" size="lg" className="w-full" disabled={saving}>{saving ? '申請中…' : '申請する'}</Button></div>
         </form>
-        <p className="text-xs text-gray-400">
-          1日＝{dayHours}時間。時間単位の年次有給は1年に{HOURLY_LEAVE_LIMIT_DAYS}日ぶん（残り{hourlyRemain}時間）まで。時間単位は開始〜終了で申請（現在: <span className="font-medium text-gray-600">{unit === 'hour' ? (hourAmt > 0 ? `${hourAmt}h` : '—') : `${amount || 0}日`}</span>）。申請は事務局の承認後に反映されます。
+        <p className="text-xs text-ink-mute">
+          1日＝{dayHours}時間。時間単位の年次有給は1年に{HOURLY_LEAVE_LIMIT_DAYS}日ぶん（残り{hourlyRemain}時間）まで。時間単位は開始〜終了で申請（現在: <span className="num font-medium text-ink">{unit === 'hour' ? (hourAmt > 0 ? `${hourAmt}h` : '—') : `${amount || 0}日`}</span>）。申請は事務局の承認後に反映されます。
         </p>
         {!specialOk && me && (
-          <p className="mt-3 text-xs bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-gray-600">
+          <p className="mt-3 text-xs bg-paper border border-rule-soft rounded-md px-3 py-2 text-ink-soft">
             特別休暇（就業規則 第23〜34条）は常勤職員のみに付与されます。
             {EMPLOYMENT_TYPE_LABELS[me.employmentType]}の方は年次有給休暇の申請のみできます。
           </p>
         )}
         {def && (
-          <div className="mt-3 text-xs bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-gray-600">
-            <span className="font-medium text-gray-800">{def.article ? def.name + '（就業規則 ' + def.article + '）' : def.name}</span>
-            <span className="ml-2 text-amber-700 font-medium">{paymentLabel(def)}</span>
+          <div className="mt-3 text-xs bg-paper border border-rule-soft rounded-md px-3 py-2 text-ink-soft">
+            <span className="font-medium text-ink">{def.article ? def.name + '（就業規則 ' + def.article + '）' : def.name}</span>
+            <span className="ml-2 text-caution font-medium">{paymentLabel(def)}</span>
             <p className="mt-1">{def.note}</p>
             {reason?.days && (
-              <p className="mt-1">この事由の日数は <span className="font-bold text-gray-800">{reason.days}日</span> です。</p>
+              <p className="mt-1">この事由の日数は <span className="num font-bold text-ink">{reason.days}日</span> です。</p>
             )}
             {paidLimit > 0 && (
               unpaidDays > 0
-                ? <p className="mt-1 text-amber-700">
+                ? <p className="num mt-1 text-caution">
                     今年度の有給分の残は {paidRemain}日 です。今回の申請 {requestDays}日 のうち{' '}
                     <span className="font-bold">{unpaidDays}日 が無給</span> になります。
                   </p>
-                : <p className="mt-1">今年度の有給分の残は <span className="font-bold text-gray-800">{paidRemain}日</span> です。</p>
+                : <p className="mt-1">今年度の有給分の残は <span className="num font-bold text-ink">{paidRemain}日</span> です。</p>
             )}
             {leaveType === 'childNursing' && (
               annualDays > 0
-                ? <p className="mt-1">あなたの上限は <span className="font-bold text-gray-800">年{annualDays}日</span> です（対象の子 {me?.childNursingChildren}人）。</p>
-                : <p className="mt-1 text-amber-700">対象となる子の人数が未設定のため、上限の判定ができません。事務局にご確認ください。</p>
+                ? <p className="mt-1">あなたの上限は <span className="num font-bold text-ink">年{annualDays}日</span> です（対象の子 {me?.childNursingChildren}人）。</p>
+                : <p className="mt-1 text-caution">対象となる子の人数が未設定のため、上限の判定ができません。事務局にご確認ください。</p>
             )}
           </div>
         )}
@@ -278,7 +278,7 @@ export default function StaffLeaveRequest() {
 
       <Card className="p-0 overflow-x-auto">
         <Table>
-          <thead><tr><Th>日付</Th><Th>種別</Th><Th>休暇の種類</Th><Th>日数/時間</Th><Th>状態</Th><Th>備考</Th></tr></thead>
+          <thead><tr><Th>日付</Th><Th>種別</Th><Th>休暇の種類</Th><Th numeric>日数/時間</Th><Th>状態</Th><Th>備考</Th></tr></thead>
           <tbody>
             {records.map(r => (
               <tr key={r.id}>
@@ -286,19 +286,19 @@ export default function StaffLeaveRequest() {
                 <Td>{r.kind === 'grant' ? <Badge color="blue">付与</Badge> : <Badge color="gray">取得</Badge>}</Td>
                 <Td className="whitespace-nowrap text-xs">
                   {leaveTypeLabel(r.leaveType)}
-                  {r.subReason && <span className="block text-gray-400">{subReasonLabel(r.subReason)}</span>}
+                  {r.subReason && <span className="block text-ink-mute">{subReasonLabel(r.subReason)}</span>}
                 </Td>
-                <Td className="whitespace-nowrap">
+                <Td numeric className="whitespace-nowrap">
                   {r.hours > 0
-                    ? (r.startTime && r.endTime ? <span>{r.startTime}〜{r.endTime}<span className="text-gray-400 ml-1">({r.hours}時間)</span></span> : `${r.hours}時間`)
+                    ? (r.startTime && r.endTime ? <span>{r.startTime}〜{r.endTime}<span className="text-ink-mute ml-1">({r.hours}時間)</span></span> : `${r.hours}時間`)
                     : `${r.days}日`}
                 </Td>
                 <Td><Badge color={STATUS_COLOR[r.status || 'approved']}>{STATUS_LABEL[r.status || 'approved']}</Badge></Td>
                 <Td>{r.note}</Td>
               </tr>
             ))}
-            {!loading && records.length === 0 && <tr><Td className="text-center text-gray-400 py-8" colSpan={6}>記録はまだありません</Td></tr>}
-            {loading && <tr><Td className="text-center text-gray-400 py-8" colSpan={6}>読み込み中…</Td></tr>}
+            {!loading && records.length === 0 && <tr><Td className="text-center text-ink-mute py-8" colSpan={6}>記録はまだありません</Td></tr>}
+            {loading && <tr><Td className="text-center text-ink-mute py-8" colSpan={6}>読み込み中…</Td></tr>}
           </tbody>
         </Table>
       </Card>
@@ -313,12 +313,3 @@ function addDaysStr(dateStr: string, days: number): string {
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 }
 
-function Tile({ label, value, sub, highlight }: { label: string; value: string; sub?: string; highlight?: boolean }) {
-  return (
-    <Card className="text-center py-3">
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className={`text-lg font-bold ${highlight ? 'text-emerald-600' : 'text-gray-800'}`}>{value}</p>
-      {sub && <p className="text-xs text-gray-400">{sub}</p>}
-    </Card>
-  );
-}

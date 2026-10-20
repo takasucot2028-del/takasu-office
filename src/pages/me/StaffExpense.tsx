@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
+import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert, SectionTitle } from '../../components/UI';
 import { getExpenseContext, listMyExpenses, addMyExpense, genId, todayStr } from '../../api/data';
 import type { ExpenseContext } from '../../api/data';
 import { currentFiscalYear, fiscalYearLabel } from '../../utils/constants';
@@ -63,12 +63,12 @@ export default function StaffExpense() {
 
   return (
     <PageContainer title="経費の申請">
-      <Card className="mb-4"><p className="text-sm text-gray-600">対象年度：<span className="font-bold">{fiscalYearLabel(fy)}</span></p></Card>
+      <Card className="mb-4"><p className="text-sm text-ink-soft">対象年度：<span className="font-bold text-ink">{fiscalYearLabel(fy)}</span></p></Card>
       {message && <Alert type="success">{message}</Alert>}
       {error && <Alert type="error">{error}</Alert>}
 
       <Card className="mb-4">
-        <h2 className="font-bold text-gray-800 mb-3">申請する</h2>
+        <SectionTitle>申請する</SectionTitle>
         {ctx.lines.length === 0 && !loading && <Alert type="info">今年度の事業予算がまだ登録されていません。事務局にお問い合わせください。</Alert>}
         <form onSubmit={submit} className="grid sm:grid-cols-2 gap-3">
           <Field label="申請日"><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></Field>
@@ -89,32 +89,32 @@ export default function StaffExpense() {
             <Field label="内容"><Input value={description} onChange={e => setDescription(e.target.value)} placeholder="例: 大会用の文房具" /></Field>
           </div>
           {selectedLine && (
-            <div className="sm:col-span-2 text-sm bg-gray-50 rounded-md px-3 py-2">
-              この費目の残額：<span className={`font-bold ${selectedLine.remaining < 0 ? 'text-red-600' : 'text-emerald-700'}`}>{yen(selectedLine.remaining)}</span>
-              <span className="text-xs text-gray-400 ml-2">（予算 {yen(selectedLine.budget)}・執行 {yen(selectedLine.used)}）</span>
+            <div className="sm:col-span-2 text-sm bg-paper rounded-md px-3 py-2">
+              この費目の残額：<span className={`num font-bold ${selectedLine.remaining < 0 ? 'text-alert' : 'text-pine'}`}>{yen(selectedLine.remaining)}</span>
+              <span className="num text-xs text-ink-mute ml-2">（予算 {yen(selectedLine.budget)}・執行 {yen(selectedLine.used)}）</span>
             </div>
           )}
           <div className="sm:col-span-2">
-            <Button type="submit" disabled={saving || ctx.lines.length === 0}>{saving ? '申請中…' : '申請する'}</Button>
+            <Button type="submit" size="lg" disabled={saving || ctx.lines.length === 0}>{saving ? '申請中…' : '申請する'}</Button>
           </div>
         </form>
       </Card>
 
       <Card className="p-0 overflow-x-auto">
         <Table>
-          <thead><tr><Th>申請日</Th><Th>事業／費目</Th><Th>金額</Th><Th>状態</Th><Th>内容</Th></tr></thead>
+          <thead><tr><Th>申請日</Th><Th>事業／費目</Th><Th numeric>金額</Th><Th>状態</Th><Th>内容</Th></tr></thead>
           <tbody>
             {mine.map(e => (
               <tr key={e.id}>
                 <Td className="whitespace-nowrap">{e.date}</Td>
                 <Td className="whitespace-nowrap">{e.project}／{catMap.get(e.categoryId) || e.categoryId}</Td>
-                <Td className="whitespace-nowrap font-medium">{yen(e.amount)}</Td>
+                <Td numeric className="whitespace-nowrap font-medium">{yen(e.amount)}</Td>
                 <Td><Badge color={STATUS_COLOR[e.status || 'requested']}>{STATUS_LABEL[e.status || 'requested']}</Badge></Td>
                 <Td>{e.description}</Td>
               </tr>
             ))}
-            {!loading && mine.length === 0 && <tr><Td className="text-center text-gray-400 py-8" colSpan={5}>申請はまだありません</Td></tr>}
-            {loading && <tr><Td className="text-center text-gray-400 py-8" colSpan={5}>読み込み中…</Td></tr>}
+            {!loading && mine.length === 0 && <tr><Td className="text-center text-ink-mute py-8" colSpan={5}>申請はまだありません</Td></tr>}
+            {loading && <tr><Td className="text-center text-ink-mute py-8" colSpan={5}>読み込み中…</Td></tr>}
           </tbody>
         </Table>
       </Card>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { PageContainer, Card, Field, Input, Select, Button, Table, Th, Td, Badge, Alert } from '../../components/UI';
+import { PageContainer, Card, Field, Input, Select, Button, Table, Th, Td, Badge, Alert, SectionTitle } from '../../components/UI';
 import { getMyProfile, getMyOvertimePageData, addMyOvertime, addMyCompUse, todayStr } from '../../api/data';
 import { WEEKDAY_LABELS, hoursBetween } from '../../utils/constants';
 import { closedDayName, isClosedDay } from '../../utils/holidays';
@@ -145,7 +145,7 @@ export default function StaffOvertimeRequest() {
       {error && <Alert type="error">{error}</Alert>}
 
       <Card className="mb-4">
-        <h2 className="font-bold text-gray-800 mb-3">時間外・休日勤務を申請する</h2>
+        <SectionTitle>時間外・休日勤務を申請する</SectionTitle>
         <form onSubmit={add} className="grid sm:grid-cols-6 lg:grid-cols-7 gap-3 items-end">
           <Field label="日付">
             <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
@@ -178,19 +178,19 @@ export default function StaffOvertimeRequest() {
               <Input value={reason} onChange={e => setReason(e.target.value)} placeholder="例: イベント準備" />
             </Field>
           </div>
-          <div className="mb-4"><Button type="submit" className="w-full" disabled={saving || !staff}>{saving ? '申請中…' : '申請する'}</Button></div>
+          <div className="mb-4"><Button type="submit" size="lg" className="w-full" disabled={saving || !staff}>{saving ? '申請中…' : '申請する'}</Button></div>
         </form>
         {canChooseHoliday && kindReason && (
-          <p className="text-xs text-gray-500 mb-1">
-            <span className={`inline-block mr-1 font-medium ${kind === 'holiday' ? 'text-red-600' : 'text-amber-700'}`}>
+          <p className="text-xs text-ink-mute mb-1">
+            <span className={`inline-block mr-1 font-medium ${kind === 'holiday' ? 'text-alert' : 'text-caution'}`}>
               {kind === 'holiday' ? '休日勤務' : '時間外'}
             </span>
             {kindReason}
-            {kind !== autoKind && <span className="text-amber-700">（自動判定の「{autoKind === 'holiday' ? '休日勤務' : '時間外'}」から変更しています）</span>}
+            {kind !== autoKind && <span className="text-caution">（自動判定の「{autoKind === 'holiday' ? '休日勤務' : '時間外'}」から変更しています）</span>}
           </p>
         )}
-        <p className="text-xs text-gray-400">
-          申請時間 = 終了 − 開始（現在: <span className="font-medium text-gray-600">{hrs > 0 ? `${hrs}h` : '—'}</span>）。
+        <p className="text-xs text-ink-mute">
+          申請時間 = 終了 − 開始（現在: <span className="num font-medium text-ink">{hrs > 0 ? `${hrs}h` : '—'}</span>）。
           実績時間・種別・手当/代休は、勤務後に事務局が勤怠とシフト表をもとに確定します。
           {canSplit && '「代休希望」は、申請した時間のうち代休にしてほしい時間です（例: 7.5時間のうち5.5時間）。残りは手当になります。希望どおりになるとは限りません。'}
           {!canChooseHoliday && 'パート職員は休日勤務の区分を使いません（パート規則 第8条）。8:30より前・21:30より後の勤務も、この画面から申請してください。'}
@@ -200,7 +200,7 @@ export default function StaffOvertimeRequest() {
       <Card className="p-0 overflow-x-auto">
         <Table>
           <thead>
-            <tr><Th>日付</Th><Th>種別</Th><Th>申請</Th><Th>状態</Th><Th>実績</Th><Th>処理</Th><Th>金額</Th></tr>
+            <tr><Th>日付</Th><Th>種別</Th><Th numeric>申請</Th><Th>状態</Th><Th numeric>実績</Th><Th>処理</Th><Th numeric>金額</Th></tr>
           </thead>
           <tbody>
             {records.map(r => {
@@ -209,30 +209,30 @@ export default function StaffOvertimeRequest() {
               const approved = r.status === 'approved';
               return (
                 <tr key={r.id}>
-                  <Td className="whitespace-nowrap">{Number(r.date.slice(5, 7))}/{Number(r.date.slice(8))}
-                    <span className="ml-1 text-xs text-gray-400">({WEEKDAY_LABELS[wd]})</span>
+                  <Td className="num whitespace-nowrap">{Number(r.date.slice(5, 7))}/{Number(r.date.slice(8))}
+                    <span className="ml-1 text-xs text-ink-mute">({WEEKDAY_LABELS[wd]})</span>
                   </Td>
                   <Td><Badge color={k === 'holiday' ? 'red' : 'yellow'}>{OVERTIME_KIND_LABELS[k]}</Badge></Td>
-                  <Td className="whitespace-nowrap text-gray-500">
-                    {r.startTime && r.endTime ? <span>{r.startTime}〜{r.endTime}<span className="text-gray-400 ml-1">({r.appliedHours}h)</span></span> : `${r.appliedHours}h`}
+                  <Td numeric className="whitespace-nowrap text-ink-mute">
+                    {r.startTime && r.endTime ? <span>{r.startTime}〜{r.endTime}<span className="text-ink-mute ml-1">({r.appliedHours}h)</span></span> : `${r.appliedHours}h`}
                   </Td>
                   <Td><Badge color={statusColor(r.status)}>{OVERTIME_STATUS_LABELS[r.status === 'approved' ? 'approved' : 'applied']}</Badge></Td>
-                  <Td className="whitespace-nowrap">{approved ? h1(r.resultHours || 0) : '—'}</Td>
+                  <Td numeric className="whitespace-nowrap">{approved ? h1(r.resultHours || 0) : '—'}</Td>
                   <Td className="whitespace-nowrap">
                     {approved && r.disposition ? (
                       <>
                         {OVERTIME_DISPOSITION_LABELS[r.disposition]}
                         {r.disposition === 'split' && (
-                          <span className="block text-xs text-gray-500">
+                          <span className="num block text-xs text-ink-mute">
                             代休 {h1(dispositionSplitOf(r).compHours)}／手当 {h1(dispositionSplitOf(r).allowanceHours)}
                           </span>
                         )}
                       </>
                     ) : (r.requestedCompHours || 0) > 0
-                      ? <span className="text-xs text-blue-600">代休{h1(r.requestedCompHours || 0)}を希望</span>
+                      ? <span className="num text-xs text-info">代休{h1(r.requestedCompHours || 0)}を希望</span>
                       : '—'}
                   </Td>
-                  <Td className="whitespace-nowrap">{(() => {
+                  <Td numeric className="whitespace-nowrap">{(() => {
                     if (!approved || !staff) return '—';
                     const h = dispositionSplitOf(r).allowanceHours;
                     return h > 0 ? `¥${allowanceOf(h, staff.hourlyWage || 0, k).toLocaleString()}` : '—';
@@ -240,22 +240,25 @@ export default function StaffOvertimeRequest() {
                 </tr>
               );
             })}
-            {!loading && records.length === 0 && <tr><Td className="text-center text-gray-400 py-8" colSpan={7}>申請はまだありません</Td></tr>}
-            {loading && <tr><Td className="text-center text-gray-400 py-8" colSpan={7}>読み込み中…</Td></tr>}
+            {!loading && records.length === 0 && <tr><Td className="text-center text-ink-mute py-8" colSpan={7}>申請はまだありません</Td></tr>}
+            {loading && <tr><Td className="text-center text-ink-mute py-8" colSpan={7}>読み込み中…</Td></tr>}
           </tbody>
         </Table>
       </Card>
 
       {/* 代休の取得申請 */}
       <Card className="mt-6">
-        <h2 className="font-bold text-gray-800 mb-1">代休の取得を申請する</h2>
-        <p className="text-xs text-gray-500 mb-3">
-          代休にした時間外 {h1(compGranted)} − 取得ぶん（申請中を含む）{h1(compTaken)} ＝
-          <span className="font-bold text-emerald-700"> 残 {h1(compRemain)}</span>
-          <span className="block mt-0.5">
-            終日休む場合は所定の勤務時間帯を入力してください。代休は、勤務した日の属する賃金計算期間の翌月末日までに取得してください（就業規則 第21条3項）。
-          </span>
-        </p>
+        <SectionTitle note={
+          <>
+            <span className="num">
+              代休にした時間外 {h1(compGranted)} − 取得ぶん（申請中を含む）{h1(compTaken)} ＝
+              <span className="font-bold text-pine"> 残 {h1(compRemain)}</span>
+            </span>
+            <span className="block mt-0.5">
+              終日休む場合は所定の勤務時間帯を入力してください。代休は、勤務した日の属する賃金計算期間の翌月末日までに取得してください（就業規則 第21条3項）。
+            </span>
+          </>
+        }>代休の取得を申請する</SectionTitle>
         <form onSubmit={addComp} className="grid sm:grid-cols-5 gap-3 items-end">
           <Field label="取得日">
             <Input type="date" value={cDate} onChange={e => setCDate(e.target.value)} required />
@@ -270,21 +273,21 @@ export default function StaffOvertimeRequest() {
             <Input value={cNote} onChange={e => setCNote(e.target.value)} placeholder="例: 午前のみ" />
           </Field>
           <div className="mb-4">
-            <Button type="submit" className="w-full" disabled={cSaving || !staff || compRemain <= 0}>
+            <Button type="submit" size="lg" className="w-full" disabled={cSaving || !staff || compRemain <= 0}>
               {cSaving ? '申請中…' : '申請する'}
             </Button>
           </div>
         </form>
-        <p className="text-xs text-gray-400">
-          取得時間 = 終了 − 開始（現在: <span className="font-medium text-gray-600">{cHrs > 0 ? `${cHrs}h` : '—'}</span>）。
-          {compRemain <= 0 && <span className="text-amber-700">取得できる代休がありません（時間外の処理が「代休」で承認されると増えます）。</span>}
+        <p className="text-xs text-ink-mute">
+          取得時間 = 終了 − 開始（現在: <span className="num font-medium text-ink">{cHrs > 0 ? `${cHrs}h` : '—'}</span>）。
+          {compRemain <= 0 && <span className="text-caution">取得できる代休がありません（時間外の処理が「代休」で承認されると増えます）。</span>}
         </p>
       </Card>
 
       <Card className="p-0 overflow-x-auto mt-4">
         <Table>
           <thead>
-            <tr><Th>取得日</Th><Th>時間帯</Th><Th>時間</Th><Th>状態</Th><Th>備考</Th></tr>
+            <tr><Th>取得日</Th><Th numeric>時間帯</Th><Th numeric>時間</Th><Th>状態</Th><Th>備考</Th></tr>
           </thead>
           <tbody>
             {compUse.map(r => {
@@ -292,20 +295,20 @@ export default function StaffOvertimeRequest() {
               return (
                 <tr key={r.id}>
                   <Td className="whitespace-nowrap">{r.date}</Td>
-                  <Td className="whitespace-nowrap text-gray-500">
-                    {r.startTime && r.endTime ? `${r.startTime}〜${r.endTime}` : <span className="text-gray-300">—</span>}
+                  <Td numeric className="whitespace-nowrap text-ink-mute">
+                    {r.startTime && r.endTime ? `${r.startTime}〜${r.endTime}` : <span className="text-ink-mute">—</span>}
                   </Td>
-                  <Td className="whitespace-nowrap">{h1(r.hours || 0)}</Td>
+                  <Td numeric className="whitespace-nowrap">{h1(r.hours || 0)}</Td>
                   <Td>
                     <Badge color={st === 'approved' ? 'green' : st === 'rejected' ? 'red' : 'yellow'}>
                       {st === 'approved' ? '承認済' : st === 'rejected' ? '却下' : '申請中'}
                     </Badge>
                   </Td>
-                  <Td className="text-xs text-gray-500">{r.note}</Td>
+                  <Td className="text-xs text-ink-mute">{r.note}</Td>
                 </tr>
               );
             })}
-            {!loading && compUse.length === 0 && <tr><Td className="text-center text-gray-400 py-8" colSpan={5}>代休の取得はまだありません</Td></tr>}
+            {!loading && compUse.length === 0 && <tr><Td className="text-center text-ink-mute py-8" colSpan={5}>代休の取得はまだありません</Td></tr>}
           </tbody>
         </Table>
       </Card>

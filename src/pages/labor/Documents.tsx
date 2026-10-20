@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { PageContainer, Card, Field, Input, Select, Button, Alert, Badge } from '../../components/UI';
+import { PageContainer, Card, Field, Input, Select, Button, Alert, Badge, SectionTitle } from '../../components/UI';
 import { listDocuments, saveDocument, deleteDocument, genId } from '../../api/data';
 import { DOC_TYPE_LABELS, DOC_TYPE_ORDER } from '../../utils/constants';
 import type { DocumentItem, DocType } from '../../types';
@@ -52,8 +52,9 @@ export default function Documents() {
   return (
     <PageContainer title="文書管理">
       <Card className="mb-4">
-        <h2 className="font-bold text-gray-800 mb-1">{editId ? '文書を編集' : '文書を登録'}</h2>
-        <p className="text-xs text-gray-500 mb-3">Googleドライブ等にファイルを置き、その共有リンクを登録します（従業員はリンクを開いて閲覧・ダウンロード）。</p>
+        <SectionTitle note="Googleドライブ等にファイルを置き、その共有リンクを登録します（従業員はリンクを開いて閲覧・ダウンロード）。">
+          {editId ? '文書を編集' : '文書を登録'}
+        </SectionTitle>
         {message && <Alert type="success">{message}</Alert>}
         {error && <Alert type="error">{error}</Alert>}
         <form onSubmit={handleSubmit} className="grid sm:grid-cols-4 gap-3 items-end">
@@ -80,7 +81,7 @@ export default function Documents() {
       </Card>
 
       {loading ? (
-        <p className="text-sm text-gray-400">読み込み中…</p>
+        <p className="text-sm text-ink-mute">読み込み中…</p>
       ) : docs.length === 0 ? (
         <Alert type="info">登録された文書はありません。上のフォームから登録してください。</Alert>
       ) : (
@@ -90,11 +91,11 @@ export default function Documents() {
           return (
             <div key={t} className="mb-4">
               <div className="mb-2"><Badge color={t === 'rule' ? 'blue' : t === 'form' ? 'green' : 'gray'}>{DOC_TYPE_LABELS[t]}</Badge></div>
-              <Card className="p-0 divide-y divide-gray-100">
+              <Card className="p-0 divide-y divide-rule-soft">
                 {list.map(d => (
                   <div key={d.id} className="flex items-center gap-3 px-3 py-2">
-                    <a href={d.url} target="_blank" rel="noopener noreferrer" className="flex-1 text-blue-600 hover:underline text-sm truncate">{d.title}</a>
-                    <span className="text-xs text-gray-400 whitespace-nowrap hidden sm:inline">{(d.updatedAt || '').slice(0, 10)}</span>
+                    <a href={d.url} target="_blank" rel="noopener noreferrer" className="flex-1 text-pine hover:underline text-sm truncate">{d.title}</a>
+                    <span className="num text-xs text-ink-mute whitespace-nowrap hidden sm:inline">{(d.updatedAt || '').slice(0, 10)}</span>
                     <Button variant="ghost" size="sm" onClick={() => edit(d)}>編集</Button>
                     <Button variant="ghost" size="sm" onClick={() => remove(d.id)}>削除</Button>
                   </div>

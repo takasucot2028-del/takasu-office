@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PageContainer, Card, Button, Table, Th, Td } from '../../components/UI';
+import { PageContainer, Card, Button, Table, Th, Td, Tile } from '../../components/UI';
 import { getMyAttendancePageData, todayStr } from '../../api/data';
 import { DAY_TYPE_LABELS, WEEKDAY_LABELS } from '../../utils/constants';
 import { isSpecialHoliday } from '../../utils/holidays';
@@ -66,13 +66,13 @@ export default function StaffAttendance() {
     <PageContainer title="出勤簿">
       <Card className="mb-4">
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={() => setMonth(m => shiftMonth(m, -1))}>← 前月</Button>
-          <span className="font-bold text-gray-800">{Number(month.slice(0, 4))}年{Number(month.slice(5))}月</span>
-          <Button variant="secondary" size="sm" onClick={() => setMonth(m => shiftMonth(m, 1))}>翌月 →</Button>
+          <Button variant="secondary" onClick={() => setMonth(m => shiftMonth(m, -1))}>← 前月</Button>
+          <span className="num font-bold text-ink">{Number(month.slice(0, 4))}年{Number(month.slice(5))}月</span>
+          <Button variant="secondary" onClick={() => setMonth(m => shiftMonth(m, 1))}>翌月 →</Button>
           <div className="flex-1" />
-          <Button size="sm" onClick={() => navigate(`/me/attendance/print?month=${month}`)}>出勤簿を出力（PDF）</Button>
+          <Button size="lg" onClick={() => navigate(`/me/attendance/print?month=${month}`)}>出勤簿を出力（PDF）</Button>
         </div>
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="mt-2 text-xs text-ink-mute">
           実働＝退勤−出勤−休憩。内容に誤りがある場合は事務局へご連絡ください。
         </p>
       </Card>
@@ -87,12 +87,12 @@ export default function StaffAttendance() {
         <Tile label="所定内労働" value={hhmm(totals.hours.scheduledMinutes)} />
         <Tile label="時間外労働" value={hhmm(totals.hours.overtimeMinutes)} />
         <Tile label="休日労働" value={hhmm(totals.hours.holidayMinutes)} />
-        <Tile label="総実働時間" value={hhmm(totals.hours.totalMinutes)} />
+        <Tile label="総実働時間" value={hhmm(totals.hours.totalMinutes)} tone="accent" />
       </div>
 
-      <p className="text-xs text-gray-500 mb-3">
+      <p className="text-xs text-ink-mute mb-3">
         実働は打刻どおり<b>1分単位</b>で計算します。ただしシフト開始より早く打刻した日は、時間外の申請がなければ
-        <b>シフト開始から</b>になります（<span className="text-blue-600">青字</span>が計算に使った時刻）。
+        <b>シフト開始から</b>になります（<span className="text-info">青字</span>が計算に使った時刻）。
         総実働時間は日ごとの実働を合計し、<b>15分単位で切り上げ</b>ます。
         <span className="block mt-0.5">
           時間外労働・休日労働は「時間外・代休」で<b>承認された</b>実績です（代休にした分も労働時間として数えます）。
@@ -103,11 +103,11 @@ export default function StaffAttendance() {
       <Card className="p-0 overflow-x-auto">
         <Table>
           <thead>
-            <tr><Th>日付</Th><Th>区分</Th><Th>出勤</Th><Th>退勤</Th><Th>休憩</Th><Th>実働</Th><Th>備考</Th></tr>
+            <tr><Th>日付</Th><Th>区分</Th><Th numeric>出勤</Th><Th numeric>退勤</Th><Th numeric>休憩</Th><Th numeric>実働</Th><Th>備考</Th></tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><Td className="text-center text-gray-400 py-8" colSpan={7}>読み込み中…</Td></tr>
+              <tr><Td className="text-center text-ink-mute py-8" colSpan={7}>読み込み中…</Td></tr>
             ) : days.map(date => {
               const rec = records[date];
               const wd = new Date(`${date}T00:00:00`).getDay();
@@ -116,18 +116,18 @@ export default function StaffAttendance() {
                 ? `${rec.breakStart}〜${rec.breakEnd}`
                 : rec?.breakMinutes ? `${rec.breakMinutes}分` : '';
               return (
-                <tr key={date} className={holiday || wd === 0 ? 'bg-red-50/50' : wd === 6 ? 'bg-blue-50/50' : ''}>
-                  <Td className="whitespace-nowrap">
+                <tr key={date} className={holiday || wd === 0 ? 'bg-alert-soft' : wd === 6 ? 'bg-info-soft' : ''}>
+                  <Td className="num whitespace-nowrap">
                     {Number(date.slice(8))}日
-                    <span className={`ml-1 text-xs ${holiday || wd === 0 ? 'text-red-500' : wd === 6 ? 'text-blue-500' : 'text-gray-400'}`}>
+                    <span className={`ml-1 text-xs ${holiday || wd === 0 ? 'text-alert' : wd === 6 ? 'text-info' : 'text-ink-mute'}`}>
                       ({WEEKDAY_LABELS[wd]}{holiday ? '・休' : ''})
                     </span>
                   </Td>
                   <Td className="whitespace-nowrap">{rec ? DAY_TYPE_LABELS[rec.dayType] : ''}</Td>
-                  <Td className="whitespace-nowrap">{rec?.dayType === 'work' ? rec.startTime : ''}</Td>
-                  <Td className="whitespace-nowrap">{rec?.dayType === 'work' ? rec.endTime : ''}</Td>
-                  <Td className="whitespace-nowrap text-xs text-gray-500">{rec?.dayType === 'work' ? brk : ''}</Td>
-                  <Td className="whitespace-nowrap font-medium">
+                  <Td numeric className="whitespace-nowrap">{rec?.dayType === 'work' ? rec.startTime : ''}</Td>
+                  <Td numeric className="whitespace-nowrap">{rec?.dayType === 'work' ? rec.endTime : ''}</Td>
+                  <Td numeric className="whitespace-nowrap text-xs text-ink-mute">{rec?.dayType === 'work' ? brk : ''}</Td>
+                  <Td numeric className="whitespace-nowrap font-medium">
                     {(() => {
                       if (!rec || rec.dayType !== 'work') return '';
                       const sh = shiftMap.get(date);
@@ -138,7 +138,7 @@ export default function StaffAttendance() {
                         <>
                           {hhmm(min)}
                           {t.startRounded && (
-                            <div className="text-[10px] font-normal text-blue-600 leading-tight">
+                            <div className="text-xs font-normal text-info leading-tight">
                               {t.startTime}〜{t.endTime}
                             </div>
                           )}
@@ -146,7 +146,7 @@ export default function StaffAttendance() {
                       );
                     })()}
                   </Td>
-                  <Td className="text-xs text-gray-500">{rec?.note || ''}</Td>
+                  <Td className="text-xs text-ink-mute">{rec?.note || ''}</Td>
                 </tr>
               );
             })}
@@ -154,14 +154,5 @@ export default function StaffAttendance() {
         </Table>
       </Card>
     </PageContainer>
-  );
-}
-
-function Tile({ label, value }: { label: string; value: string }) {
-  return (
-    <Card className="text-center py-3">
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className="text-lg font-bold text-gray-800">{value}</p>
-    </Card>
   );
 }

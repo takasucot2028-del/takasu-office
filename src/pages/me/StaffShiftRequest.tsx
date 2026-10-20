@@ -112,15 +112,15 @@ export default function StaffShiftRequest() {
     <PageContainer title="シフト希望（勤務できない区分）の申請">
       <Card className="mb-4">
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={() => setMonth(m => shiftMonth(m, -1))}>← 前月</Button>
-          <span className="font-bold text-gray-800">{Number(month.slice(0, 4))}年{Number(month.slice(5))}月</span>
-          <Button variant="secondary" size="sm" onClick={() => setMonth(m => shiftMonth(m, 1))}>翌月 →</Button>
+          <Button variant="secondary" onClick={() => setMonth(m => shiftMonth(m, -1))}>← 前月</Button>
+          <span className="num font-bold text-ink">{Number(month.slice(0, 4))}年{Number(month.slice(5))}月</span>
+          <Button variant="secondary" onClick={() => setMonth(m => shiftMonth(m, 1))}>翌月 →</Button>
           <div className="flex-1" />
-          <Button size="sm" onClick={handleSave} disabled={saving || !staff}>{saving ? '提出中…' : '提出する'}</Button>
+          <Button onClick={handleSave} disabled={saving || !staff}>{saving ? '提出中…' : '提出する'}</Button>
         </div>
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="mt-2 text-xs text-ink-mute">
           <b>勤務できない区分</b>を日ごとにタップで選んでください（複数可）。終日勤務できない日は
-          <span className="text-red-600 font-medium">「勤務不可」</span>を選んでください。
+          <span className="text-alert font-medium">「勤務不可」</span>を選んでください。
           選ばなかった区分は勤務できるものとして扱います。提出後、事務局がシフトを確定します。
         </p>
       </Card>
@@ -128,25 +128,25 @@ export default function StaffShiftRequest() {
       {message && <Alert type="success">{message}</Alert>}
       {error && <Alert type="error">{error}</Alert>}
 
-      <Card className="p-0 divide-y divide-gray-100">
+      <Card className="p-0 divide-y divide-rule-soft">
         {loading ? (
-          <p className="text-sm text-gray-400 p-4">読み込み中…</p>
+          <p className="text-sm text-ink-mute p-4">読み込み中…</p>
         ) : validPatterns.length === 0 ? (
-          <p className="text-sm text-gray-400 p-4">選べるシフト区分がありません。事務局にお問い合わせください。</p>
+          <p className="text-sm text-ink-mute p-4">選べるシフト区分がありません。事務局にお問い合わせください。</p>
         ) : days.map(date => {
           const wd = new Date(`${date}T00:00:00`).getDay();
           const sel = map[date] || [];
           return (
             <div key={date} className={`flex items-center gap-2 px-3 py-2 ${
-              isSpecialHoliday(date) || wd === 0 ? 'bg-red-50/40' : wd === 6 ? 'bg-blue-50/40' : ''}`}>
-              <div className="w-14 shrink-0 text-sm">
+              isSpecialHoliday(date) || wd === 0 ? 'bg-alert-soft' : wd === 6 ? 'bg-info-soft' : ''}`}>
+              <div className="num w-14 shrink-0 text-sm">
                 <span className="font-medium">{Number(date.slice(8))}</span>
                 <span className={`ml-1 text-xs ${
-                  isSpecialHoliday(date) || wd === 0 ? 'text-red-500' : wd === 6 ? 'text-blue-500' : 'text-gray-400'}`}>
+                  isSpecialHoliday(date) || wd === 0 ? 'text-alert' : wd === 6 ? 'text-info' : 'text-ink-mute'}`}>
                   {WEEKDAY_LABELS[wd]}
                 </span>
                 {isSpecialHoliday(date) && (
-                  <span className="block text-[10px] text-red-500 leading-tight" title={closedDayName(date)}>祝</span>
+                  <span className="block text-xs text-alert leading-tight" title={closedDayName(date)}>祝</span>
                 )}
               </div>
               <div className="flex flex-wrap gap-1">
@@ -155,14 +155,14 @@ export default function StaffShiftRequest() {
                   const ng = isUnavailable(date);
                   return (
                     <button key={p.id} onClick={() => toggle(date, p.id)}
-                      className={`px-2 py-1 rounded text-xs border ${on ? 'bg-red-600 text-white border-red-600' : ng ? 'bg-gray-100 text-gray-300 border-gray-200' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
-                      {on ? '✕ ' : ''}{p.name} <span className={on ? 'text-red-100' : ng ? 'text-gray-300' : 'text-gray-400'}>{p.startTime}〜{p.endTime}</span>
+                      className={`px-2 py-1 rounded text-xs border ${on ? 'bg-alert text-white border-alert' : ng ? 'bg-paper text-ink-mute border-rule-soft' : 'bg-white text-ink-soft border-rule hover:bg-paper'}`}>
+                      {on ? '✕ ' : ''}{p.name} <span className={`num ${on ? 'text-alert-soft' : 'text-ink-mute'}`}>{p.startTime}〜{p.endTime}</span>
                     </button>
                   );
                 })}
                 {/* 勤務不可（終日）。ONにすると区分の選択は解除される */}
                 <button onClick={() => toggleUnavailable(date)}
-                  className={`px-2 py-1 rounded text-xs border ${isUnavailable(date) ? 'bg-red-600 text-white border-red-600' : 'bg-white text-red-600 border-red-300 hover:bg-red-50'}`}>
+                  className={`px-2 py-1 rounded text-xs border ${isUnavailable(date) ? 'bg-alert text-white border-alert' : 'bg-white text-alert border-alert/40 hover:bg-alert-soft'}`}>
                   {isUnavailable(date) ? '✓ 勤務不可' : '勤務不可'}
                 </button>
               </div>
@@ -172,7 +172,7 @@ export default function StaffShiftRequest() {
       </Card>
 
       <div className="flex justify-end mt-4">
-        <Button onClick={handleSave} disabled={saving || !staff}>{saving ? '提出中…' : '提出する'}</Button>
+        <Button size="lg" onClick={handleSave} disabled={saving || !staff}>{saving ? '提出中…' : '提出する'}</Button>
       </div>
     </PageContainer>
   );

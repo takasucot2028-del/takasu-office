@@ -16,9 +16,9 @@ export default function StaffDocuments() {
 
   return (
     <PageContainer title="文書・様式">
-      <p className="text-sm text-gray-500 mb-4">タイトルをタップすると、Googleドライブ等で文書を開けます（閲覧・ダウンロード）。</p>
+      <p className="text-sm text-ink-mute mb-4">タイトルをタップすると、Googleドライブ等で文書を開けます（閲覧・ダウンロード）。</p>
       {loading ? (
-        <p className="text-sm text-gray-400">読み込み中…</p>
+        <p className="text-sm text-ink-mute">読み込み中…</p>
       ) : docs.length === 0 ? (
         <Alert type="info">閲覧できる文書はまだありません。</Alert>
       ) : (
@@ -28,12 +28,12 @@ export default function StaffDocuments() {
           return (
             <div key={t} className="mb-4">
               <div className="mb-2"><Badge color={t === 'rule' ? 'blue' : t === 'form' ? 'green' : 'gray'}>{DOC_TYPE_LABELS[t]}</Badge></div>
-              <Card className="p-0 divide-y divide-gray-100">
+              <Card className="p-0 divide-y divide-rule-soft">
                 {list.map(d => (
                   <a key={d.id} href={d.url} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-2 px-3 py-3 hover:bg-gray-50">
-                    <span className="flex-1 text-blue-600 text-sm">{d.title}</span>
-                    <span className="text-gray-300 text-xs">開く ↗</span>
+                    className="flex items-center gap-2 px-3 py-3 hover:bg-paper">
+                    <span className="flex-1 text-pine text-sm">{d.title}</span>
+                    <span className="text-ink-mute text-xs">開く ↗</span>
                   </a>
                 ))}
               </Card>

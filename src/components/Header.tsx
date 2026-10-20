@@ -39,10 +39,10 @@ export default function Header() {
   const home = isAdmin ? '/dashboard' : isStaff ? '/me' : '/';
 
   return (
-    <header className="bg-white border-b border-gray-200 sticky top-0 z-40 no-print">
+    <header className="bg-white border-b border-rule sticky top-0 z-40 no-print">
       <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
-        <Link to={home} className="font-bold text-gray-800 text-sm">
-          <span className="text-emerald-600">TSC</span> {isStaff ? '勤怠' : '事務管理'}
+        <Link to={home} className="font-bold text-ink text-sm whitespace-nowrap">
+          <span className="text-pine">TSC</span> {isStaff ? '勤怠' : '事務管理'}
         </Link>
 
         {items.length > 0 && (
@@ -55,7 +55,7 @@ export default function Header() {
 
         <div className="flex items-center gap-3 text-xs">
           {isLoggedIn && (
-            <button onClick={handleLogout} className="text-gray-500 hover:text-gray-700">
+            <button onClick={handleLogout} className="text-ink-mute hover:text-ink">
               ログアウト
             </button>
           )}
@@ -64,7 +64,7 @@ export default function Header() {
 
       {/* モバイルナビ */}
       {items.length > 0 && (
-        <nav className="sm:hidden flex flex-wrap border-t border-gray-100 px-2 py-1 gap-1 text-xs">
+        <nav className="sm:hidden flex flex-wrap border-t border-rule-soft px-2 py-1 gap-1 text-xs">
           {items.map(item => (
             <NavLink key={item.to} to={item.to} current={location.pathname}>{item.short}</NavLink>
           ))}
@@ -80,7 +80,7 @@ function NavLink({ to, current, children }: { to: string; current: string; child
     <Link
       to={to}
       className={`px-3 py-2 rounded-md whitespace-nowrap transition-colors ${
-        active ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-gray-600 hover:bg-gray-50'
+        active ? 'bg-pine-soft text-pine font-bold' : 'text-ink-soft hover:bg-paper'
       }`}
     >
       {children}

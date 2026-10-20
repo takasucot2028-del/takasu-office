@@ -73,7 +73,7 @@ export default function ShiftPatterns() {
 
   return (
     <PageContainer title="シフト区分マスタ">
-      <p className="text-sm text-gray-500 mb-4">
+      <p className="text-sm text-ink-mute mb-4">
         シフト表で選べる区分（早番・遅番など）と時刻を登録します。ここで登録した区分が確定シフトの選択肢になります。
       </p>
       {message && <Alert type="success">{message}</Alert>}
@@ -87,7 +87,7 @@ export default function ShiftPatterns() {
               <Th>区分名</Th>
               <Th>開始</Th>
               <Th>終了</Th>
-              <Th>実働</Th>
+              <Th numeric>実働</Th>
               <Th>対象</Th>
               <Th className="w-16"></Th>
             </tr>
@@ -96,13 +96,13 @@ export default function ShiftPatterns() {
             {patterns.map((p, idx) => (
               <tr key={p.id}>
                 <Td className="whitespace-nowrap">
-                  <button className="text-gray-400 hover:text-gray-700 disabled:opacity-30 px-1" disabled={idx === 0} onClick={() => move(idx, -1)}>↑</button>
-                  <button className="text-gray-400 hover:text-gray-700 disabled:opacity-30 px-1" disabled={idx === patterns.length - 1} onClick={() => move(idx, 1)}>↓</button>
+                  <button className="text-ink-mute hover:text-ink disabled:opacity-30 px-1" disabled={idx === 0} onClick={() => move(idx, -1)}>↑</button>
+                  <button className="text-ink-mute hover:text-ink disabled:opacity-30 px-1" disabled={idx === patterns.length - 1} onClick={() => move(idx, 1)}>↓</button>
                 </Td>
                 <Td><Input value={p.name} onChange={e => set(idx, { name: e.target.value })} placeholder="例: 早番 / ①" /></Td>
                 <Td><Input type="time" value={p.startTime} onChange={e => set(idx, { startTime: e.target.value })} /></Td>
                 <Td><Input type="time" value={p.endTime} onChange={e => set(idx, { endTime: e.target.value })} /></Td>
-                <Td className="whitespace-nowrap text-gray-600">{durationHours(p.startTime, p.endTime)}h</Td>
+                <Td numeric className="whitespace-nowrap text-ink-soft">{durationHours(p.startTime, p.endTime)}h</Td>
                 <Td>
                   <Select value={p.location} onChange={e => set(idx, { location: e.target.value as '' | WorkLocation })}>
                     <option value="">すべて</option>
@@ -116,7 +116,7 @@ export default function ShiftPatterns() {
             ))}
             {patterns.length === 0 && (
               <tr>
-                <Td className="text-center text-gray-400 py-8" colSpan={7}>
+                <Td className="text-center text-ink-mute py-8" colSpan={7}>
                   {loading ? '読み込み中…' : '区分がありません。「区分を追加」で登録してください'}
                 </Td>
               </tr>

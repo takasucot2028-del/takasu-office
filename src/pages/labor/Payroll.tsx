@@ -2,7 +2,7 @@
 // 職員ごとに、勤怠・時間外・休暇・代休を1行にまとめてExcelに出力する。
 import { useEffect, useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { PageContainer, Card, Input, Field, Button, Table, Th, Td, Alert } from '../../components/UI';
+import { PageContainer, Card, Input, Field, Button, Table, Th, Td, Alert, SectionTitle } from '../../components/UI';
 import { getPayrollMonthData, todayStr } from '../../api/data';
 import type { PayrollMonthData } from '../../api/data';
 import {
@@ -203,7 +203,7 @@ export default function Payroll() {
   }), { workDays: 0, workHours: 0, allowance: 0, unpaid: 0 });
 
   return (
-    <PageContainer title="給与計算用データ">
+    <PageContainer title="給与計算用データ" wide>
       <Card className="mb-4">
         <div className="flex items-end gap-3 flex-wrap">
           <Field label="対象月">
@@ -212,12 +212,12 @@ export default function Payroll() {
           <div className="mb-4">
             <Button variant="secondary" onClick={exportExcel} disabled={loading || rows.length === 0}>Excel出力</Button>
           </div>
-          <div className="mb-4 text-xs text-gray-500">
+          <div className="num mb-4 text-xs text-ink-soft">
             在職職員 {rows.length}名／実働 {totals.workHours}h／時間外手当 ¥{totals.allowance.toLocaleString()}
-            {totals.unpaid > 0 && <span className="text-amber-700">／無給控除 {totals.unpaid}日</span>}
+            {totals.unpaid > 0 && <span className="text-caution">／無給控除 {totals.unpaid}日</span>}
           </div>
         </div>
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-ink-mute">
           勤怠（実働・深夜）と承認済みの時間外実績、承認済みの休暇から集計しています。
           <b>パート職員</b>はシフトを超えて働いても 8:30〜21:30 の範囲内なら割増なし（1.0倍・パートタイム労働者就業規則 第8条1項）。
           8:30前・21:30後、法定労働時間（1日8時間・週40時間）超、深夜（22:00〜5:00）は＋25%（同2項・3項）、
@@ -242,50 +242,50 @@ export default function Payroll() {
           <thead>
             <tr>
               <Th>氏名</Th><Th>雇用区分</Th>
-              <Th>出勤日数</Th><Th>所定内労働</Th><Th>時間外労働</Th><Th>休日労働</Th><Th>実働 合計</Th>
-              <Th>深夜</Th><Th>深夜手当</Th><Th>欠勤</Th>
-              <Th>時間外×1.25</Th><Th>時間外×1.50</Th><Th>休日×1.35</Th><Th>時間外手当</Th>
-              <Th>割増25%</Th><Th>割増50%</Th><Th>割増の加算額</Th>
-              <Th>代休付与</Th><Th>代休消化</Th><Th>代休分の割増</Th>
-              <Th>年次有給</Th><Th>特別休暇(有給)</Th><Th>特別休暇(無給)</Th><Th>健康診断等</Th>
+              <Th numeric>出勤日数</Th><Th numeric>所定内労働</Th><Th numeric>時間外労働</Th><Th numeric>休日労働</Th><Th numeric>実働 合計</Th>
+              <Th numeric>深夜</Th><Th numeric>深夜手当</Th><Th numeric>欠勤</Th>
+              <Th numeric>時間外×1.25</Th><Th numeric>時間外×1.50</Th><Th numeric>休日×1.35</Th><Th numeric>時間外手当</Th>
+              <Th numeric>割増25%</Th><Th numeric>割増50%</Th><Th numeric>割増の加算額</Th>
+              <Th numeric>代休付与</Th><Th numeric>代休消化</Th><Th numeric>代休分の割増</Th>
+              <Th numeric>年次有給</Th><Th numeric>特別休暇(有給)</Th><Th numeric>特別休暇(無給)</Th><Th numeric>健康診断等</Th>
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><Td className="text-center text-gray-400 py-8" colSpan={24}>読み込み中…</Td></tr>}
-            {!loading && rows.length === 0 && <tr><Td className="text-center text-gray-400 py-8" colSpan={24}>在職職員がいません</Td></tr>}
+            {loading && <tr><Td className="text-center text-ink-mute py-8" colSpan={24}>読み込み中…</Td></tr>}
+            {!loading && rows.length === 0 && <tr><Td className="text-center text-ink-mute py-8" colSpan={24}>在職職員がいません</Td></tr>}
             {!loading && rows.map(r => (
               <tr key={r.staff.id}>
                 <Td className="whitespace-nowrap font-medium">{r.staff.lastName} {r.staff.firstName}</Td>
                 <Td className="whitespace-nowrap text-xs">{EMPLOYMENT_TYPE_LABELS[r.staff.employmentType]}</Td>
-                <Td className="text-right">{r.workDays || ''}</Td>
-                <Td className="text-right">{r.scheduledHours || ''}</Td>
-                <Td className="text-right">{r.overtimeHours || ''}</Td>
-                <Td className="text-right">{r.holidayWorkHours || ''}</Td>
-                <Td className="text-right font-medium">{r.workHours || ''}</Td>
-                <Td className="text-right">{r.nightHours || ''}</Td>
-                <Td className="text-right">{r.nightAllowance ? `¥${r.nightAllowance.toLocaleString()}` : ''}</Td>
-                <Td className="text-right">{r.absentDays || ''}</Td>
-                <Td className="text-right">{r.otNormalHours || ''}</Td>
-                <Td className="text-right">{r.otOver60Hours || ''}</Td>
-                <Td className="text-right">{r.holidayHours || ''}</Td>
-                <Td className="text-right font-medium">{r.allowance ? `¥${r.allowance.toLocaleString()}` : ''}</Td>
-                <Td className="text-right">{r.bandHours25 || ''}</Td>
-                <Td className="text-right">{r.bandHours50 || ''}</Td>
-                <Td className="text-right font-medium">{r.bandAllowance ? `¥${r.bandAllowance.toLocaleString()}` : ''}</Td>
-                <Td className="text-right">{r.compGranted || ''}</Td>
-                <Td className="text-right">{r.compUsed || ''}</Td>
-                <Td className="text-right">{r.compPremium ? `¥${r.compPremium.toLocaleString()}` : ''}</Td>
-                <Td className="text-right whitespace-nowrap">
+                <Td numeric>{r.workDays || ''}</Td>
+                <Td numeric>{r.scheduledHours || ''}</Td>
+                <Td numeric>{r.overtimeHours || ''}</Td>
+                <Td numeric>{r.holidayWorkHours || ''}</Td>
+                <Td numeric className="font-medium">{r.workHours || ''}</Td>
+                <Td numeric>{r.nightHours || ''}</Td>
+                <Td numeric>{r.nightAllowance ? `¥${r.nightAllowance.toLocaleString()}` : ''}</Td>
+                <Td numeric>{r.absentDays || ''}</Td>
+                <Td numeric>{r.otNormalHours || ''}</Td>
+                <Td numeric>{r.otOver60Hours || ''}</Td>
+                <Td numeric>{r.holidayHours || ''}</Td>
+                <Td numeric className="font-medium">{r.allowance ? `¥${r.allowance.toLocaleString()}` : ''}</Td>
+                <Td numeric>{r.bandHours25 || ''}</Td>
+                <Td numeric>{r.bandHours50 || ''}</Td>
+                <Td numeric className="font-medium">{r.bandAllowance ? `¥${r.bandAllowance.toLocaleString()}` : ''}</Td>
+                <Td numeric>{r.compGranted || ''}</Td>
+                <Td numeric>{r.compUsed || ''}</Td>
+                <Td numeric>{r.compPremium ? `¥${r.compPremium.toLocaleString()}` : ''}</Td>
+                <Td numeric className="whitespace-nowrap">
                   {r.paidLeaveDays ? `${r.paidLeaveDays}日` : ''}
                   {r.paidLeaveHours ? ` ${r.paidLeaveHours}h` : ''}
                 </Td>
-                <Td className="text-right">{r.specialPaidDays || ''}</Td>
-                <Td className="text-right">
+                <Td numeric>{r.specialPaidDays || ''}</Td>
+                <Td numeric>
                   {r.specialUnpaidDays ? (
-                    <span className="text-amber-700 font-medium" title={r.unpaidNote}>{r.specialUnpaidDays}</span>
+                    <span className="text-caution font-medium" title={r.unpaidNote}>{r.specialUnpaidDays}</span>
                   ) : ''}
                 </Td>
-                <Td className="text-right">{r.workTimeDays || ''}</Td>
+                <Td numeric>{r.workTimeDays || ''}</Td>
               </tr>
             ))}
           </tbody>
@@ -294,8 +294,8 @@ export default function Payroll() {
 
       {!loading && rows.some(r => r.unpaidNote) && (
         <Card className="mt-4">
-          <h2 className="font-bold text-gray-800 mb-2 text-sm">無給分の内訳</h2>
-          <ul className="text-xs text-gray-600 space-y-1">
+          <SectionTitle>無給分の内訳</SectionTitle>
+          <ul className="text-xs text-ink-soft space-y-1">
             {rows.filter(r => r.unpaidNote).map(r => (
               <li key={r.staff.id}>
                 <span className="font-medium">{r.staff.lastName} {r.staff.firstName}</span>：{r.unpaidNote}
@@ -304,7 +304,7 @@ export default function Payroll() {
           </ul>
         </Card>
       )}
-      <p className="text-xs text-gray-400 mt-3">
+      <p className="text-xs text-ink-mute mt-3">
         {leaveTypeLabel('paid')}は残から差し引く対象、特別休暇は種類ごとの規定によります。
       </p>
     </PageContainer>

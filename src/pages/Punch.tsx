@@ -77,38 +77,38 @@ export default function Punch() {
   const dateLabel = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日（${WEEKDAY_LABELS[now.getDay()]}）`;
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4 select-none">
+    <div className="min-h-screen bg-paper flex flex-col items-center justify-center p-4 select-none">
       <div className="w-full max-w-md">
         {/* 日付と時計 */}
         <div className="text-center mb-4">
-          <p className="text-gray-500 text-sm">{dateLabel}</p>
-          <p className="text-5xl font-bold text-gray-800 tabular-nums leading-tight">{hhmm}</p>
-          <p className="text-xs text-gray-400 mt-1">たかすスポーツクラブ　打刻</p>
+          <p className="text-ink-mute text-sm">{dateLabel}</p>
+          <p className="text-5xl font-bold text-ink num tabular-nums leading-tight">{hhmm}</p>
+          <p className="text-xs text-ink-mute mt-1">たかすスポーツクラブ　打刻</p>
         </div>
 
         {/* 結果・エラー（打刻後はここだけを大きく見せる） */}
         {result && (
-          <div className="bg-white border-2 border-emerald-500 rounded-xl p-6 text-center shadow">
-            <p className="text-2xl font-bold text-gray-800">{result.staffName} さん</p>
-            <p className="text-4xl font-bold text-emerald-600 mt-2">
+          <div className="bg-white border-2 border-pine rounded-xl p-6 text-center shadow">
+            <p className="text-2xl font-bold text-ink">{result.staffName} さん</p>
+            <p className="text-4xl font-bold text-pine num mt-2">
               {result.punchType === 'in' ? '出勤' : '退勤'} {result.time}
             </p>
             {result.already && (
-              <p className="text-sm text-amber-700 mt-2">
+              <p className="text-sm text-caution mt-2">
                 すでに出勤が記録されていました。最初の打刻（{result.time}）のままにしています。
               </p>
             )}
-            <p className="text-xs text-gray-400 mt-3">記録しました。まもなく元の画面に戻ります</p>
-            <button onClick={reset} className="mt-3 px-4 py-2 text-sm rounded-md bg-gray-100 text-gray-700">
+            <p className="text-xs text-ink-mute mt-3">記録しました。まもなく元の画面に戻ります</p>
+            <button onClick={reset} className="mt-3 px-4 py-2 text-sm rounded-md bg-paper text-ink-soft border border-rule">
               次の人へ
             </button>
           </div>
         )}
 
         {error && !result && (
-          <div className="bg-white border-2 border-red-500 rounded-xl p-6 text-center shadow">
-            <p className="text-xl font-bold text-red-700">{error}</p>
-            <button onClick={reset} className="mt-4 px-4 py-2 text-sm rounded-md bg-gray-100 text-gray-700">
+          <div className="bg-white border-2 border-alert rounded-xl p-6 text-center shadow">
+            <p className="text-xl font-bold text-alert">{error}</p>
+            <button onClick={reset} className="mt-4 px-4 py-2 text-sm rounded-md bg-paper text-ink-soft border border-rule">
               やり直す
             </button>
           </div>
@@ -118,12 +118,12 @@ export default function Punch() {
           <>
             {/* PIN表示 */}
             <div className="bg-white rounded-xl shadow p-4 mb-3">
-              <p className="text-xs text-gray-500 text-center mb-2">PINを入力してください</p>
+              <p className="text-xs text-ink-mute text-center mb-2">PINを入力してください</p>
               <div className="h-12 flex items-center justify-center gap-2">
                 {pin.length === 0
-                  ? <span className="text-gray-300 text-lg">— — — —</span>
+                  ? <span className="text-ink-mute text-lg">— — — —</span>
                   : pin.split('').map((_, i) => (
-                    <span key={i} className="w-4 h-4 rounded-full bg-gray-800 inline-block" />
+                    <span key={i} className="w-4 h-4 rounded-full bg-pine inline-block" />
                   ))}
               </div>
             </div>
@@ -132,20 +132,20 @@ export default function Punch() {
             <div className="grid grid-cols-3 gap-2 mb-3">
               {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(n => (
                 <button key={n} onClick={() => push(n)} disabled={sending}
-                  className="h-16 text-2xl font-bold bg-white rounded-xl shadow active:bg-gray-200 disabled:opacity-50">
+                  className="h-16 text-2xl font-bold bg-white rounded-xl shadow active:bg-rule-soft disabled:opacity-50">
                   {n}
                 </button>
               ))}
               <button onClick={reset} disabled={sending}
-                className="h-16 text-sm font-medium bg-white rounded-xl shadow text-gray-500 active:bg-gray-200 disabled:opacity-50">
+                className="h-16 text-sm font-medium bg-white rounded-xl shadow text-ink-soft active:bg-rule-soft disabled:opacity-50">
                 消す
               </button>
               <button onClick={() => push('0')} disabled={sending}
-                className="h-16 text-2xl font-bold bg-white rounded-xl shadow active:bg-gray-200 disabled:opacity-50">
+                className="h-16 text-2xl font-bold bg-white rounded-xl shadow active:bg-rule-soft disabled:opacity-50">
                 0
               </button>
               <button onClick={back} disabled={sending}
-                className="h-16 text-xl bg-white rounded-xl shadow text-gray-500 active:bg-gray-200 disabled:opacity-50">
+                className="h-16 text-xl bg-white rounded-xl shadow text-ink-soft active:bg-rule-soft disabled:opacity-50">
                 ←
               </button>
             </div>
@@ -153,18 +153,18 @@ export default function Punch() {
             {/* 出勤・退勤 */}
             <div className="grid grid-cols-2 gap-3">
               <button onClick={() => doPunch('in')} disabled={sending || !pin}
-                className="h-20 text-2xl font-bold text-white bg-blue-600 rounded-xl shadow active:bg-blue-700 disabled:opacity-40">
+                className="h-20 text-2xl font-bold text-white bg-pine rounded-xl shadow active:bg-pine-dark disabled:opacity-40">
                 {sending ? '記録中…' : '出勤'}
               </button>
               <button onClick={() => doPunch('out')} disabled={sending || !pin}
-                className="h-20 text-2xl font-bold text-white bg-gray-600 rounded-xl shadow active:bg-gray-700 disabled:opacity-40">
+                className="h-20 text-2xl font-bold text-white bg-ink-soft rounded-xl shadow active:bg-ink disabled:opacity-40">
                 {sending ? '記録中…' : '退勤'}
               </button>
             </div>
 
-            <p className="text-center text-xs text-gray-400 mt-4">
+            <p className="text-center text-xs text-ink-mute mt-4">
               PINが分からない場合は事務局にお問い合わせください。
-              <Link to="/" className="text-blue-600 underline ml-2">通常のログイン</Link>
+              <Link to="/" className="text-pine underline ml-2">通常のログイン</Link>
             </p>
           </>
         )}

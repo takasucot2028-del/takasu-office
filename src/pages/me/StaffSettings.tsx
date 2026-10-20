@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { PageContainer, Card, Field, Input, Button, Alert } from '../../components/UI';
+import { PageContainer, Card, Field, Input, Button, Alert, SectionTitle } from '../../components/UI';
 import { getMyProfile, changeStaffPassword } from '../../api/data';
 import { EMPLOYMENT_TYPE_LABELS } from '../../utils/constants';
 import type { Staff } from '../../types';
@@ -35,13 +35,13 @@ export default function StaffSettings() {
       <div className="max-w-md">
         {staff && (
           <Card className="mb-4">
-            <h2 className="font-bold text-gray-800 mb-2">プロフィール</h2>
-            <p className="text-sm text-gray-700">{staff.lastName} {staff.firstName}</p>
-            <p className="text-xs text-gray-500 mt-1">職員番号: {staff.employeeNumber || '未設定'}／{EMPLOYMENT_TYPE_LABELS[staff.employmentType]}</p>
+            <SectionTitle>プロフィール</SectionTitle>
+            <p className="text-sm text-ink">{staff.lastName} {staff.firstName}</p>
+            <p className="text-xs text-ink-mute mt-1">職員番号: {staff.employeeNumber || '未設定'}／{EMPLOYMENT_TYPE_LABELS[staff.employmentType]}</p>
           </Card>
         )}
         <Card>
-          <h2 className="font-bold text-gray-800 mb-4">パスワードの変更</h2>
+          <SectionTitle>パスワードの変更</SectionTitle>
           {message && <Alert type="success">{message}</Alert>}
           {error && <Alert type="error">{error}</Alert>}
           <form onSubmit={submit}>
@@ -54,7 +54,7 @@ export default function StaffSettings() {
             <Field label="新しいパスワード（確認）" required>
               <Input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} autoComplete="new-password" required />
             </Field>
-            <Button type="submit" disabled={saving}>{saving ? '変更中…' : '変更する'}</Button>
+            <Button type="submit" size="lg" disabled={saving}>{saving ? '変更中…' : '変更する'}</Button>
           </form>
         </Card>
       </div>
