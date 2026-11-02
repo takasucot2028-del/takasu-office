@@ -603,6 +603,12 @@ export function setExpenseStatus(id: string, status: RequestStatus) {
   if (r) { r.status = status; save(KEY_EXPENSES, all); }
   writeAudit('経費申請の承認・却下', '会計', `id=${id} / ${status}`);
 }
+export function setExpenseVoucherNo(id: string, voucherNo: string) {
+  const all = load<Expense>(KEY_EXPENSES);
+  const r = all.find(x => x.id === id);
+  if (r) { r.voucherNo = voucherNo; save(KEY_EXPENSES, all); }
+  writeAudit('支出伝票の発行', '会計', 'id=' + id + ' / ' + voucherNo);
+}
 export function deleteExpense(id: string) {
   save(KEY_EXPENSES, load<Expense>(KEY_EXPENSES).filter(e => e.id !== id));
   writeAudit('経費の削除', '会計', `id=${id}`);

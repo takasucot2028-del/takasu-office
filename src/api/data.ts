@@ -446,6 +446,12 @@ export async function setExpenseStatus(id: string, status: Expense['status']): P
   const res = await gas.setExpenseStatus(id, status, token());
   if (!res.success) throw new Error(res.error || '状態の更新に失敗しました');
 }
+/** 支出伝票の番号を記録する（発行時に一度だけ。既に番号があれば呼ばない） */
+export async function setExpenseVoucherNo(id: string, voucherNo: string): Promise<void> {
+  if (!USE_GAS) { local.setExpenseVoucherNo(id, voucherNo); return; }
+  const res = await gas.setExpenseVoucherNo(id, voucherNo, token());
+  if (!res.success) throw new Error(res.error || '伝票番号の記録に失敗しました');
+}
 export async function deleteExpense(id: string): Promise<void> {
   if (!USE_GAS) { local.deleteExpense(id); return; }
   const res = await gas.deleteExpense(id, token());

@@ -53,6 +53,7 @@ var SHEETS = {
   expenses: { name: '経費', columns: [
     ['id', 'ID'], ['fiscalYear', '年度'], ['staffId', '申請者ID'], ['date', '日付'], ['project', '事業'],
     ['categoryId', '費目ID'], ['amount', '金額'], ['description', '内容'], ['status', '状態'], ['note', '備考'],
+    ['voucherNo', '伝票番号'],
   ] },
   attendance: { name: '勤怠', columns: [
     ['id', 'ID'], ['staffId', '職員ID'], ['date', '日付'], ['dayType', '区分'],
@@ -597,6 +598,7 @@ var AUDIT_ACTIONS = {
   addExpense:           { label: '経費の登録',            target: '会計' },
   deleteExpense:        { label: '経費の削除',            target: '会計' },
   setExpenseStatus:     { label: '経費申請の承認・却下',   target: '会計' },
+  setExpenseVoucherNo:  { label: '支出伝票の発行',         target: '会計' },
   addMyExpense:         { label: '経費の申請',            target: '会計' },
   saveExpenseCategories:{ label: '費目マスタの保存',       target: '会計' },
   saveDocuments:        { label: '文書の保存',            target: '文書' },
@@ -756,6 +758,9 @@ function dispatch(action, body) {
         break;
       case 'setExpenseStatus':
         result = handleSetExpenseStatus(body.id, body.status);
+        break;
+      case 'setExpenseVoucherNo':
+        result = handleSetExpenseVoucherNo(body.id, body.voucherNo);
         break;
       case 'deleteExpense':
         result = handleDeleteExpense(body.id);
@@ -1847,6 +1852,23 @@ function handleSetExpenseStatus(id, status) {
   if (!rows.length) return { success: false, error: '経費が見つかりません' };
   const col = colNum('expenses', 'status');
   rows.forEach(function (r) { sheet.getRange(r, col).setValue(status); });
+  return { success: true };
+}
+/**
+ * 支出伝票の番号を書き込む。
+ * すでに番号がある行は上書きしない（発行済みの番号は固定）。
+ */
+function handleSetExpenseVoucherNo(id, voucherNo) {
+  const no = String(voucherNo || '').trim();
+  if (!no) return { success: false, error: '伝票番号が空です' };
+  const sheet = getSheet('expenses');
+  const rows = findAllRowIndexes_(sheet, 0, id);
+  if (!rows.length) return { success: false, error: '経費が見つかりません' };
+  const col = colNum('expenses', 'voucherNo');
+  rows.forEach(function (r) {
+    const cur = String(sheet.getRange(r, col).getValue() || '').trim();
+    if (!cur) sheet.getRange(r, col).setValue(no);
+  });
   return { success: true };
 }
 function handleDeleteExpense(id) {

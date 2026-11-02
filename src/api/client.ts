@@ -192,6 +192,8 @@ export const addExpense = (record: Expense, token: string) =>
   request<void>('addExpense', { record, token });
 export const setExpenseStatus = (id: string, status: RequestStatus, token: string) =>
   request<void>('setExpenseStatus', { id, status, token });
+export const setExpenseVoucherNo = (id: string, voucherNo: string, token: string) =>
+  request<void>('setExpenseVoucherNo', { id, voucherNo, token });
 export const deleteExpense = (id: string, token: string) =>
   request<void>('deleteExpense', { id, token });
 

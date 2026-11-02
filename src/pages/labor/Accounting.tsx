@@ -1,12 +1,17 @@
+import * as XLSX from 'xlsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert, Tile, SectionTitle } from '../../components/UI';
 import {
   saveExpenseCategories,
-  saveBudgets, addExpense, setExpenseStatus, deleteExpense,
+  saveBudgets, addExpense, setExpenseStatus, setExpenseVoucherNo, deleteExpense,
   getAccountingPageData, getAccountingCached, usedOf, genId, todayStr,
 } from '../../api/data';
 import { currentFiscalYear, fiscalYearLabel, PROJECT_DIVISIONS, divisionLabel } from '../../utils/constants';
+import {
+  nextVoucherNo, canIssueVoucher, buildVoucher, voucherYen,
+  VOUCHER_APPROVERS, VOUCHER_TITLE,
+} from '../../utils/voucher';
 import type { Staff, ExpenseCategory, Budget, Expense } from '../../types';
 
 type Tab = 'budget' | 'expense' | 'summary' | 'category';
@@ -89,6 +94,72 @@ export default function Accounting() {
     try { await setExpenseStatus(id, status); }
     catch (err) { setExpenses(prev); setError(err instanceof Error ? err.message : '更新に失敗しました'); }
   };
+  // ===== 支出伝票 =====
+  /**
+   * 伝票番号を確保する。未発行なら採番して保存し、発行済みならその番号を返す。
+   * 番号は一度振ったら固定（あとから過去日付の経費を足しても既発行分がずれない）。
+   */
+  const ensureVoucherNo = async (e: Expense): Promise<string> => {
+    if (e.voucherNo) return e.voucherNo;
+    const no = nextVoucherNo(expenses, fy);
+    setExpenses(list => list.map(x => (x.id === e.id ? { ...x, voucherNo: no } : x))); // 楽観的に即反映
+    try {
+      await setExpenseVoucherNo(e.id, no);
+      return no;
+    } catch (err) {
+      setExpenses(list => list.map(x => (x.id === e.id ? { ...x, voucherNo: e.voucherNo } : x)));
+      throw err;
+    }
+  };
+
+  /** 伝票をPDF用の画面で開く */
+  const openVoucher = async (e: Expense) => {
+    setError(''); setMessage('');
+    try {
+      await ensureVoucherNo(e);
+      navigate(`/labor/accounting/voucher?id=${e.id}&fy=${fy}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '伝票の発行に失敗しました');
+    }
+  };
+
+  /** 伝票をExcelで出力する（PDFと同じ体裁） */
+  const exportVoucherExcel = async (e: Expense) => {
+    setError(''); setMessage('');
+    try {
+      const no = await ensureVoucherNo(e);
+      const v = buildVoucher({
+        expense: e,
+        voucherNo: no,
+        issuedOn: todayStr(),
+        divisionName: divisionLabel(divisionOf(e.project)),
+        categoryName: catMap.get(e.categoryId) || e.categoryId,
+        applicantName: e.staffId ? (staffMap.get(e.staffId) || '(職員)') : '事務局',
+      });
+      const rows: (string | number)[][] = [
+        [VOUCHER_TITLE, '', '伝票番号', v.voucherNo],
+        ['', '', '発行日', v.issuedOn],
+        [],
+        ['', '', ...VOUCHER_APPROVERS],
+        ['', '', '', '', ''],
+        [],
+        ...v.rows.map(r => [r.label, r.value]),
+        ['金額（税込）', voucherYen(v.amount)],
+        ['内容・摘要', v.description],
+        [],
+        ['領収書貼付欄'],
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols'] = [{ wch: 14 }, { wch: 34 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '支出伝票');
+      XLSX.writeFile(wb, `支出伝票_${v.voucherNo}.xlsx`);
+      setMessage(`伝票 ${v.voucherNo} をExcelで出力しました`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '伝票の出力に失敗しました');
+    }
+  };
+
   const removeExpense = async (id: string) => {
     if (!confirm('この経費を削除しますか？')) return;
     const prev = expenses;
@@ -341,7 +412,7 @@ export default function Accounting() {
 
           <Card className="p-0 overflow-x-auto">
             <Table>
-              <thead><tr><Th>日付</Th><Th>申請者</Th><Th>事業／費目</Th><Th numeric>金額</Th><Th>状態</Th><Th>内容</Th><Th className="w-12"></Th></tr></thead>
+              <thead><tr><Th>日付</Th><Th>申請者</Th><Th>事業／費目</Th><Th numeric>金額</Th><Th>状態</Th><Th>伝票番号</Th><Th>内容</Th><Th>伝票</Th><Th className="w-12"></Th></tr></thead>
               <tbody>
                 {expenses.map(e => (
                   <tr key={e.id}>
@@ -350,11 +421,22 @@ export default function Accounting() {
                     <Td className="whitespace-nowrap">{e.project}／{catMap.get(e.categoryId) || e.categoryId}</Td>
                     <Td numeric className="whitespace-nowrap font-medium">{yen(e.amount)}</Td>
                     <Td><Badge color={e.status === 'approved' ? 'green' : e.status === 'requested' ? 'yellow' : 'red'}>{e.status === 'approved' ? '承認済' : e.status === 'requested' ? '申請中' : '却下'}</Badge></Td>
+                    <Td className="num whitespace-nowrap">{e.voucherNo || <span className="text-ink-mute">—</span>}</Td>
                     <Td>{e.description}</Td>
+                    <Td className="whitespace-nowrap">
+                      {canIssueVoucher(e) ? (
+                        <span className="flex gap-1">
+                          <Button variant="secondary" size="sm" onClick={() => openVoucher(e)}>PDF</Button>
+                          <Button variant="secondary" size="sm" onClick={() => exportVoucherExcel(e)}>Excel</Button>
+                        </span>
+                      ) : (
+                        <span className="text-xs text-ink-mute">承認後に発行</span>
+                      )}
+                    </Td>
                     <Td><Button variant="ghost" size="sm" onClick={() => removeExpense(e.id)}>削除</Button></Td>
                   </tr>
                 ))}
-                {expenses.length === 0 && <tr><Td className="text-center text-ink-mute py-8" colSpan={7}>{loading ? '読み込み中…' : '経費はまだありません'}</Td></tr>}
+                {expenses.length === 0 && <tr><Td className="text-center text-ink-mute py-8" colSpan={9}>{loading ? '読み込み中…' : '経費はまだありません'}</Td></tr>}
               </tbody>
             </Table>
           </Card>

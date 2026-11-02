@@ -269,4 +269,9 @@ export interface Expense {
   description: string;        // 内容・摘要
   status: RequestStatus;      // requested→approved/rejected（approved のみ執行に計上）
   note: string;               // 事務局メモ
+  /**
+   * 支出伝票の番号（例 2026-0001）。伝票を発行したときに採番して固定する。
+   * 空＝未発行。あとから過去日付の経費を足しても既発行の番号がずれないよう保存する。
+   */
+  voucherNo?: string;
 }
