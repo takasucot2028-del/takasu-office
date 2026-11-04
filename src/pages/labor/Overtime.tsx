@@ -190,10 +190,18 @@ export default function Overtime() {
   }, [records]);
 
   // 実績時間だけを求める（累計の計算に使う。手当は含めない）
+  // 日付→丸めた勤怠。パート職員の実績を申請の時間帯と重ねて求めるのに使う
+  const roundedAttByDate = useMemo(
+    () => new Map(roundedAtt.map(r => [r.date, r])),
+    [roundedAtt]
+  );
   const resultOf = (r: OvertimeRecord) => {
     if (!staff) return 0;
     if (!byApplied && primaryIdOfDay.get(r.date) !== r.id) return 0; // 同じ日の2件目以降
-    return resultHoursFor(staff, r.date, attMap[r.date] || 0, shiftMap[r.date] || 0, r.appliedHours || 0, workdayCtx(r.date));
+    return resultHoursFor(
+      staff, r.date, attMap[r.date] || 0, shiftMap[r.date] || 0, r.appliedHours || 0, workdayCtx(r.date),
+      { record: roundedAttByDate.get(r.date), startTime: r.startTime, endTime: r.endTime },
+    );
   };
   // 各記録の「その記録より前の時間外累計」。月60時間超の割増判定に使う。
   const priorMap = useMemo(

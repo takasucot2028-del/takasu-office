@@ -414,13 +414,43 @@ export function resultHoursOf(workedHours: number, standardHours: number): numbe
  *   （実働からシフト時間を引く方法だと、シフトが未登録の日に働いた分が
  *     まるごと時間外になってしまうため）
  */
+/**
+ * 申請した時間帯（start〜end）のうち、実際に働いた分の時間数。
+ *
+ * 打刻から求めた労働時間と申請の時間帯を重ね合わせるので、昼休憩は自然に除かれる。
+ * パート職員は休憩も打刻するため、この方法が実態に合う。
+ * 勤怠が未入力の日や、時刻のない申請は求めようがないので null を返す。
+ */
+export function appliedWorkedHours(
+  rec: AttendanceRecord | undefined, startTime?: string, endTime?: string
+): number | null {
+  const s = hm(startTime || ''), e = hm(endTime || '');
+  if (!rec || s === null || e === null || e <= s) return null;
+  const mins = workedMinutesOf(rec);
+  if (mins.length === 0) return null;
+  const inRange = mins.filter(m => (m >= s && m < e) || (m + 24 * 60 >= s && m + 24 * 60 < e));
+  return Math.round((inRange.length / 60) * 100) / 100;
+}
+
+/** 申請の時刻と、その日の勤怠。パート職員等の実績を実態に合わせるのに使う */
+export interface AppliedContext {
+  record?: AttendanceRecord;
+  startTime?: string;
+  endTime?: string;
+}
+
 export function resultHoursFor(
   staff: Staff, date: string, workedHours: number, shiftHours: number, appliedHours: number,
-  ctx?: WorkdayContext
+  ctx?: WorkdayContext, applied?: AppliedContext
 ): number {
   if (staff.employmentType === 'fulltime') {
     return resultHoursOf(workedHours, standardHoursOf(staff, date, shiftHours, ctx));
   }
+  // パート職員等は申請した時間が実績になる。ただし休憩は労働時間ではないので、
+  // 打刻がある日は申請の時間帯と実際に働いた分を重ねて求める（昼休憩が除かれる）。
+  const exact = appliedWorkedHours(applied?.record, applied?.startTime, applied?.endTime);
+  if (exact !== null) return exact;
+  // 勤怠が未入力のうちは、申請した時間を暫定値として使う
   return Math.max(0, Math.round((Number(appliedHours) || 0) * 100) / 100);
 }
 
