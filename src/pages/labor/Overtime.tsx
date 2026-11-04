@@ -6,7 +6,7 @@ import {
   saveMonthOvertime, addCompUse, deleteCompUse, setCompUseStatus,
   genId, todayStr,
 } from '../../api/data';
-import { WEEKDAY_LABELS, breakMinutesBetween, fiscalYearOf, fiscalYearLabel } from '../../utils/constants';
+import { WEEKDAY_LABELS, breakMinutesBetween, hoursExcludingBreak, breakOverlapMinutes, fiscalYearOf, fiscalYearLabel } from '../../utils/constants';
 import {
   monthlyTotals, evaluate36,
   LIMIT_MONTHLY, LIMIT_YEARLY, LIMIT_YEARLY_SPECIAL, LIMIT_MONTHLY_ABSOLUTE,
@@ -360,8 +360,9 @@ export default function Overtime() {
 
   const addCompUseRec = async () => {
     if (!staff) return;
-    // 開始〜終了から取得時間を求める（例: 8:30〜12:00 → 3.5時間）
-    const hrs = Math.round((breakMinutesBetween(cStart, cEnd) / 60) * 100) / 100;
+    // 開始〜終了から取得時間を求める。代休は働くはずだった時間なので昼休憩は含めない
+    // （例: 8:30〜14:00 で休憩12:00〜13:00 → 4.5時間）
+    const hrs = hoursExcludingBreak(cStart, cEnd, staff.defaultBreakStart, staff.defaultBreakEnd);
     if (!cStart || !cEnd) { setError('代休の開始と終了の時刻を入力してください'); return; }
     if (!hrs || hrs <= 0) { setError('終了は開始より後の時刻にしてください'); return; }
     setError('');
@@ -795,14 +796,19 @@ export default function Overtime() {
               <div className="mb-4"><Button className="w-full" variant="secondary" onClick={addCompUseRec}>取得を記録</Button></div>
             </div>
             <p className="num text-xs text-ink-mute mb-4">
-              取得時間は開始〜終了から計算します（現在:{' '}
+              取得時間は開始〜終了から休憩を引いて計算します（現在:{' '}
               <span className="font-medium text-ink-soft">
                 {(() => {
-                  const h = Math.round((breakMinutesBetween(cStart, cEnd) / 60) * 100) / 100;
+                  const h = hoursExcludingBreak(cStart, cEnd, staff?.defaultBreakStart, staff?.defaultBreakEnd);
                   return h > 0 ? `${h}時間` : '—';
                 })()}
               </span>
               ）。終日の代休は所定の勤務時間帯を入力してください。
+              {breakOverlapMinutes(cStart, cEnd, staff?.defaultBreakStart, staff?.defaultBreakEnd) > 0 && (
+                <span className="block">
+                  休憩 {staff?.defaultBreakStart}〜{staff?.defaultBreakEnd}（{breakOverlapMinutes(cStart, cEnd, staff?.defaultBreakStart, staff?.defaultBreakEnd)}分）を差し引いています。
+                </span>
+              )}
             </p>
             <Table>
               <thead><tr><Th>取得日</Th><Th>時間帯</Th><Th numeric>時間</Th><Th>状態</Th><Th>備考</Th><Th></Th></tr></thead>

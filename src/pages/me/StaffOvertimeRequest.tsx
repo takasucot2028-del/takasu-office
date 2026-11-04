@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PageContainer, Card, Field, Input, Select, Button, Table, Th, Td, Badge, Alert, SectionTitle, Note } from '../../components/UI';
 import { getMyProfile, getMyOvertimePageData, addMyOvertime, addMyCompUse, addMySubstitute, todayStr } from '../../api/data';
-import { WEEKDAY_LABELS, hoursBetween } from '../../utils/constants';
+import { WEEKDAY_LABELS, hoursBetween, hoursExcludingBreak, breakOverlapMinutes } from '../../utils/constants';
 import { closedDayName, isClosedDay } from '../../utils/holidays';
 import { CancelRequestButton } from '../../components/CancelRequestButton';
 import {
@@ -47,7 +47,9 @@ export default function StaffOvertimeRequest() {
   const [cEnd, setCEnd] = useState('12:00');
   const [cNote, setCNote] = useState('');
   const [cSaving, setCSaving] = useState(false);
-  const cHrs = hoursBetween(cStart, cEnd);
+  // 代休は働くはずだった時間を消化するもの。昼休憩は含めない
+   const cBreakMin = breakOverlapMinutes(cStart, cEnd, staff?.defaultBreakStart, staff?.defaultBreakEnd);
+  const cHrs = hoursExcludingBreak(cStart, cEnd, staff?.defaultBreakStart, staff?.defaultBreakEnd);
 
   const month = date.slice(0, 7);
 
@@ -385,7 +387,10 @@ export default function StaffOvertimeRequest() {
           </div>
         </form>
         <p className="text-xs text-ink-mute">
-          取得時間 = 終了 − 開始（現在: <span className="num font-medium text-ink">{cHrs > 0 ? `${cHrs}h` : '—'}</span>）。
+          取得時間 = 終了 − 開始 − 休憩（現在: <span className="num font-medium text-ink">{cHrs > 0 ? `${cHrs}h` : '—'}</span>）。
+          {cBreakMin > 0 && (
+            <span className="text-ink-soft">　休憩 {staff?.defaultBreakStart}〜{staff?.defaultBreakEnd}（<span className="num">{cBreakMin}</span>分）を差し引いています。</span>
+          )}
           {compRemain <= 0 && <span className="text-caution">取得できる代休がありません（時間外の処理が「代休」で承認されると増えます）。</span>}
         </p>
       </Card>

@@ -373,6 +373,37 @@ export function hoursBetween(start?: string, end?: string): number {
   return Math.round(breakMinutesBetween(start, end) / 60 * 100) / 100;
 }
 
+const hhmmToMin = (t?: string): number | null => {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(t || '');
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+
+/**
+ * 時刻範囲と休憩帯が重なる分数。
+ * 休みを取る時間から昼休憩を差し引くのに使う。
+ */
+export function breakOverlapMinutes(start?: string, end?: string, breakStart?: string, breakEnd?: string): number {
+  const s = hhmmToMin(start), e = hhmmToMin(end);
+  const bs = hhmmToMin(breakStart), be = hhmmToMin(breakEnd);
+  if (s === null || e === null || bs === null || be === null) return 0;
+  return Math.max(0, Math.min(e, be) - Math.max(s, bs));
+}
+
+/**
+ * 休憩を除いた時間数。
+ *
+ * 代休や時間単位の年次有給は「働くはずだった時間」を消化するものなので、
+ * 休憩時間は含めない。例：8:30〜14:00 で休憩12:00〜13:00 なら 4.5時間。
+ * 休憩が設定されていない職員は差し引かない。
+ */
+export function hoursExcludingBreak(
+  start?: string, end?: string, breakStart?: string, breakEnd?: string
+): number {
+  const span = breakMinutesBetween(start, end);
+  const rest = breakOverlapMinutes(start, end, breakStart, breakEnd);
+  return Math.round(Math.max(0, span - rest) / 60 * 100) / 100;
+}
+
 // ==== 会計管理 ====
 
 /** 会計年度（4月始まり）。date の年度＝4月以降はその年、1〜3月は前年 */

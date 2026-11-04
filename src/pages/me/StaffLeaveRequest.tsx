@@ -3,7 +3,7 @@ import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge
 import { CancelRequestButton } from '../../components/CancelRequestButton';
 import { getMyLeave, getMyProfile, addMyLeaveRequest, computeLeaveBalance, todayStr } from '../../api/data';
 import {
-  hoursBetween, currentFiscalYear, fiscalYearLabel,
+  hoursExcludingBreak, breakOverlapMinutes, currentFiscalYear, fiscalYearLabel,
   hourlyPaidLeaveRemainHours, HOURLY_LEAVE_LIMIT_DAYS, hourlyLeaveLimitHours, leaveDayHours,
   SPECIAL_LEAVE_TYPES, specialLeaveDef, specialLeaveOptionLabel, specialLeaveUsedDays, specialLeaveAnnualDays,
   subReasonsFor, subReasonLabel, leaveTypeLabel, canUseSpecialLeave, EMPLOYMENT_TYPE_LABELS,
@@ -33,7 +33,9 @@ export default function StaffLeaveRequest() {
   const [start, setStart] = useState('08:30');     // 時間単位の開始
   const [end, setEnd] = useState('12:00');         // 時間単位の終了
   const [note, setNote] = useState('');
-  const hourAmt = hoursBetween(start, end);        // 時間単位の取得時間
+  // 時間単位の年休も働くはずだった時間を消化するもの。昼休憩は含めない
+  const hourBreakMin = breakOverlapMinutes(start, end, me?.defaultBreakStart, me?.defaultBreakEnd);
+  const hourAmt = hoursExcludingBreak(start, end, me?.defaultBreakStart, me?.defaultBreakEnd);
 
   // 特別休暇（第23〜34条）は常勤職員のみ。それ以外は年次有給休暇だけ申請できる
   const specialOk = me ? canUseSpecialLeave(me) : true;
@@ -241,6 +243,9 @@ export default function StaffLeaveRequest() {
         </form>
         <p className="text-xs text-ink-mute">
           1日＝{dayHours}時間。時間単位の年次有給は1年に{HOURLY_LEAVE_LIMIT_DAYS}日ぶん（残り{hourlyRemain}時間）まで。時間単位は開始〜終了で申請（現在: <span className="num font-medium text-ink">{unit === 'hour' ? (hourAmt > 0 ? `${hourAmt}h` : '—') : `${amount || 0}日`}</span>）。申請は事務局の承認後に反映されます。
+          {unit === 'hour' && hourBreakMin > 0 && (
+            <span className="block text-ink-soft">休憩 {me?.defaultBreakStart}〜{me?.defaultBreakEnd}（<span className="num">{hourBreakMin}</span>分）は取得時間に含めていません。</span>
+          )}
         </p>
         {!specialOk && me && (
           <p className="mt-3 text-xs bg-paper border border-rule-soft rounded-md px-3 py-2 text-ink-soft">
