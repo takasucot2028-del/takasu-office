@@ -3,6 +3,7 @@ import { PageContainer, Card, Field, Input, Select, Button, Table, Th, Td, Badge
 import { getMyProfile, getMyOvertimePageData, addMyOvertime, addMyCompUse, todayStr } from '../../api/data';
 import { WEEKDAY_LABELS, hoursBetween } from '../../utils/constants';
 import { closedDayName, isClosedDay } from '../../utils/holidays';
+import { CancelRequestButton } from '../../components/CancelRequestButton';
 import {
   overtimeKindOf, allowanceOf, canSplitDisposition, dispositionSplitOf,
   OVERTIME_KIND_LABELS, OVERTIME_STATUS_LABELS, OVERTIME_DISPOSITION_LABELS,
@@ -200,7 +201,7 @@ export default function StaffOvertimeRequest() {
       <Card className="p-0 overflow-x-auto">
         <Table>
           <thead>
-            <tr><Th>日付</Th><Th>種別</Th><Th numeric>申請</Th><Th>状態</Th><Th numeric>実績</Th><Th>処理</Th><Th numeric>金額</Th></tr>
+            <tr><Th>日付</Th><Th>種別</Th><Th numeric>申請</Th><Th>状態</Th><Th numeric>実績</Th><Th>処理</Th><Th numeric>金額</Th><Th></Th></tr>
           </thead>
           <tbody>
             {records.map(r => {
@@ -237,11 +238,21 @@ export default function StaffOvertimeRequest() {
                     const h = dispositionSplitOf(r).allowanceHours;
                     return h > 0 ? `¥${allowanceOf(h, staff.hourlyWage || 0, k).toLocaleString()}` : '—';
                   })()}</Td>
+                  <Td className="whitespace-nowrap">
+                    {/* 承認前のものだけ取り消せる */}
+                    {!approved && (
+                      <CancelRequestButton
+                        kind="overtime" id={r.id} what="時間外・休日勤務の申請"
+                        onCancelled={() => { setMessage('時間外・休日勤務の申請を取り消しました'); setError(''); setVersion(v => v + 1); }}
+                        onError={msg => { setError(msg); setMessage(''); }}
+                      />
+                    )}
+                  </Td>
                 </tr>
               );
             })}
-            {!loading && records.length === 0 && <tr><Td className="text-center text-ink-mute py-8" colSpan={7}>申請はまだありません</Td></tr>}
-            {loading && <tr><Td className="text-center text-ink-mute py-8" colSpan={7}>読み込み中…</Td></tr>}
+            {!loading && records.length === 0 && <tr><Td className="text-center text-ink-mute py-8" colSpan={8}>申請はまだありません</Td></tr>}
+            {loading && <tr><Td className="text-center text-ink-mute py-8" colSpan={8}>読み込み中…</Td></tr>}
           </tbody>
         </Table>
       </Card>
@@ -287,7 +298,7 @@ export default function StaffOvertimeRequest() {
       <Card className="p-0 overflow-x-auto mt-4">
         <Table>
           <thead>
-            <tr><Th>取得日</Th><Th numeric>時間帯</Th><Th numeric>時間</Th><Th>状態</Th><Th>備考</Th></tr>
+            <tr><Th>取得日</Th><Th numeric>時間帯</Th><Th numeric>時間</Th><Th>状態</Th><Th>備考</Th><Th></Th></tr>
           </thead>
           <tbody>
             {compUse.map(r => {
@@ -305,10 +316,20 @@ export default function StaffOvertimeRequest() {
                     </Badge>
                   </Td>
                   <Td className="text-xs text-ink-mute">{r.note}</Td>
+                  <Td className="whitespace-nowrap">
+                    {/* 事務局が登録したもの（status 未設定＝承認済）は取り消せない */}
+                    {st === 'requested' && (
+                      <CancelRequestButton
+                        kind="comp" id={r.id} what="代休の取得申請"
+                        onCancelled={() => { setMessage('代休の取得申請を取り消しました'); setError(''); setVersion(v => v + 1); }}
+                        onError={msg => { setError(msg); setMessage(''); }}
+                      />
+                    )}
+                  </Td>
                 </tr>
               );
             })}
-            {!loading && compUse.length === 0 && <tr><Td className="text-center text-ink-mute py-8" colSpan={5}>代休の取得はまだありません</Td></tr>}
+            {!loading && compUse.length === 0 && <tr><Td className="text-center text-ink-mute py-8" colSpan={6}>代休の取得はまだありません</Td></tr>}
           </tbody>
         </Table>
       </Card>

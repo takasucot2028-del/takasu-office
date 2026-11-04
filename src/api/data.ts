@@ -8,7 +8,7 @@
 import type {
   Staff, AttendanceRecord, LeaveRecord,
   ShiftPattern, AvailabilityRecord, ConfirmedShift, WorkLocation,
-  OvertimeRecord, CompLeaveUse, RequestStatus, DocumentItem,
+  OvertimeRecord, CompLeaveUse, RequestStatus, CancelableKind, DocumentItem,
   ExpenseCategory, Budget, Expense, ShiftChange, AttendanceChange, CompanyHoliday, AuditEntry,
 } from '../types';
 import { DEFAULT_SHIFT_PATTERNS, LEAVE_HOURS_PER_DAY, currentFiscalYear } from '../utils/constants';
@@ -701,6 +701,15 @@ export async function getMyCompUse(): Promise<CompLeaveUse[]> {
 }
 
 /** 従業員：代休の取得を申請する（事務局の承認待ち） */
+/**
+ * 従業員：自分の申請を取り消す（記録ごと削除）。
+ * 取り消せるのは承認前のものだけ。本人確認と状態の確認はサーバー側でも行う。
+ */
+export async function cancelMyRequest(kind: CancelableKind, id: string): Promise<void> {
+  if (!USE_GAS) { local.cancelMyRequest(kind, id, staffId()); return; }
+  const res = await gas.cancelMyRequest(kind, id, token());
+  if (!res.success) throw new Error(res.error || '申請の取消に失敗しました');
+}
 export async function addMyCompUse(record: Partial<CompLeaveUse>): Promise<void> {
   const rec: Partial<CompLeaveUse> = { id: local.genId('cu'), ...record }; // クライアント採番（リトライ冪等化）
   if (!USE_GAS) {

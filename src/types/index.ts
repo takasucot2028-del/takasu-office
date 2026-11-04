@@ -152,6 +152,9 @@ export type Role = 'admin' | 'staff';
 /** 申請の承認状態（従業員申請＝requested、事務局登録/承認＝approved） */
 export type RequestStatus = 'requested' | 'approved' | 'rejected';
 
+/** 職員が自分で取り消せる申請の種類（取消は承認前のものだけ） */
+export type CancelableKind = 'leave' | 'comp' | 'overtime' | 'expense';
+
 /** 有給休暇の記録種別 */
 export type LeaveKind = 'grant' | 'use';
 

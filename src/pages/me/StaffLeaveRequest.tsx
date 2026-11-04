@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert, SectionTitle, Tile } from '../../components/UI';
+import { CancelRequestButton } from '../../components/CancelRequestButton';
 import { getMyLeave, getMyProfile, addMyLeaveRequest, computeLeaveBalance, todayStr } from '../../api/data';
 import {
   hoursBetween, currentFiscalYear, fiscalYearLabel,
@@ -278,7 +279,7 @@ export default function StaffLeaveRequest() {
 
       <Card className="p-0 overflow-x-auto">
         <Table>
-          <thead><tr><Th>日付</Th><Th>種別</Th><Th>休暇の種類</Th><Th numeric>日数/時間</Th><Th>状態</Th><Th>備考</Th></tr></thead>
+          <thead><tr><Th>日付</Th><Th>種別</Th><Th>休暇の種類</Th><Th numeric>日数/時間</Th><Th>状態</Th><Th>備考</Th><Th></Th></tr></thead>
           <tbody>
             {records.map(r => (
               <tr key={r.id}>
@@ -295,9 +296,19 @@ export default function StaffLeaveRequest() {
                 </Td>
                 <Td><Badge color={STATUS_COLOR[r.status || 'approved']}>{STATUS_LABEL[r.status || 'approved']}</Badge></Td>
                 <Td>{r.note}</Td>
+                <Td className="whitespace-nowrap">
+                  {/* 取り消せるのは承認前の「取得」の申請だけ（付与は事務局の記録） */}
+                  {r.kind === 'use' && r.status === 'requested' && (
+                    <CancelRequestButton
+                      kind="leave" id={r.id} what="休暇の申請"
+                      onCancelled={() => { setMessage('休暇の申請を取り消しました'); setError(''); setVersion(v => v + 1); }}
+                      onError={msg => { setError(msg); setMessage(''); }}
+                    />
+                  )}
+                </Td>
               </tr>
             ))}
-            {!loading && records.length === 0 && <tr><Td className="text-center text-ink-mute py-8" colSpan={6}>記録はまだありません</Td></tr>}
+            {!loading && records.length === 0 && <tr><Td className="text-center text-ink-mute py-8" colSpan={7}>記録はまだありません</Td></tr>}
             {loading && <tr><Td className="text-center text-ink-mute py-8" colSpan={6}>読み込み中…</Td></tr>}
           </tbody>
         </Table>

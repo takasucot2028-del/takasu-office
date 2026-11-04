@@ -3,7 +3,7 @@ import type {
   Staff, AttendanceRecord, LeaveRecord, WorkLocation,
   ShiftPattern, AvailabilityRecord, ConfirmedShift,
   OvertimeRecord, CompLeaveUse, DocumentItem,
-  ExpenseCategory, Budget, Expense, RequestStatus, ShiftChange, AttendanceChange, CompanyHoliday, AuditEntry,
+  ExpenseCategory, Budget, Expense, RequestStatus, CancelableKind, ShiftChange, AttendanceChange, CompanyHoliday, AuditEntry,
 } from '../types';
 import { ADMIN_EMAIL, ADMIN_PASSWORD, DEFAULT_SHIFT_PATTERNS, DEFAULT_EXPENSE_CATEGORIES, breakMinutesBetween } from './constants';
 
@@ -602,6 +602,27 @@ export function setExpenseStatus(id: string, status: RequestStatus) {
   const r = all.find(x => x.id === id);
   if (r) { r.status = status; save(KEY_EXPENSES, all); }
   writeAudit('経費申請の承認・却下', '会計', `id=${id} / ${status}`);
+}
+/**
+ * 従業員：自分の申請を取り消す（デモモード）。
+ * 本人のもので、かつ承認前のものだけ消す。GAS側と同じ判定にそろえる。
+ */
+const CANCELABLE: Record<CancelableKind, { key: string; pending: string }> = {
+  leave:    { key: KEY_LEAVE,     pending: 'requested' },
+  comp:     { key: KEY_COMP_USE,  pending: 'requested' },
+  overtime: { key: KEY_OVERTIME,  pending: 'applied'   },
+  expense:  { key: KEY_EXPENSES,  pending: 'requested' },
+};
+export function cancelMyRequest(kind: CancelableKind, id: string, staffId: string) {
+  const conf = CANCELABLE[kind];
+  if (!conf) throw new Error('取り消せない申請です');
+  const all = load<{ id: string; staffId: string; status?: string }>(conf.key);
+  const rec = all.find(r => r.id === id);
+  if (!rec) throw new Error('申請が見つかりません。画面を再読み込みしてください');
+  if (rec.staffId !== staffId) throw new Error('他の人の申請は取り消せません');
+  if ((rec.status || '') !== conf.pending) throw new Error('すでに事務局が処理した申請です。取消は事務局にご連絡ください');
+  save(conf.key, all.filter(r => r.id !== id));
+  writeAudit('申請の取消', '申請', kind + ' / id=' + id);
 }
 export function setExpenseVoucherNo(id: string, voucherNo: string) {
   const all = load<Expense>(KEY_EXPENSES);

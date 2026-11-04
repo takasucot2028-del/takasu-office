@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert, SectionTitle } from '../../components/UI';
+import { CancelRequestButton } from '../../components/CancelRequestButton';
 import { getExpenseContext, listMyExpenses, addMyExpense, genId, todayStr } from '../../api/data';
 import type { ExpenseContext } from '../../api/data';
 import { currentFiscalYear, fiscalYearLabel } from '../../utils/constants';
@@ -102,7 +103,7 @@ export default function StaffExpense() {
 
       <Card className="p-0 overflow-x-auto">
         <Table>
-          <thead><tr><Th>申請日</Th><Th>事業／費目</Th><Th numeric>金額</Th><Th>状態</Th><Th>内容</Th></tr></thead>
+          <thead><tr><Th>申請日</Th><Th>事業／費目</Th><Th numeric>金額</Th><Th>状態</Th><Th>内容</Th><Th></Th></tr></thead>
           <tbody>
             {mine.map(e => (
               <tr key={e.id}>
@@ -111,10 +112,19 @@ export default function StaffExpense() {
                 <Td numeric className="whitespace-nowrap font-medium">{yen(e.amount)}</Td>
                 <Td><Badge color={STATUS_COLOR[e.status || 'requested']}>{STATUS_LABEL[e.status || 'requested']}</Badge></Td>
                 <Td>{e.description}</Td>
+                <Td className="whitespace-nowrap">
+                  {e.status === 'requested' && (
+                    <CancelRequestButton
+                      kind="expense" id={e.id} what="経費の申請"
+                      onCancelled={() => { setMine(list => list.filter(x => x.id !== e.id)); setMessage('経費の申請を取り消しました'); setError(''); }}
+                      onError={msg => { setError(msg); setMessage(''); }}
+                    />
+                  )}
+                </Td>
               </tr>
             ))}
-            {!loading && mine.length === 0 && <tr><Td className="text-center text-ink-mute py-8" colSpan={5}>申請はまだありません</Td></tr>}
-            {loading && <tr><Td className="text-center text-ink-mute py-8" colSpan={5}>読み込み中…</Td></tr>}
+            {!loading && mine.length === 0 && <tr><Td className="text-center text-ink-mute py-8" colSpan={6}>申請はまだありません</Td></tr>}
+            {loading && <tr><Td className="text-center text-ink-mute py-8" colSpan={6}>読み込み中…</Td></tr>}
           </tbody>
         </Table>
       </Card>

@@ -599,6 +599,7 @@ var AUDIT_ACTIONS = {
   deleteExpense:        { label: '経費の削除',            target: '会計' },
   setExpenseStatus:     { label: '経費申請の承認・却下',   target: '会計' },
   setExpenseVoucherNo:  { label: '支出伝票の発行',         target: '会計' },
+  cancelMyRequest:      { label: '申請の取消',             target: '申請' },
   addMyExpense:         { label: '経費の申請',            target: '会計' },
   saveExpenseCategories:{ label: '費目マスタの保存',       target: '会計' },
   saveDocuments:        { label: '文書の保存',            target: '文書' },
@@ -862,6 +863,9 @@ function dispatch(action, body) {
         break;
       case 'getMyCompUse':
         result = handleGetMyCompUse(getSession(body.token));
+        break;
+      case 'cancelMyRequest':
+        result = handleCancelMyRequest(session, body.kind, body.id);
         break;
       case 'addMyCompUse':
         result = handleAddMyCompUse(getSession(body.token), body.record);
@@ -1598,6 +1602,46 @@ function handleAddMyCompUse(session, record) {
   };
   if (rec.hours <= 0) return { success: false, error: '取得時間が不正です' };
   appendUnique_('comp_leave_use', rec);
+  return { success: true };
+}
+
+/**
+ * 従業員：自分の申請を取り消す（記録ごと削除）。
+ *
+ * 取り消せるのは「まだ承認されていない自分の申請」だけ。
+ * 承認済みのものは賃金や休暇残の計算に入っているため、事務局が対応する。
+ * 本人かどうかと状態の確認は必ずここ（サーバー側）で行う。
+ */
+var CANCELABLE_ = {
+  leave:    { sheet: 'leave',          pending: 'requested' },
+  comp:     { sheet: 'comp_leave_use', pending: 'requested' },
+  overtime: { sheet: 'overtime',       pending: 'applied'   },
+  expense:  { sheet: 'expenses',       pending: 'requested' },
+};
+
+function handleCancelMyRequest(session, kind, id) {
+  const staff = staffOf_(session);
+  const conf = CANCELABLE_[String(kind || '')];
+  if (!conf) return { success: false, error: '取り消せない申請です' };
+  if (!id) return { success: false, error: '申請が指定されていません' };
+
+  const sheet = getSheet(conf.sheet);
+  const rows = findAllRowIndexes_(sheet, 0, id);
+  if (!rows.length) return { success: false, error: '申請が見つかりません。画面を再読み込みしてください' };
+
+  const staffCol = colNum(conf.sheet, 'staffId');
+  const statusCol = colNum(conf.sheet, 'status');
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (String(sheet.getRange(r, staffCol).getValue()) !== String(staff.id)) {
+      return { success: false, error: '他の人の申請は取り消せません' };
+    }
+    if (String(sheet.getRange(r, statusCol).getValue()).trim() !== conf.pending) {
+      return { success: false, error: 'すでに事務局が処理した申請です。取消は事務局にご連絡ください' };
+    }
+  }
+
+  deleteRowsById_(conf.sheet, id);
   return { success: true };
 }
 
