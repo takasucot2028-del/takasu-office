@@ -50,6 +50,10 @@ var SHEETS = {
     ['id', 'ID'], ['fiscalYear', '年度'], ['project', '事業'], ['categoryId', '費目ID'], ['amount', '予算額'], ['note', '備考'],
     ['division', '区分'],
   ] },
+  substitutes: { name: '振替休日', columns: [
+    ['id', 'ID'], ['staffId', '職員ID'], ['workDate', '出勤する休日'], ['offDate', '休みにする労働日'],
+    ['reason', '事由'], ['status', '状態'], ['note', '備考'],
+  ] },
   expenses: { name: '経費', columns: [
     ['id', 'ID'], ['fiscalYear', '年度'], ['staffId', '申請者ID'], ['date', '日付'], ['project', '事業'],
     ['categoryId', '費目ID'], ['amount', '金額'], ['description', '内容'], ['status', '状態'], ['note', '備考'],
@@ -600,6 +604,8 @@ var AUDIT_ACTIONS = {
   setExpenseStatus:     { label: '経費申請の承認・却下',   target: '会計' },
   setExpenseVoucherNo:  { label: '支出伝票の発行',         target: '会計' },
   cancelMyRequest:      { label: '申請の取消',             target: '申請' },
+  addMySubstitute:      { label: '振替休日の申請',         target: '振替' },
+  setSubstituteStatus:  { label: '振替休日の承認・却下',   target: '振替' },
   addMyExpense:         { label: '経費の申請',            target: '会計' },
   saveExpenseCategories:{ label: '費目マスタの保存',       target: '会計' },
   saveDocuments:        { label: '文書の保存',            target: '文書' },
@@ -863,6 +869,18 @@ function dispatch(action, body) {
         break;
       case 'getMyCompUse':
         result = handleGetMyCompUse(getSession(body.token));
+        break;
+      case 'getSubstitutes':
+        result = handleGetSubstitutes();
+        break;
+      case 'getMySubstitutes':
+        result = handleGetMySubstitutes(session);
+        break;
+      case 'addMySubstitute':
+        result = handleAddMySubstitute(session, body.record);
+        break;
+      case 'setSubstituteStatus':
+        result = handleSetSubstituteStatus(body.id, body.status);
         break;
       case 'cancelMyRequest':
         result = handleCancelMyRequest(session, body.kind, body.id);
@@ -1605,6 +1623,56 @@ function handleAddMyCompUse(session, record) {
   return { success: true };
 }
 
+/* ---- 振替休日（就業規則 第19条）----
+ * 休日に出勤する前に、その休日と別の労働日を入れ替える。
+ * 入れ替えた結果、出勤する日は労働日になるので割増賃金は発生しない。
+ */
+function handleGetSubstitutes() {
+  const rows = sheetToObjects(getSheet('substitutes'), 'substitutes');
+  rows.forEach(function (r) {
+    r.workDate = cellYmd_(r.workDate);
+    r.offDate = cellYmd_(r.offDate);
+    r.status = String(r.status || 'requested');
+  });
+  return { success: true, data: rows };
+}
+
+function handleGetMySubstitutes(session) {
+  const staff = staffOf_(session);
+  const res = handleGetSubstitutes();
+  return { success: true, data: res.data.filter(function (r) { return String(r.staffId) === staff.id; }) };
+}
+
+function handleAddMySubstitute(session, record) {
+  const staff = staffOf_(session);
+  if (!record || !record.workDate || !record.offDate) {
+    return { success: false, error: '出勤する休日と、休みにする労働日の両方を入れてください' };
+  }
+  const workDate = String(record.workDate);
+  const offDate = String(record.offDate);
+  if (workDate === offDate) return { success: false, error: '同じ日は振り替えられません' };
+  // 同じ賃金計算期間（月）内でのみ振り替える運用
+  if (workDate.slice(0, 7) !== offDate.slice(0, 7)) {
+    return { success: false, error: '振替は同じ月の中で行ってください' };
+  }
+  const rec = {
+    id: record.id || genId('sb'), staffId: staff.id,
+    workDate: workDate, offDate: offDate,
+    reason: String(record.reason || ''), status: 'requested', note: '',
+  };
+  appendUnique_('substitutes', rec);
+  return { success: true };
+}
+
+function handleSetSubstituteStatus(id, status) {
+  const sheet = getSheet('substitutes');
+  const rows = findAllRowIndexes_(sheet, 0, id);
+  if (!rows.length) return { success: false, error: '振替休日の申請が見つかりません' };
+  const col = colNum('substitutes', 'status');
+  rows.forEach(function (r) { sheet.getRange(r, col).setValue(status); });
+  return { success: true };
+}
+
 /**
  * 従業員：自分の申請を取り消す（記録ごと削除）。
  *
@@ -1617,6 +1685,7 @@ var CANCELABLE_ = {
   comp:     { sheet: 'comp_leave_use', pending: 'requested' },
   overtime: { sheet: 'overtime',       pending: 'applied'   },
   expense:  { sheet: 'expenses',       pending: 'requested' },
+  substitute: { sheet: 'substitutes',  pending: 'requested' },
 };
 
 function handleCancelMyRequest(session, kind, id) {

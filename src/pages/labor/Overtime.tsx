@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageContainer, Card, Select, Input, Field, Button, Table, Th, Td, Badge, Alert, Tile, SectionTitle } from '../../components/UI';
 import {
-  getReference, getOvertimeMonthData,
+  getReference, getOvertimeMonthData, listSubstitutes, setSubstituteStatus,
   saveMonthOvertime, addCompUse, deleteCompUse, setCompUseStatus,
   genId, todayStr,
 } from '../../api/data';
@@ -14,7 +14,7 @@ import {
 } from '../../utils/limit36';
 import {
   isOvertimeTarget, overtimeKindOf, standardHoursOf, resultHoursFor, usesAppliedHours,
-  dispositionSplitOf, canSplitDisposition,
+  dispositionSplitOf, canSplitDisposition, substituteMapOf, canRequestSubstitute,
   allowanceDetail, compPremiumDetail, compDeadlineOf, priorOvertimeMap, patternHours,
   shiftExcessIsPremium, partMonthPremium, nightAllowanceOf, nightHoursOf,
   OVERTIME_MONTHLY_THRESHOLD, WEEKLY_LEGAL_HOURS,
@@ -22,7 +22,7 @@ import {
 } from '../../utils/overtime';
 import { workMinutesOf, roundedRecord, dayShiftMap } from '../../utils/worktime';
 import type { DayShift } from '../../utils/worktime';
-import type { Staff, ShiftPattern, ConfirmedShift, AttendanceRecord, OvertimeRecord, CompLeaveUse, OvertimeDisposition, RequestStatus } from '../../types';
+import type { Staff, ShiftPattern, ConfirmedShift, AttendanceRecord, OvertimeRecord, CompLeaveUse, OvertimeDisposition, RequestStatus, SubstituteHoliday } from '../../types';
 
 function currentMonth(): string { return todayStr().slice(0, 7); }
 function shiftMonth(month: string, delta: number): string {
@@ -56,6 +56,7 @@ export default function Overtime() {
   const [staffId, setStaffId] = useState('');
   const [month, setMonth] = useState(currentMonth());
   const [reloadKey, setReloadKey] = useState(0);
+  const [substitutes, setSubstitutes] = useState<SubstituteHoliday[]>([]);
 
   const [allOt, setAllOt] = useState<OvertimeRecord[]>([]);   // 対象職員の全月の時間外
   const [compUse, setCompUse] = useState<CompLeaveUse[]>([]);
@@ -88,6 +89,8 @@ export default function Overtime() {
   const isPart = staff ? !shiftExcessIsPremium(staff) : false;
   // 実績を手当と代休に分けられるか（常勤職員のみ）
   const canSplit = staff ? canSplitDisposition(staff) : false;
+  // 振替休日は常勤職員のみ（パートはシフトで勤務日を決めるため）
+  const canSub = staff ? canRequestSubstitute(staff) : false;
   const patternMap = useMemo(() => new Map(patterns.map(p => [p.id, p])), [patterns]);
 
   // 初回：職員・区分
@@ -111,10 +114,14 @@ export default function Overtime() {
     let alive = true;
     setMessage('');
     (async () => {
-      const d = await getOvertimeMonthData(staffId, month);
+      const [d, subs] = await Promise.all([
+        getOvertimeMonthData(staffId, month),
+        listSubstitutes(), // 振替休日（第19条）。休日判定を入れ替えるのに使う
+      ]);
       if (!alive) return;
       setAllOt(d.overtime);
       setCompUse(d.compUse);
+      setSubstitutes(subs.filter(r => r.staffId === staffId));
       const sm: Record<string, number> = {};
       for (const c of d.confirmed as ConfirmedShift[]) {
         if (c.staffId !== staffId) continue;
@@ -154,7 +161,14 @@ export default function Overtime() {
     () => confirmed.some(c => c.staffId === staffId && c.date.startsWith(month)),
     [confirmed, staffId, month]
   );
-  const workdayCtx = (date: string) => ({ hasShift: (shiftMap[date] || 0) > 0, shiftKnown });
+  // 承認済みの振替で入れ替わった日（第19条）。休日判定より優先される
+  const subMap = useMemo(() => substituteMapOf(substitutes), [substitutes]);
+  const workdayCtx = (date: string) => ({
+    hasShift: (shiftMap[date] || 0) > 0,
+    shiftKnown,
+    substituteWork: subMap.work.has(date),
+    substituteOff: subMap.off.has(date),
+  });
 
   // 当月の編集コピー（全時間外から当月を抽出）
   useEffect(() => {
@@ -256,6 +270,20 @@ export default function Overtime() {
     };
     setRecords(prev => [...prev, rec].sort((a, b) => a.date.localeCompare(b.date)));
     setFReason('');
+  };
+
+  /** 振替休日の承認・却下。承認した時点で休日判定が入れ替わる */
+  const decideSubstitute = async (id: string, status: 'approved' | 'rejected') => {
+    const prev = substitutes;
+    setSubstitutes(list => list.map(r => (r.id === id ? { ...r, status } : r))); // 楽観的に即反映
+    setError(''); setMessage('');
+    try {
+      await setSubstituteStatus(id, status);
+      setMessage(status === 'approved' ? '振替休日を承認しました' : '振替休日を却下しました');
+    } catch (err) {
+      setSubstitutes(prev);
+      setError(err instanceof Error ? err.message : '更新に失敗しました');
+    }
   };
 
   const handleSave = async () => {
@@ -699,6 +727,52 @@ export default function Overtime() {
               </tbody>
             </Table>
           </Card>
+
+          {/* 振替休日（第19条）。承認すると、その2日の休日判定が入れ替わる */}
+          {canSub && (
+            <Card className="mb-6">
+              <SectionTitle note="休日に出勤する前に、その休日と別の労働日を入れ替えるものです。承認すると、出勤する日は労働日（基準7.5時間）に、休む日は休日になります。休日勤務の割増はつきません（就業規則 第19条）。">
+                振替休日
+              </SectionTitle>
+              {substitutes.some(r => r.status === 'requested') && (
+                <Alert type="info">
+                  この職員から<b>振替休日の申請</b>が届いています。承認すると休日の判定が入れ替わります。
+                </Alert>
+              )}
+              <Table>
+                <thead>
+                  <tr><Th>出勤する休日</Th><Th>休む労働日</Th><Th>事由</Th><Th>状態</Th><Th></Th></tr>
+                </thead>
+                <tbody>
+                  {substitutes.map(r => (
+                    <tr key={r.id}>
+                      <Td className="num whitespace-nowrap">{r.workDate}</Td>
+                      <Td className="num whitespace-nowrap">{r.offDate}</Td>
+                      <Td className="text-xs text-ink-mute">{r.reason}</Td>
+                      <Td>
+                        <Badge color={r.status === 'approved' ? 'green' : r.status === 'rejected' ? 'red' : 'yellow'}>
+                          {r.status === 'approved' ? '承認済' : r.status === 'rejected' ? '却下' : '申請中'}
+                        </Badge>
+                      </Td>
+                      <Td className="whitespace-nowrap">
+                        {r.status === 'requested' ? (
+                          <span className="flex gap-1">
+                            <Button size="sm" onClick={() => decideSubstitute(r.id, 'approved')}>承認</Button>
+                            <Button variant="ghost" size="sm" onClick={() => decideSubstitute(r.id, 'rejected')}>却下</Button>
+                          </span>
+                        ) : r.status === 'approved' ? (
+                          <Button variant="ghost" size="sm" onClick={() => decideSubstitute(r.id, 'rejected')}>取り消す</Button>
+                        ) : null}
+                      </Td>
+                    </tr>
+                  ))}
+                  {substitutes.length === 0 && (
+                    <tr><Td className="text-center text-ink-mute py-6" colSpan={5}>振替休日の申請はありません</Td></tr>
+                  )}
+                </tbody>
+              </Table>
+            </Card>
+          )}
 
           {/* 代休取得 */}
           <Card>

@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { PageContainer, Card, Field, Input, Select, Button, Table, Th, Td, Badge, Alert, SectionTitle } from '../../components/UI';
-import { getMyProfile, getMyOvertimePageData, addMyOvertime, addMyCompUse, todayStr } from '../../api/data';
+import { PageContainer, Card, Field, Input, Select, Button, Table, Th, Td, Badge, Alert, SectionTitle, Note } from '../../components/UI';
+import { getMyProfile, getMyOvertimePageData, addMyOvertime, addMyCompUse, addMySubstitute, todayStr } from '../../api/data';
 import { WEEKDAY_LABELS, hoursBetween } from '../../utils/constants';
 import { closedDayName, isClosedDay } from '../../utils/holidays';
 import { CancelRequestButton } from '../../components/CancelRequestButton';
 import {
   overtimeKindOf, allowanceOf, canSplitDisposition, dispositionSplitOf,
+  canRequestSubstitute, sameWeek,
   OVERTIME_KIND_LABELS, OVERTIME_STATUS_LABELS, OVERTIME_DISPOSITION_LABELS,
 } from '../../utils/overtime';
-import type { Staff, OvertimeRecord, CompLeaveUse, ConfirmedShift, OvertimeKind } from '../../types';
+import type { Staff, OvertimeRecord, CompLeaveUse, ConfirmedShift, OvertimeKind, SubstituteHoliday } from '../../types';
 
 const h1 = (n: number) => `${Math.round(n * 10) / 10}h`;
 
@@ -32,6 +33,13 @@ export default function StaffOvertimeRequest() {
   const [confirmed, setConfirmed] = useState<ConfirmedShift[]>([]);
   const [kind, setKind] = useState<OvertimeKind>('overtime');
 
+  // 振替休日の申請（第19条）
+  const [substitutes, setSubstitutes] = useState<SubstituteHoliday[]>([]);
+  const [sWork, setSWork] = useState(todayStr());  // 出勤する休日
+  const [sOff, setSOff] = useState(todayStr());    // 代わりに休む労働日
+  const [sReason, setSReason] = useState('');
+  const [sSaving, setSSaving] = useState(false);
+
   // 代休の申請
   const [compUse, setCompUse] = useState<CompLeaveUse[]>([]);
   const [cDate, setCDate] = useState(todayStr());
@@ -51,6 +59,7 @@ export default function StaffOvertimeRequest() {
       if (!alive) return;
       setRecords(d.overtime);
       setCompUse(d.compUse);
+      setSubstitutes(d.substitutes);
       setConfirmed(d.confirmed);
       setLoading(false);
     });
@@ -99,6 +108,26 @@ export default function StaffOvertimeRequest() {
     .filter(r => (r.status || 'approved') !== 'rejected')
     .reduce((s, r) => s + (r.hours || 0), 0));
   const compRemain = r1(compGranted - compTaken);
+
+  const canSubstitute = staff ? canRequestSubstitute(staff) : false;
+  // 週をまたぐと、出勤した週が週40時間を超えて法定時間外の割増が出ることがある
+  const sCrossWeek = !!sWork && !!sOff && !sameWeek(sWork, sOff);
+
+  const addSubstitute = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sWork || !sOff) { setError('出勤する休日と、休みにする労働日の両方を入れてください'); return; }
+    if (sWork === sOff) { setError('同じ日は振り替えられません'); return; }
+    if (sWork.slice(0, 7) !== sOff.slice(0, 7)) { setError('振替は同じ月の中で行ってください'); return; }
+    setSSaving(true); setError(''); setMessage('');
+    try {
+      await addMySubstitute({ workDate: sWork, offDate: sOff, reason: sReason });
+      setMessage('振替休日を申請しました。事務局の承認をお待ちください。');
+      setSReason('');
+      setVersion(v => v + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '申請に失敗しました');
+    } finally { setSSaving(false); }
+  };
 
   const addComp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -256,6 +285,72 @@ export default function StaffOvertimeRequest() {
           </tbody>
         </Table>
       </Card>
+
+      {/* 振替休日の申請（第19条） */}
+      {canSubstitute && (
+        <>
+          <Card className="mt-6">
+            <SectionTitle note="休日に出勤する前に、その休日と別の労働日を入れ替えます。入れ替えると出勤する日は労働日になるので、休日勤務の割増はつかず通常の給与になります（就業規則 第19条）。振替は同じ月の中で行ってください。">
+              振替休日を申請する
+            </SectionTitle>
+            <form onSubmit={addSubstitute} className="grid sm:grid-cols-4 gap-3 items-end">
+              <Field label="出勤する休日">
+                <Input type="date" value={sWork} onChange={e => setSWork(e.target.value)} required />
+              </Field>
+              <Field label="代わりに休む労働日">
+                <Input type="date" value={sOff} onChange={e => setSOff(e.target.value)} required />
+              </Field>
+              <Field label="事由">
+                <Input value={sReason} onChange={e => setSReason(e.target.value)} placeholder="例: 大会運営" />
+              </Field>
+              <div className="mb-4">
+                <Button type="submit" size="lg" className="w-full" disabled={sSaving || !staff}>
+                  {sSaving ? '申請中…' : '申請する'}
+                </Button>
+              </div>
+            </form>
+            {sCrossWeek && (
+              <Note tone="caution">
+                出勤する日と休む日が別の週です。週の労働時間が40時間を超えると、法定時間外の割増（×1.25）が発生することがあります。同じ週の中で振り替えられないか確認してください。
+              </Note>
+            )}
+          </Card>
+
+          <Card className="p-0 overflow-x-auto mt-4">
+            <Table>
+              <thead>
+                <tr><Th>出勤する休日</Th><Th>休む労働日</Th><Th>事由</Th><Th>状態</Th><Th></Th></tr>
+              </thead>
+              <tbody>
+                {substitutes.map(r => (
+                  <tr key={r.id}>
+                    <Td className="num whitespace-nowrap">{r.workDate}</Td>
+                    <Td className="num whitespace-nowrap">{r.offDate}</Td>
+                    <Td className="text-xs text-ink-mute">{r.reason}</Td>
+                    <Td>
+                      <Badge color={r.status === 'approved' ? 'green' : r.status === 'rejected' ? 'red' : 'yellow'}>
+                        {r.status === 'approved' ? '承認済' : r.status === 'rejected' ? '却下' : '申請中'}
+                      </Badge>
+                    </Td>
+                    <Td className="whitespace-nowrap">
+                      {r.status === 'requested' && (
+                        <CancelRequestButton
+                          kind="substitute" id={r.id} what="振替休日の申請"
+                          onCancelled={() => { setMessage('振替休日の申請を取り消しました'); setError(''); setVersion(v => v + 1); }}
+                          onError={msg => { setError(msg); setMessage(''); }}
+                        />
+                      )}
+                    </Td>
+                  </tr>
+                ))}
+                {!loading && substitutes.length === 0 && (
+                  <tr><Td className="text-center text-ink-mute py-8" colSpan={5}>振替休日の申請はまだありません</Td></tr>
+                )}
+              </tbody>
+            </Table>
+          </Card>
+        </>
+      )}
 
       {/* 代休の取得申請 */}
       <Card className="mt-6">

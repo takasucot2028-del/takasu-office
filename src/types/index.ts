@@ -153,7 +153,25 @@ export type Role = 'admin' | 'staff';
 export type RequestStatus = 'requested' | 'approved' | 'rejected';
 
 /** 職員が自分で取り消せる申請の種類（取消は承認前のものだけ） */
-export type CancelableKind = 'leave' | 'comp' | 'overtime' | 'expense';
+export type CancelableKind = 'leave' | 'comp' | 'overtime' | 'expense' | 'substitute';
+
+/**
+ * 振替休日（就業規則 第19条）。
+ *
+ * 休日に出勤する「前に」、その休日と別の労働日を入れ替える。
+ * 入れ替えた結果、出勤する日は労働日になるので休日労働にはならず、
+ * 割増賃金は発生しない（通常の賃金のみ）。
+ * 休日労働のあとに代わりの休みを与える「代休」とは別のもの。
+ */
+export interface SubstituteHoliday {
+  id: string;
+  staffId: string;
+  workDate: string;   // 出勤する休日（労働日に変わる日）YYYY-MM-DD
+  offDate: string;    // 代わりに休む労働日（休日に変わる日）YYYY-MM-DD
+  reason: string;     // 事由
+  status: RequestStatus; // requested→approved/rejected
+  note: string;       // 事務局メモ
+}
 
 /** 有給休暇の記録種別 */
 export type LeaveKind = 'grant' | 'use';

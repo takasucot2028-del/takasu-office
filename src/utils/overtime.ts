@@ -1,5 +1,5 @@
 // 時間外・休日勤務の計算ロジック（画面から共通利用）
-import type { Staff, ShiftPattern, OvertimeKind, OvertimeStatus, OvertimeDisposition, AttendanceRecord } from '../types';
+import type { Staff, ShiftPattern, OvertimeKind, OvertimeStatus, OvertimeDisposition, AttendanceRecord, SubstituteHoliday } from '../types';
 import { isClosedDay } from './holidays';
 
 export const FULLTIME_STANDARD_HOURS = 7.5;   // 常勤の1日の所定（これを超えた分が時間外）
@@ -86,6 +86,49 @@ export function isOvertimeTarget(staff: Staff): boolean {
 export interface WorkdayContext {
   hasShift: boolean;   // その日に確定シフトがあるか
   shiftKnown: boolean; // シフトで判断できるか（その職員のその月に確定シフトが1件でもあるか）
+  /** 承認済みの振替で、休日→労働日になった日（第19条） */
+  substituteWork?: boolean;
+  /** 承認済みの振替で、労働日→休日になった日 */
+  substituteOff?: boolean;
+}
+
+/**
+ * 承認済みの振替休日から、日付ごとの入替状況を引けるようにする。
+ * 1人ぶんの記録を渡すこと（画面側で職員を絞ってから呼ぶ）。
+ */
+export interface SubstituteMap {
+  work: Set<string>; // 休日→労働日になった日
+  off: Set<string>;  // 労働日→休日になった日
+}
+export function substituteMapOf(records: SubstituteHoliday[]): SubstituteMap {
+  const work = new Set<string>();
+  const off = new Set<string>();
+  for (const r of records) {
+    if (r.status !== 'approved') continue; // 承認されるまでは入れ替えない
+    if (r.workDate) work.add(r.workDate);
+    if (r.offDate) off.add(r.offDate);
+  }
+  return { work, off };
+}
+
+/** 振替を申請できる雇用区分か。パート職員はシフトで勤務日を決めるため対象外 */
+export function canRequestSubstitute(staff: Staff): boolean {
+  return staff.employmentType === 'fulltime';
+}
+
+/**
+ * 振替の2日が同じ週（月曜はじまり）か。
+ * 週をまたぐと、出勤した週が週40時間を超えて法定時間外の割増が出ることがあるため、
+ * 画面で注意を促すのに使う。
+ */
+export function sameWeek(a: string, b: string): boolean {
+  const mon = (d: string) => {
+    const t = new Date(`${d}T00:00:00`);
+    const diff = (t.getDay() + 6) % 7; // 月曜を週のはじめにする
+    t.setDate(t.getDate() - diff);
+    return t.toISOString().slice(0, 10);
+  };
+  return !!a && !!b && mon(a) === mon(b);
 }
 
 /**
@@ -101,6 +144,9 @@ export interface WorkdayContext {
  */
 export function overtimeKindOf(staff: Staff, date: string, ctx?: WorkdayContext): OvertimeKind {
   if (staff.employmentType !== 'fulltime') return 'overtime';
+  // 承認済みの振替が最優先。入れ替えた結果がその日の区分になる（第19条）
+  if (ctx?.substituteWork) return 'overtime'; // 休日→労働日。割増はつかない
+  if (ctx?.substituteOff) return 'holiday';   // 労働日→休日
   if (isClosedDay(date)) return 'holiday';
   if (ctx?.shiftKnown) return ctx.hasShift ? 'overtime' : 'holiday';
   return 'overtime';

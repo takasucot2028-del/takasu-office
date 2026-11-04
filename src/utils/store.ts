@@ -3,7 +3,8 @@ import type {
   Staff, AttendanceRecord, LeaveRecord, WorkLocation,
   ShiftPattern, AvailabilityRecord, ConfirmedShift,
   OvertimeRecord, CompLeaveUse, DocumentItem,
-  ExpenseCategory, Budget, Expense, RequestStatus, CancelableKind, ShiftChange, AttendanceChange, CompanyHoliday, AuditEntry,
+  ExpenseCategory, Budget, Expense, RequestStatus, CancelableKind, SubstituteHoliday,
+  ShiftChange, AttendanceChange, CompanyHoliday, AuditEntry,
 } from '../types';
 import { ADMIN_EMAIL, ADMIN_PASSWORD, DEFAULT_SHIFT_PATTERNS, DEFAULT_EXPENSE_CATEGORIES, breakMinutesBetween } from './constants';
 
@@ -15,6 +16,7 @@ const KEY_AVAILABILITY = 'tof_availability';
 const KEY_CONFIRMED = 'tof_confirmed';
 const KEY_OVERTIME = 'tof_overtime';
 const KEY_COMP_USE = 'tof_comp_use';
+const KEY_SUBSTITUTE = 'tof_substitute';
 const KEY_DOCUMENTS = 'tof_documents';
 const KEY_EXP_CATEGORIES = 'tof_exp_categories';
 const KEY_BUDGETS = 'tof_budgets';
@@ -608,11 +610,33 @@ export function setExpenseStatus(id: string, status: RequestStatus) {
  * 本人のもので、かつ承認前のものだけ消す。GAS側と同じ判定にそろえる。
  */
 const CANCELABLE: Record<CancelableKind, { key: string; pending: string }> = {
-  leave:    { key: KEY_LEAVE,     pending: 'requested' },
-  comp:     { key: KEY_COMP_USE,  pending: 'requested' },
-  overtime: { key: KEY_OVERTIME,  pending: 'applied'   },
-  expense:  { key: KEY_EXPENSES,  pending: 'requested' },
+  leave:      { key: KEY_LEAVE,      pending: 'requested' },
+  comp:       { key: KEY_COMP_USE,   pending: 'requested' },
+  overtime:   { key: KEY_OVERTIME,   pending: 'applied'   },
+  expense:    { key: KEY_EXPENSES,   pending: 'requested' },
+  substitute: { key: KEY_SUBSTITUTE, pending: 'requested' },
 };
+
+/* ---- 振替休日（第19条）---- */
+export function listSubstitutes(): SubstituteHoliday[] {
+  return load<SubstituteHoliday>(KEY_SUBSTITUTE)
+    .slice().sort((a, b) => b.workDate.localeCompare(a.workDate));
+}
+export function listSubstitutesByStaff(staffId: string): SubstituteHoliday[] {
+  return listSubstitutes().filter(r => r.staffId === staffId);
+}
+export function addSubstitute(record: SubstituteHoliday) {
+  const all = load<SubstituteHoliday>(KEY_SUBSTITUTE);
+  all.push(record);
+  save(KEY_SUBSTITUTE, all);
+  writeAudit('振替休日の申請', '振替', record.workDate + ' → ' + record.offDate);
+}
+export function setSubstituteStatus(id: string, status: RequestStatus) {
+  const all = load<SubstituteHoliday>(KEY_SUBSTITUTE);
+  const r = all.find(x => x.id === id);
+  if (r) { r.status = status; save(KEY_SUBSTITUTE, all); }
+  writeAudit('振替休日の承認・却下', '振替', 'id=' + id + ' / ' + status);
+}
 export function cancelMyRequest(kind: CancelableKind, id: string, staffId: string) {
   const conf = CANCELABLE[kind];
   if (!conf) throw new Error('取り消せない申請です');

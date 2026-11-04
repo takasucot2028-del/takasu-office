@@ -8,7 +8,7 @@
 import type {
   Staff, AttendanceRecord, LeaveRecord,
   ShiftPattern, AvailabilityRecord, ConfirmedShift, WorkLocation,
-  OvertimeRecord, CompLeaveUse, RequestStatus, CancelableKind, DocumentItem,
+  OvertimeRecord, CompLeaveUse, RequestStatus, CancelableKind, SubstituteHoliday, DocumentItem,
   ExpenseCategory, Budget, Expense, ShiftChange, AttendanceChange, CompanyHoliday, AuditEntry,
 } from '../types';
 import { DEFAULT_SHIFT_PATTERNS, LEAVE_HOURS_PER_DAY, currentFiscalYear } from '../utils/constants';
@@ -260,6 +260,7 @@ export interface MyOvertimePageData {
   overtime: OvertimeRecord[];
   compUse: CompLeaveUse[];
   confirmed: ConfirmedShift[];
+  substitutes: SubstituteHoliday[];
 }
 export async function getMyOvertimePageData(month: string): Promise<MyOvertimePageData> {
   if (!USE_GAS) {
@@ -267,24 +268,27 @@ export async function getMyOvertimePageData(month: string): Promise<MyOvertimePa
       overtime: local.listOvertimeByStaff(staffId()),
       compUse: local.listCompUse(staffId()),
       confirmed: local.listConfirmedByMonth(month).filter(c => c.staffId === staffId()),
+      substitutes: local.listSubstitutesByStaff(staffId()),
     };
   }
   const r = await batchCall([
     { action: 'getMyOvertime' },
     { action: 'getMyCompUse' },
     { action: 'getMyConfirmed', month },
+    { action: 'getMySubstitutes' },
   ]);
   if (r) {
     return {
       overtime: unwrap(r[0] as SubRes<OvertimeRecord[]>, []),
       compUse: unwrap(r[1] as SubRes<CompLeaveUse[]>, []),
       confirmed: unwrap(r[2] as SubRes<ConfirmedShift[]>, []),
+      substitutes: unwrap(r[3] as SubRes<SubstituteHoliday[]>, []),
     };
   }
-  const [overtime, compUse, confirmed] = await Promise.all([
-    getMyOvertime(), getMyCompUse(), getMyConfirmed(month),
+  const [overtime, compUse, confirmed, substitutes] = await Promise.all([
+    getMyOvertime(), getMyCompUse(), getMyConfirmed(month), getMySubstitutes(),
   ]);
-  return { overtime, compUse, confirmed };
+  return { overtime, compUse, confirmed, substitutes };
 }
 
 /** 打刻専用画面：PINで打刻する（ログイン不要。ここだけはトークンを使わない） */
@@ -701,6 +705,35 @@ export async function getMyCompUse(): Promise<CompLeaveUse[]> {
 }
 
 /** 従業員：代休の取得を申請する（事務局の承認待ち） */
+/* ---- 振替休日（就業規則 第19条）---- */
+/** 全職員の振替（事務局用） */
+export async function listSubstitutes(): Promise<SubstituteHoliday[]> {
+  if (!USE_GAS) return local.listSubstitutes();
+  return unwrap(await gas.getSubstitutes(token()), []);
+}
+/** 自分の振替（従業員用） */
+export async function getMySubstitutes(): Promise<SubstituteHoliday[]> {
+  if (!USE_GAS) return local.listSubstitutesByStaff(staffId());
+  return unwrap(await gas.getMySubstitutes(token()), []);
+}
+export async function addMySubstitute(record: Partial<SubstituteHoliday>): Promise<void> {
+  const rec: Partial<SubstituteHoliday> = { id: local.genId('sb'), ...record }; // クライアント採番
+  if (!USE_GAS) {
+    local.addSubstitute({
+      id: rec.id!, staffId: staffId(), workDate: rec.workDate || '', offDate: rec.offDate || '',
+      reason: rec.reason || '', status: 'requested', note: '',
+    });
+    return;
+  }
+  const res = await gas.addMySubstitute(rec, token());
+  if (!res.success) throw new Error(res.error || '振替休日の申請に失敗しました');
+}
+export async function setSubstituteStatus(id: string, status: RequestStatus): Promise<void> {
+  if (!USE_GAS) { local.setSubstituteStatus(id, status); return; }
+  const res = await gas.setSubstituteStatus(id, status, token());
+  if (!res.success) throw new Error(res.error || '状態の更新に失敗しました');
+}
+
 /**
  * 従業員：自分の申請を取り消す（記録ごと削除）。
  * 取り消せるのは承認前のものだけ。本人確認と状態の確認はサーバー側でも行う。

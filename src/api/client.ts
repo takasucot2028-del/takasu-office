@@ -5,7 +5,7 @@
 import type {
   Staff, AttendanceRecord, LeaveRecord,
   ShiftPattern, AvailabilityRecord, ConfirmedShift, WorkLocation,
-  OvertimeRecord, CompLeaveUse, RequestStatus, DocumentItem,
+  OvertimeRecord, CompLeaveUse, RequestStatus, SubstituteHoliday, DocumentItem,
   ExpenseCategory, Budget, Expense, ShiftChange, AttendanceChange, CompanyHoliday, AuditEntry,
 } from '../types';
 
@@ -196,6 +196,12 @@ export const setExpenseVoucherNo = (id: string, voucherNo: string, token: string
   request<void>('setExpenseVoucherNo', { id, voucherNo, token });
 export const cancelMyRequest = (kind: string, id: string, token: string) =>
   request<void>('cancelMyRequest', { kind, id, token });
+export const getSubstitutes = (token: string) => request<SubstituteHoliday[]>('getSubstitutes', { token });
+export const getMySubstitutes = (token: string) => request<SubstituteHoliday[]>('getMySubstitutes', { token });
+export const addMySubstitute = (record: Partial<SubstituteHoliday>, token: string) =>
+  request<void>('addMySubstitute', { record, token });
+export const setSubstituteStatus = (id: string, status: RequestStatus, token: string) =>
+  request<void>('setSubstituteStatus', { id, status, token });
 export const deleteExpense = (id: string, token: string) =>
   request<void>('deleteExpense', { id, token });
 
